@@ -29,6 +29,7 @@ from schemas import (
     UserPreferenceUpdate, UserPreferenceResponse,
     UserInfo, MessageResponse, PaginatedResponse
 )
+from routes.docs import router as docs_router
 
 # Configuration logging
 logging.basicConfig(
@@ -77,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
-    version="1.0.0",
+    version="1.5.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -92,6 +93,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Inclusion des routeurs
+app.include_router(docs_router)
 
 
 # ============================================================

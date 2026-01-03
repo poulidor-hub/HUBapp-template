@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copier le code source
 COPY backend/ .
 
+# Copier le CHANGELOG pour les endpoints de documentation
+COPY CHANGELOG.md /app/CHANGELOG.md
+
 # Port exposé
 EXPOSE 18087
 
