@@ -65,11 +65,17 @@ class HubClient:
                     data = response.json()
                     # Les credentials sont dans data["credentials"] ou directement dans data
                     creds = data.get("credentials", data)
+                    is_new = data.get("is_new", True)
+                    
+                    # Si l'app existait déjà, le secret n'est pas retourné - il faut le régénérer
+                    if not is_new and not creds.get("client_secret"):
+                        logger.info(f"Application existante, régénération du secret...")
+                        return await self._recover_credentials()
+                    
                     self._credentials = HubCredentials(
                         client_id=creds["client_id"],
                         client_secret=creds["client_secret"]
                     )
-                    is_new = data.get("is_new", True)
                     logger.info(f"✅ Application '{self.settings.APP_SLUG}' {'enregistrée' if is_new else 'reconnectée'} au Hub")
                     return True
                 elif response.status_code == 409:
@@ -90,7 +96,7 @@ class HubClient:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # Régénérer le secret pour obtenir de nouveaux credentials
                 response = await client.post(
-                    f"{self.settings.hub_api_url}/api/apps/{self.settings.APP_SLUG}/regenerate-secret",
+                    f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
                     headers={"X-Slug": self.settings.APP_SLUG}
                 )
                 
@@ -100,7 +106,7 @@ class HubClient:
                         client_id=data["client_id"],
                         client_secret=data["client_secret"]
                     )
-                    logger.info(f"✅ Credentials récupérés pour '{self.settings.APP_SLUG}'")
+                    logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}'")
                     return True
                 else:
                     logger.error(f"❌ Impossible de récupérer les credentials: {response.text}")

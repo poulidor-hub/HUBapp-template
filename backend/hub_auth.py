@@ -63,7 +63,7 @@ class TokenPayload:
     
     def is_service_account(self) -> bool:
         """Vérifie si c'est un service account (M2M)."""
-        return self.token_type == "service"
+        return self.token_type in ("service", "service_account") or "service_account" in self.roles
 
 
 class HubAuth:

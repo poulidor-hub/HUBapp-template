@@ -235,6 +235,63 @@ async def service_endpoint(user: TokenPayload = Depends(require_service_account(
 
 
 # ============================================================
+# ENDPOINTS M2M (Machine-to-Machine)
+# ============================================================
+
+@app.get("/api/m2m/status", tags=["M2M"])
+async def m2m_status():
+    """
+    Statut de la connexion M2M avec le Hub.
+    Retourne si l'app est enregistrée et peut obtenir des tokens.
+    """
+    is_registered = hub_client.is_registered
+    token = None
+    token_error = None
+    
+    if is_registered:
+        try:
+            token = await hub_client.get_m2m_token()
+        except Exception as e:
+            token_error = str(e)
+    
+    return {
+        "registered": is_registered,
+        "client_id": hub_client.credentials.client_id if hub_client.credentials else None,
+        "can_get_token": token is not None,
+        "token_preview": f"{token[:20]}...{token[-10:]}" if token else None,
+        "error": token_error
+    }
+
+
+@app.post("/api/m2m/test-call", tags=["M2M"])
+async def test_m2m_call(
+    target_url: str,
+    user: TokenPayload = Depends(require_role("admin"))
+):
+    """
+    Test d'appel M2M vers un autre service.
+    Requiert admin car c'est un outil de debug.
+    """
+    import httpx
+    
+    token = await hub_client.get_m2m_token()
+    if not token:
+        return {"success": False, "error": "Impossible d'obtenir un token M2M"}
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                target_url,
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "response": response.json() if response.headers.get("content-type", "").startswith("application/json") else response.text[:500]
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+# ============================================================
 # CRUD ITEMS (exemple avec base de données)
 # ============================================================
 

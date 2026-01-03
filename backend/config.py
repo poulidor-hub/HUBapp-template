@@ -73,13 +73,13 @@ class Settings(BaseSettings):
     
     @property
     def api_url(self) -> str:
-        """URL de l'API de cette application."""
-        return f"http://{self.local_ip}:{self.API_PORT}"
+        """URL de l'API de cette application (accessible depuis l'extérieur)."""
+        return f"http://{self.hub_host}:{self.API_PORT}"
     
     @property
     def frontend_url(self) -> str:
-        """URL du frontend de cette application."""
-        return f"http://{self.local_ip}:{self.FRONTEND_PORT}"
+        """URL du frontend de cette application (accessible depuis l'extérieur)."""
+        return f"http://{self.hub_host}:{self.FRONTEND_PORT}"
     
     @property
     def database_url(self) -> str:
