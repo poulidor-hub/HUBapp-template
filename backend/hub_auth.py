@@ -63,7 +63,13 @@ class TokenPayload:
     
     def is_service_account(self) -> bool:
         """Vérifie si c'est un service account (M2M)."""
-        return self.token_type in ("service", "service_account") or "service_account" in self.roles
+        # La doc indique que token_type peut être "service_account" ou "service"
+        # Et le rôle dans apps peut être "service"
+        return (
+            self.token_type in ("service", "service_account") or 
+            "service_account" in self.roles or
+            "service" in self.apps.values()
+        )
 
 
 class HubAuth:
@@ -129,7 +135,7 @@ class HubAuth:
                 sub=payload.get("sub", ""),
                 roles=payload.get("roles", []),
                 apps=payload.get("apps", {}),
-                token_type=payload.get("type", "user"),
+                token_type=payload.get("type", payload.get("token_type", "user")),
                 exp=payload.get("exp", 0),
                 iat=payload.get("iat", 0),
                 jti=payload.get("jti", ""),
