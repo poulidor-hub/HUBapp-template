@@ -96,6 +96,73 @@ pytest
 pytest --cov=. --cov-report=html
 ```
 
+## 🏷️ Gestion des versions
+
+Ce template utilise un **système de versionnage automatique** basé sur [Semantic Versioning](https://semver.org/).
+
+### Source unique de vérité
+
+Le fichier `VERSION` à la racine contient le numéro de version. Tous les autres fichiers sont synchronisés automatiquement.
+
+### Script de gestion
+
+```bash
+# Synchroniser la version dans tous les fichiers
+python scripts/bump_version.py
+
+# Incrémenter la version
+python scripts/bump_version.py patch    # 1.5.0 -> 1.5.1
+python scripts/bump_version.py minor    # 1.5.0 -> 1.6.0
+python scripts/bump_version.py major    # 1.5.0 -> 2.0.0
+
+# Forcer une version spécifique
+python scripts/bump_version.py --set 2.0.0
+
+# Vérifier la cohérence des versions
+python scripts/bump_version.py --check
+
+# Afficher un template de changelog
+python scripts/bump_version.py --template
+```
+
+### Fichiers synchronisés
+
+| Fichier | Élément mis à jour |
+|---------|-------------------|
+| `VERSION` | Source de vérité |
+| `frontend/package.json` | Champ `version` |
+| `backend/main.py` | Version FastAPI |
+| `docs/API.md` | Badge de version |
+
+### Format du CHANGELOG
+
+Le fichier `CHANGELOG.md` suit le format [Keep a Changelog](https://keepachangelog.com). 
+Chaque version doit avoir une entrée avec la structure suivante :
+
+```markdown
+## [X.Y.Z] - Date
+
+### ✨ Nouvelles fonctionnalités
+- **Nouveau** : Description de la fonctionnalité
+
+### 🐛 Corrections
+- **Fix** : Description de la correction
+
+### 📝 Modifications
+| Fichier | Modification |
+|---------|--------------|
+| `fichier.py` | Description du changement |
+```
+
+### Endpoint de version
+
+L'API expose un endpoint `/api/version` pour vérifier la version déployée :
+
+```bash
+curl http://localhost:9045/api/version
+# {"version": "1.6.0", "app": "mon-app", "name": "Mon Application"}
+```
+
 ## 📝 Personnalisation
 
 ### Changer le slug de l'application

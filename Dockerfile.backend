@@ -1,6 +1,11 @@
 # Backend API
 FROM python:3.11-slim
 
+# Version de l'application (passée au build)
+ARG APP_VERSION=0.0.0
+LABEL version="${APP_VERSION}"
+LABEL maintainer="HUBapp Template"
+
 WORKDIR /app
 
 # Dépendances système pour psycopg2
@@ -12,6 +17,9 @@ RUN apt-get update && apt-get install -y \
 # Copier les requirements et installer
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le fichier VERSION (source unique de vérité)
+COPY VERSION /app/VERSION
 
 # Copier le code source
 COPY backend/ .

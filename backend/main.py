@@ -11,7 +11,7 @@ from typing import Optional
 from datetime import datetime
 import logging
 
-from config import get_settings
+from config import get_settings, APP_VERSION
 from database import get_db, init_db, close_db
 from hub_client import hub_client
 from hub_auth import (
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
-    version="1.5.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -109,6 +109,19 @@ async def health_check():
         "status": "healthy",
         "app": settings.APP_SLUG,
         "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/api/version", tags=["Public"])
+async def get_version():
+    """
+    Retourne la version actuelle de l'application.
+    Utile pour le monitoring et la vérification de déploiement.
+    """
+    return {
+        "version": APP_VERSION,
+        "app": settings.APP_SLUG,
+        "name": settings.APP_NAME
     }
 
 

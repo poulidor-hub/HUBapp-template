@@ -2,6 +2,55 @@
 
 Historique des modifications du template d'application Hub.
 
+Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
+et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
+
+---
+
+## [1.6.0] - 4 janvier 2026
+
+### ✨ Nouvelles fonctionnalités
+
+#### Système de versionnage automatique
+- **Nouveau** : Fichier `VERSION` comme source unique de vérité
+- **Nouveau** : Script `scripts/bump_version.py` pour synchroniser les versions
+- **Nouveau** : Endpoint `GET /api/version` pour consulter la version de l'API
+- **Nouveau** : Labels de version dans les images Docker
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `VERSION` | Nouveau fichier contenant le numéro de version |
+| `scripts/bump_version.py` | Script de gestion de version automatique |
+| `backend/config.py` | Ajout de `APP_VERSION` lu depuis VERSION |
+| `backend/main.py` | Import de `APP_VERSION`, nouvel endpoint `/api/version` |
+| `frontend/package.json` | Synchronisation version 1.0.0 -> 1.6.0 |
+| `Dockerfile.backend` | Ajout ARG/LABEL version, copie de VERSION |
+| `Dockerfile.frontend` | Ajout ARG/LABEL version |
+| `docker-compose.yml` | Ajout ARG `APP_VERSION` dans les builds |
+| `README.md` | Documentation du système de versionnage |
+| `CHANGELOG.md` | Ajout format Keep a Changelog |
+
+### 🔧 Utilisation du script de version
+
+```bash
+# Synchroniser la version actuelle
+python scripts/bump_version.py
+
+# Incrémenter (patch/minor/major)
+python scripts/bump_version.py minor
+
+# Vérifier la cohérence
+python scripts/bump_version.py --check
+```
+
+### 📋 Checklist pour agents IA
+
+- [ ] Utiliser `/api/version` pour vérifier la version déployée
+- [ ] Exécuter `bump_version.py` après chaque changement de version
+- [ ] Mettre à jour le CHANGELOG.md avant chaque release
+
 ---
 
 ## [1.5.0] - 3 janvier 2026

@@ -3,8 +3,27 @@ Configuration de l'application avec auto-détection IP.
 """
 import socket
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+
+def get_app_version() -> str:
+    """Lit la version depuis le fichier VERSION à la racine du projet."""
+    # Cherche le fichier VERSION (peut être à la racine ou copié dans /app)
+    possible_paths = [
+        Path(__file__).parent.parent / "VERSION",  # ../VERSION (dev local)
+        Path(__file__).parent / "VERSION",          # ./VERSION (copié dans backend/)
+        Path("/app/VERSION"),                       # /app/VERSION (Docker)
+    ]
+    for path in possible_paths:
+        if path.exists():
+            return path.read_text().strip()
+    return "0.0.0"  # Fallback
+
+
+# Version de l'application (source unique de vérité)
+APP_VERSION = get_app_version()
 
 
 def get_local_ip() -> str:
