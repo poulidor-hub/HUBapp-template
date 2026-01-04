@@ -288,13 +288,80 @@ async def test_m2m_call(
                 target_url,
                 headers={"Authorization": f"Bearer {token}"}
             )
+            # Succès uniquement si code 2xx
+            is_success = 200 <= response.status_code < 300
             return {
-                "success": True,
+                "success": is_success,
                 "status_code": response.status_code,
                 "response": response.json() if response.headers.get("content-type", "").startswith("application/json") else response.text[:500]
             }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/api/m2m/discover", tags=["M2M"])
+async def discover_m2m_services(
+    user: TokenPayload = Depends(require_role("admin"))
+):
+    """
+    Découvre les services M2M disponibles via le Hub.
+    Interroge le Hub avec le token M2M pour récupérer la liste des APIs partagées.
+    Requiert admin car utilise les credentials M2M de l'application.
+    """
+    import httpx
+    
+    token = await hub_client.get_m2m_token()
+    if not token:
+        raise HTTPException(
+            status_code=503, 
+            detail="Impossible d'obtenir un token M2M. Vérifiez l'enregistrement auprès du Hub."
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Appel au Hub pour découvrir les services partagés
+            response = await client.get(
+                f"{settings.hub_api_url}/api/apps/discover",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                raise HTTPException(
+                    status_code=401, 
+                    detail="Token M2M rejeté par le Hub. Resynchronisation nécessaire."
+                )
+            elif response.status_code == 403:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Accès refusé au Hub. Le Service Account n'a pas les droits."
+                )
+            else:
+                raise HTTPException(
+                    status_code=response.status_code, 
+                    detail=f"Erreur Hub: {response.text}"
+                )
+                
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Impossible de contacter le Hub à {settings.hub_api_url}"
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504, 
+            detail="Timeout lors de la connexion au Hub"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erreur inattendue: {str(e)}"
+        )
+
+
 # ============================================================
 # CRUD ITEMS (exemple avec base de données)
 # ============================================================

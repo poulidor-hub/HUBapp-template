@@ -1,11 +1,40 @@
-# Frontend - Serveur statique nginx
+# Stage 1: Build React app
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copier les fichiers de dépendances
+COPY frontend/package.json frontend/package-lock.json* ./
+
+# Installer les dépendances
+RUN npm install
+
+# Copier le code source
+COPY frontend/ .
+
+# Arguments de build (passés par docker-compose)
+ARG VITE_API_PORT=9045
+ARG VITE_HUB_API_PORT=8000
+ARG VITE_HUB_FRONTEND_PORT=80
+ARG VITE_APP_SLUG=mon-app
+
+# Variables d'environnement pour le build Vite
+ENV VITE_API_PORT=$VITE_API_PORT
+ENV VITE_HUB_API_PORT=$VITE_HUB_API_PORT
+ENV VITE_HUB_FRONTEND_PORT=$VITE_HUB_FRONTEND_PORT
+ENV VITE_APP_SLUG=$VITE_APP_SLUG
+
+# Build de production
+RUN npm run build
+
+# Stage 2: Serveur nginx
 FROM nginx:alpine
 
 # Copier la configuration nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copier les fichiers frontend
-COPY frontend/ /usr/share/nginx/html/
+# Copier les fichiers buildés depuis le stage builder
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Port exposé
 EXPOSE 80

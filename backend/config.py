@@ -27,9 +27,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "Mon Application"
     APP_DESCRIPTION: str = "Template d'application avec authentification Hub"
     
-    # Ports
-    API_PORT: int = 18087
-    FRONTEND_PORT: int = 4178
+    # Ports (valeurs par défaut alignées avec .env)
+    API_PORT: int = 9045
+    FRONTEND_PORT: int = 4250
     
     # Hub - Auto-détecté si non spécifié
     HUB_HOST: Optional[str] = None

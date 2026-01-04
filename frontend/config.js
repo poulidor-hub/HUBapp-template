@@ -1,6 +1,7 @@
 /**
  * Configuration du frontend.
  * Les valeurs sont chargées depuis l'API backend /api/config.
+ * Les ports sont injectés via les variables d'environnement Docker.
  */
 
 const config = {
@@ -11,6 +12,12 @@ const config = {
     apiUrl: '',
     hubApiUrl: '',
     hubFrontendUrl: '',
+    
+    // Ports injectés par Docker (voir Dockerfile.frontend)
+    // Ces valeurs sont remplacées au démarrage du container par envsubst
+    injectedApiPort: '${API_PORT}',
+    injectedHubApiPort: '${HUB_API_PORT}',
+    injectedHubFrontendPort: '${HUB_FRONTEND_PORT}',
     
     // Clés de stockage localStorage
     storageKeys: {
@@ -27,9 +34,12 @@ const config = {
  */
 async function loadConfig() {
     try {
-        // Utiliser l'hostname du navigateur et le port API fixe (9808)
+        // Utiliser l'hostname du navigateur et le port API injecté par Docker
         const host = window.location.hostname;
-        const apiPort = 9808;  // Port fixe configuré dans .env
+        // Le port est injecté par le script de démarrage Docker (envsubst)
+        const apiPort = config.injectedApiPort !== '__API_PORT__' 
+            ? config.injectedApiPort 
+            : window.location.port || '80';  // Fallback: même port que le frontend
         const apiUrl = `http://${host}:${apiPort}`;
         
         console.log(`🔄 Chargement config depuis ${apiUrl}/api/config...`);
@@ -54,11 +64,15 @@ async function loadConfig() {
     } catch (error) {
         console.error('❌ Erreur chargement config:', error);
         
-        // Valeurs par défaut en cas d'erreur
-        const host = window.location.hostname || '192.0.2.11';
-        config.apiUrl = `http://${host}:9808`;
-        config.hubApiUrl = `http://${host}:8000`;
-        config.hubFrontendUrl = `http://${host}:80`;
+        // Valeurs par défaut en cas d'erreur - utiliser les ports injectés
+        const host = window.location.hostname;
+        const apiPort = config.injectedApiPort !== '__API_PORT__' ? config.injectedApiPort : window.location.port;
+        const hubApiPort = config.injectedHubApiPort !== '__HUB_API_PORT__' ? config.injectedHubApiPort : '8000';
+        const hubFrontendPort = config.injectedHubFrontendPort !== '__HUB_FRONTEND_PORT__' ? config.injectedHubFrontendPort : '80';
+        
+        config.apiUrl = `http://${host}:${apiPort}`;
+        config.hubApiUrl = `http://${host}:${hubApiPort}`;
+        config.hubFrontendUrl = `http://${host}:${hubFrontendPort}`;
         
         console.warn('⚠️ Utilisation des valeurs par défaut:', config);
     }
