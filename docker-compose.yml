@@ -49,6 +49,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-app_password}
       - POSTGRES_DB=${POSTGRES_DB:-app_db}
       - DEBUG=${DEBUG:-false}
+      - IS_SHARED=${IS_SHARED:-false}
     ports:
       - "${API_PORT:-18087}:18087"
     depends_on:

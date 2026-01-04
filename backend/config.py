@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "app_password"
     POSTGRES_DB: str = "app_db"
     
+    # M2M (Machine-to-Machine)
+    IS_SHARED: bool = False
+    
     # Environnement
     DEBUG: bool = False
     
