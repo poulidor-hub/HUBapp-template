@@ -344,7 +344,8 @@ class HubClient:
             logger.error(f"❌ Impossible d'obtenir un token M2M pour appeler {service_slug}")
             return None
         
-        url = f"{self.settings.hub_api_url.replace(':8000', f':{service_slug}')}{endpoint}"
+        # Construire l'URL du service cible en remplaçant le port Hub par le slug du service
+        url = f"{self.settings.hub_api_url.replace(f':{self.settings.HUB_API_PORT}', f':{service_slug}')}{endpoint}"
         logger.debug(f"📡 Appel service: {method} {url}")
         
         try:
