@@ -16,6 +16,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Nouveau** : Script `scripts/bump_version.py` pour synchroniser les versions
 - **Nouveau** : Endpoint `GET /api/version` pour consulter la version de l'API
 - **Nouveau** : Labels de version dans les images Docker
+- **Nouveau** : Hook Git `pre-commit` pour synchronisation automatique à chaque commit
+- **Nouveau** : Script `scripts/install-hooks.sh` pour installer les hooks Git
 
 ### 📝 Modifications
 
@@ -23,6 +25,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 |---------|--------------|
 | `VERSION` | Nouveau fichier contenant le numéro de version |
 | `scripts/bump_version.py` | Script de gestion de version automatique |
+| `scripts/install-hooks.sh` | Script d'installation des hooks Git |
+| `scripts/git-hooks/pre-commit` | Hook de synchronisation automatique |
 | `backend/config.py` | Ajout de `APP_VERSION` lu depuis VERSION |
 | `backend/main.py` | Import de `APP_VERSION`, nouvel endpoint `/api/version` |
 | `frontend/package.json` | Synchronisation version 1.0.0 -> 1.6.0 |
@@ -32,23 +36,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 | `README.md` | Documentation du système de versionnage |
 | `CHANGELOG.md` | Ajout format Keep a Changelog |
 
-### 🔧 Utilisation du script de version
+### 🔧 Installation (une seule fois après clone)
 
 ```bash
-# Synchroniser la version actuelle
-python scripts/bump_version.py
-
-# Incrémenter (patch/minor/major)
-python scripts/bump_version.py minor
-
-# Vérifier la cohérence
-python scripts/bump_version.py --check
+# Installer les hooks Git pour synchronisation automatique
+./scripts/install-hooks.sh
 ```
 
 ### 📋 Checklist pour agents IA
 
 - [ ] Utiliser `/api/version` pour vérifier la version déployée
-- [ ] Exécuter `bump_version.py` après chaque changement de version
+- [ ] Les versions se synchronisent automatiquement au commit
 - [ ] Mettre à jour le CHANGELOG.md avant chaque release
 
 ---

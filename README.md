@@ -100,29 +100,51 @@ pytest --cov=. --cov-report=html
 
 Ce template utilise un **système de versionnage automatique** basé sur [Semantic Versioning](https://semver.org/).
 
-### Source unique de vérité
+### 🚀 Installation (une seule fois)
 
-Le fichier `VERSION` à la racine contient le numéro de version. Tous les autres fichiers sont synchronisés automatiquement.
-
-### Script de gestion
+Après avoir cloné le template, installez les hooks Git pour activer la synchronisation automatique :
 
 ```bash
-# Synchroniser la version dans tous les fichiers
-python scripts/bump_version.py
+./scripts/install-hooks.sh
+```
 
-# Incrémenter la version
-python scripts/bump_version.py patch    # 1.5.0 -> 1.5.1
-python scripts/bump_version.py minor    # 1.5.0 -> 1.6.0
-python scripts/bump_version.py major    # 1.5.0 -> 2.0.0
+C'est tout ! Les versions seront maintenant **synchronisées automatiquement** à chaque commit.
 
-# Forcer une version spécifique
-python scripts/bump_version.py --set 2.0.0
+### Fonctionnement automatique
 
-# Vérifier la cohérence des versions
-python scripts/bump_version.py --check
+1. **À chaque commit** : Un hook Git synchronise automatiquement les versions dans tous les fichiers
+2. **Le développeur n'a rien à faire** : Il suffit de modifier le fichier `VERSION` si besoin
+3. **Fichiers auto-synchronisés** : `package.json`, `main.py`, `docs/API.md`
+
+### Changer de version
+
+Pour changer de version, modifiez simplement le fichier `VERSION` :
+
+```bash
+# Éditer le fichier VERSION (ex: 1.6.0 -> 1.7.0)
+echo "1.7.0" > VERSION
+
+# Au prochain commit, tout sera synchronisé automatiquement !
+git add .
+git commit -m "feat: nouvelle fonctionnalité"
+# -> Les versions sont mises à jour automatiquement
+```
+
+### Commandes manuelles (optionnelles)
+
+Si vous préférez utiliser des commandes :
+
+```bash
+# Incrémenter automatiquement la version
+python3 scripts/bump_version.py patch    # 1.6.0 -> 1.6.1
+python3 scripts/bump_version.py minor    # 1.6.0 -> 1.7.0
+python3 scripts/bump_version.py major    # 1.6.0 -> 2.0.0
+
+# Vérifier la cohérence
+python3 scripts/bump_version.py --check
 
 # Afficher un template de changelog
-python scripts/bump_version.py --template
+python3 scripts/bump_version.py --template
 ```
 
 ### Fichiers synchronisés

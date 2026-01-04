@@ -1,0 +1,59 @@
+#!/bin/bash
+# =============================================================================
+# Hook Git pre-commit - Synchronisation automatique des versions
+# =============================================================================
+# Ce hook s'exécute automatiquement avant chaque commit pour :
+# 1. Synchroniser les versions dans tous les fichiers
+# 2. Ajouter les fichiers modifiés au commit
+# =============================================================================
+
+# Couleurs pour les messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}🔄 Synchronisation automatique des versions...${NC}"
+
+# Récupérer le répertoire racine du projet
+ROOT_DIR=$(git rev-parse --show-toplevel)
+
+# Exécuter le script de synchronisation
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}❌ Python non trouvé. Installation requise.${NC}"
+    exit 1
+fi
+
+# Synchroniser les versions
+$PYTHON_CMD "$ROOT_DIR/scripts/bump_version.py" 2>&1
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Erreur lors de la synchronisation des versions${NC}"
+    exit 1
+fi
+
+# Ajouter les fichiers de version modifiés au commit
+FILES_TO_ADD=(
+    "VERSION"
+    "frontend/package.json"
+    "backend/main.py"
+    "docs/API.md"
+)
+
+for file in "${FILES_TO_ADD[@]}"; do
+    if [ -f "$ROOT_DIR/$file" ]; then
+        # Vérifier si le fichier a été modifié
+        if git diff --name-only "$ROOT_DIR/$file" | grep -q "$file" || \
+           git diff --cached --name-only "$ROOT_DIR/$file" | grep -q "$file"; then
+            git add "$ROOT_DIR/$file"
+            echo -e "${GREEN}  ✅ $file ajouté au commit${NC}"
+        fi
+    fi
+done
+
+echo -e "${GREEN}✅ Versions synchronisées !${NC}"
+exit 0
