@@ -31,6 +31,7 @@ from schemas import (
     ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse
 )
 from routes.docs import router as docs_router
+from routes.backup import router as backup_router
 
 # Configuration logging
 logging.basicConfig(
@@ -117,6 +118,7 @@ app.add_middleware(
 
 # Inclusion des routeurs
 app.include_router(docs_router)
+app.include_router(backup_router)
 
 
 # ============================================================

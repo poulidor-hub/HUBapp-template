@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # M2M (Machine-to-Machine)
     IS_SHARED: bool = False
     
+    # Storage / Uploads
+    UPLOADS_DIR: str = "/app/uploads"
+    
     # Environnement
     DEBUG: bool = False
     

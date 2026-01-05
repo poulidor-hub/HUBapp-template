@@ -131,3 +131,122 @@ class ServiceDiscoveryResponse(BaseModel):
     cached_at: Optional[str] = Field(None, description="Date de mise en cache")
     per_page: int
     pages: int
+
+
+# ============ Uploaded Files ============
+
+class UploadedFileBase(BaseModel):
+    """Base pour les fichiers uploadés."""
+    filename: str = Field(..., max_length=255, description="Nom du fichier")
+    category: str = Field("general", max_length=100, description="Catégorie de classement")
+    description: Optional[str] = Field(None, description="Description du fichier")
+
+
+class UploadedFileCreate(UploadedFileBase):
+    """Création d'un fichier uploadé (sans le fichier lui-même)."""
+    entity_type: Optional[str] = Field(None, max_length=50, description="Type d'entité liée")
+    entity_id: Optional[int] = Field(None, description="ID de l'entité liée")
+
+
+class UploadedFileResponse(UploadedFileBase):
+    """Réponse avec un fichier uploadé."""
+    id: int
+    original_filename: str
+    relative_path: str
+    size: int
+    mime_type: str
+    hash: str
+    owner: str
+    entity_type: Optional[str] = None
+    entity_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# ============ Backup / Restore ============
+
+class BackupEstimate(BaseModel):
+    """Estimation de la taille et durée d'un backup."""
+    total_items: int = Field(..., description="Nombre total d'items")
+    total_preferences: int = Field(..., description="Nombre de préférences utilisateur")
+    total_files: int = Field(..., description="Nombre de fichiers uploadés")
+    
+    database_size_bytes: int = Field(..., description="Taille estimée des données DB")
+    files_size_bytes: int = Field(..., description="Taille totale des fichiers")
+    total_size_bytes: int = Field(..., description="Taille totale estimée du backup")
+    total_size_human: str = Field(..., description="Taille lisible (ex: 15.3 MB)")
+    
+    estimated_duration_seconds: float = Field(..., description="Durée estimée en secondes")
+    estimated_duration_human: str = Field(..., description="Durée lisible (ex: 2 min 30 sec)")
+    
+    files_by_category: dict = Field(default_factory=dict, description="Fichiers par catégorie")
+    files_by_mime_type: dict = Field(default_factory=dict, description="Fichiers par type MIME")
+    
+    warning: Optional[str] = Field(None, description="Avertissement si backup volumineux")
+
+
+class BackupMetadata(BaseModel):
+    """Métadonnées d'un backup."""
+    backup_id: str = Field(..., description="Identifiant unique du backup")
+    app_slug: str = Field(..., description="Slug de l'application")
+    app_version: str = Field(..., description="Version de l'application")
+    created_at: str = Field(..., description="Date de création ISO")
+    created_by: str = Field(..., description="Utilisateur ayant créé le backup")
+    
+    total_items: int = Field(..., description="Nombre d'items")
+    total_preferences: int = Field(..., description="Nombre de préférences")
+    total_files: int = Field(..., description="Nombre de fichiers")
+    total_size_bytes: int = Field(..., description="Taille totale")
+    total_size_human: str = Field(..., description="Taille lisible")
+    
+    includes_files: bool = Field(True, description="Fichiers inclus dans le backup")
+    checksum: str = Field(..., description="Checksum du backup pour vérification")
+
+
+class BackupResponse(BaseModel):
+    """Réponse après création d'un backup."""
+    success: bool
+    message: str
+    metadata: BackupMetadata
+    download_url: Optional[str] = Field(None, description="URL de téléchargement")
+
+
+class RestoreRequest(BaseModel):
+    """Requête de restauration."""
+    backup_id: Optional[str] = Field(None, description="ID du backup à restaurer (si stocké)")
+    clear_existing: bool = Field(False, description="Supprimer les données existantes avant restore")
+    restore_items: bool = Field(True, description="Restaurer les items")
+    restore_preferences: bool = Field(True, description="Restaurer les préférences")
+    restore_files: bool = Field(True, description="Restaurer les fichiers")
+
+
+class RestoreResponse(BaseModel):
+    """Réponse après restauration."""
+    success: bool
+    message: str
+    
+    items_restored: int = Field(0, description="Nombre d'items restaurés")
+    preferences_restored: int = Field(0, description="Nombre de préférences restaurées")
+    files_restored: int = Field(0, description="Nombre de fichiers restaurés")
+    
+    items_skipped: int = Field(0, description="Items ignorés (déjà existants)")
+    files_skipped: int = Field(0, description="Fichiers ignorés")
+    
+    errors: list[str] = Field(default_factory=list, description="Erreurs rencontrées")
+    warnings: list[str] = Field(default_factory=list, description="Avertissements")
+
+
+class SyncToHubRequest(BaseModel):
+    """Requête de synchronisation vers le Hub."""
+    description: Optional[str] = Field(None, description="Description du backup")
+    tags: list[str] = Field(default_factory=list, description="Tags pour le backup")
+
+
+class SyncFromHubRequest(BaseModel):
+    """Requête de synchronisation depuis le Hub."""
+    backup_id: Optional[str] = Field(None, description="ID spécifique (sinon dernier)")
+    clear_existing: bool = Field(False, description="Supprimer données existantes")
+

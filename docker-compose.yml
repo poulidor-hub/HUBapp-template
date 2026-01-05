@@ -52,6 +52,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - DEBUG=${DEBUG:-false}
       - IS_SHARED=${IS_SHARED:-false}
+      - UPLOADS_DIR=/app/uploads
+    volumes:
+      - uploads_data:/app/uploads
     ports:
       - "${API_PORT:-9045}:8000"
     depends_on:
@@ -91,6 +94,8 @@ services:
 volumes:
   postgres_data:
     name: ${APP_SLUG:-mon-app}-postgres-data
+  uploads_data:
+    name: ${APP_SLUG:-mon-app}-uploads-data
 
 # === RÉSEAUX ===
 networks:

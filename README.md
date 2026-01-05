@@ -81,6 +81,19 @@ docker-compose logs -f api
 | `GET /api/admin-only` | admin | Administration |
 | `GET /api/service-only` | service | M2M uniquement |
 
+### Endpoints Backup/Restore (admin)
+
+| Endpoint | Méthode | Description |
+|----------|---------|-------------|
+| `/api/admin/backup/estimate` | GET | Estimer taille et durée du backup |
+| `/api/admin/backup` | POST | Créer un backup complet |
+| `/api/admin/backup/download` | GET | Télécharger le backup (ZIP) |
+| `/api/admin/backup/list` | GET | Lister les backups locaux |
+| `/api/admin/backup/{id}` | DELETE | Supprimer un backup local |
+| `/api/admin/restore` | POST | Restaurer depuis un fichier |
+| `/api/admin/sync-to-hub` | POST | Pousser le backup vers le Hub |
+| `/api/admin/sync-from-hub` | POST | Restaurer depuis le Hub |
+
 ## 🧪 Tests
 
 ```bash
@@ -224,4 +237,197 @@ result = await hub_client.call_service(
 Pour plus d'informations sur l'intégration :
 ```bash
 curl http://192.0.2.11:8000/api/docs/integration
+```
+
+## 💾 Système de Backup/Clone
+
+Ce template inclut un système complet de sauvegarde et restauration permettant de cloner intégralement une application.
+
+### Fonctionnalités
+
+- ✅ **Estimation préalable** : Taille et durée estimées avant le backup
+- ✅ **Backup complet** : Items, préférences utilisateur, fichiers uploadés
+- ✅ **Format ZIP** : `data.json` + dossier `files/` avec tous les fichiers binaires
+- ✅ **Synchronisation Hub** : Push/Pull des backups via le Hub central
+- ✅ **Restauration sélective** : Choisir quoi restaurer (items, préférences, fichiers)
+
+### Structure du backup
+
+```
+backup_{uuid}.zip
+├── data.json           # Données structurées (items, préférences, métadonnées fichiers)
+└── files/              # Fichiers binaires
+    └── {owner}/
+        └── {category}/
+            └── fichier.pdf
+```
+
+### Utilisation
+
+#### 1. Estimer le backup (avant de lancer)
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:9045/api/admin/backup/estimate
+```
+
+Réponse :
+```json
+{
+  "total_items": 150,
+  "total_preferences": 25,
+  "total_files": 42,
+  "total_size_bytes": 15728640,
+  "total_size_human": "15.0 MB",
+  "estimated_duration_seconds": 1.5,
+  "estimated_duration_human": "2 sec",
+  "files_by_category": {"documents": 10485760, "images": 5242880},
+  "warning": null
+}
+```
+
+#### 2. Créer un backup
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:9045/api/admin/backup
+```
+
+#### 3. Télécharger le backup
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:9045/api/admin/backup/download?backup_id={id}" \
+  -o backup.zip
+```
+
+#### 4. Restaurer depuis un fichier
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -F "file=@backup.zip" \
+  -F "clear_existing=false" \
+  http://localhost:9045/api/admin/restore
+```
+
+#### 5. Synchronisation avec le Hub
+
+```bash
+# Pousser vers le Hub
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:9045/api/admin/sync-to-hub
+
+# Récupérer depuis le Hub
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"clear_existing": false}' \
+  http://localhost:9045/api/admin/sync-from-hub
+```
+
+### Gestion des fichiers uploadés
+
+Le template inclut un système de stockage de fichiers que les futures applications peuvent utiliser :
+
+#### Modèle `UploadedFile`
+
+```python
+# Champs disponibles dans models.py
+class UploadedFile(Base):
+    filename: str           # Nom du fichier
+    original_filename: str  # Nom original uploadé
+    relative_path: str      # Chemin dans le storage
+    size: int               # Taille en bytes
+    mime_type: str          # Type MIME
+    hash: str               # SHA-256 pour vérification
+    category: str           # Catégorie (documents, images, etc.)
+    description: str        # Description optionnelle
+    owner: str              # Propriétaire (username)
+    entity_type: str        # Type d'entité liée (optionnel)
+    entity_id: int          # ID de l'entité liée (optionnel)
+```
+
+#### Utilisation du StorageManager
+
+```python
+from storage import storage_manager
+
+# Sauvegarder un fichier uploadé
+result = await storage_manager.save_file(
+    file=upload_file,          # FastAPI UploadFile
+    owner="username",
+    category="documents"
+)
+
+# Lire un fichier
+content = await storage_manager.read_file("username/documents/file.pdf")
+
+# Lister les fichiers
+files = await storage_manager.list_files(owner="username")
+
+# Statistiques
+stats = await storage_manager.get_storage_stats()
+```
+
+### Configuration du stockage
+
+```env
+# .env
+UPLOADS_DIR=/app/uploads  # Répertoire de stockage (volume Docker)
+```
+
+### Pour les développeurs d'applications futures
+
+Lors du développement d'une nouvelle application basée sur ce template :
+
+1. **Utilisez `UploadedFile`** pour tracker tous les fichiers uploadés
+2. **Associez les fichiers** à vos entités via `entity_type` et `entity_id`
+3. **Utilisez `storage_manager`** pour toutes les opérations fichiers
+4. **Catégorisez vos fichiers** pour une meilleure organisation
+5. **Tout sera inclus automatiquement** dans les backups !
+
+#### Exemple d'association fichier-entité
+
+```python
+# Dans votre endpoint d'upload
+@app.post("/api/projects/{project_id}/documents")
+async def upload_project_document(
+    project_id: int,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+    user: TokenPayload = Depends(get_current_user)
+):
+    # Sauvegarder le fichier
+    result = await storage_manager.save_file(
+        file=file,
+        owner=user.sub,
+        category="project_documents"
+    )
+    
+    # Enregistrer en BDD avec association
+    uploaded_file = UploadedFile(
+        filename=result["filename"],
+        original_filename=result["original_filename"],
+        relative_path=result["relative_path"],
+        size=result["size"],
+        mime_type=result["mime_type"],
+        hash=result["hash"],
+        category="project_documents",
+        owner=user.sub,
+        entity_type="project",      # Association au projet
+        entity_id=project_id
+    )
+    db.add(uploaded_file)
+    await db.commit()
+    
+    return {"file_id": uploaded_file.id}
+```
+
+### Endpoints Hub requis (côté Hub)
+
+Pour que la synchronisation fonctionne, le Hub doit exposer :
+
+```
+POST /api/apps/{app_slug}/backup         # Recevoir un backup
+GET  /api/apps/{app_slug}/backup/latest  # Retourner le dernier backup
+GET  /api/apps/{app_slug}/backup/{id}    # Retourner un backup spécifique
 ```
