@@ -435,16 +435,26 @@ class HubClient:
         
         logger.info(f"🔍 Découverte des services partagés via le Hub...")
         
+        # Obtenir le token M2M pour l'authentification
+        token = await self.get_m2m_token()
+        if not token:
+            logger.error(f"❌ Impossible d'obtenir un token M2M pour la découverte des services")
+            return self._discovered_services
+        
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/apps/discover",
-                    headers={"X-Slug": self.settings.APP_SLUG}
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "X-Slug": self.settings.APP_SLUG
+                    }
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
-                    services = data if isinstance(data, list) else data.get("services", data.get("apps", []))
+                    # Le Hub retourne "shared_services" (priorité), "services" ou "apps"
+                    services = data if isinstance(data, list) else data.get("shared_services", data.get("services", data.get("apps", [])))
                     
                     self._discovered_services = {}
                     for svc in services:

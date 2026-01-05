@@ -80,7 +80,8 @@ function M2MTests() {
         throw new Error(data.detail || `Erreur ${response.status}`)
       }
       
-      setSharedServices(data.shared_services || [])
+      // Le backend retourne "services" (pas "shared_services")
+      setSharedServices(data.services || data.shared_services || [])
     } catch (err) {
       setError(`Erreur découverte: ${err.message}`)
       setSharedServices([])
