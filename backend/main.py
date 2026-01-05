@@ -27,7 +27,8 @@ from models import Item, UserPreference
 from schemas import (
     ItemCreate, ItemUpdate, ItemResponse,
     UserPreferenceUpdate, UserPreferenceResponse,
-    UserInfo, MessageResponse, PaginatedResponse
+    UserInfo, MessageResponse, PaginatedResponse,
+    ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse
 )
 from routes.docs import router as docs_router
 
@@ -45,9 +46,10 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """
     Gestion du cycle de vie de l'application.
-    - Démarrage: enregistrement Hub + init DB
+    - Démarrage: enregistrement Hub + init DB + découverte services
     - Arrêt: fermeture connexions
     """
+    startup_time = datetime.utcnow()
     logger.info(f"🚀 Démarrage de l'application '{settings.APP_SLUG}'...")
     
     # 1. Auto-enregistrement auprès du Hub
@@ -65,7 +67,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Erreur init DB: {e}")
     
-    logger.info(f"✅ Application prête sur {settings.api_url}")
+    # 4. Découverte des services partagés (si IS_SHARED actif)
+    discovered_count = 0
+    if registered:
+        try:
+            services = await hub_client.discover_services()
+            discovered_count = len(services)
+            if discovered_count > 0:
+                logger.info(f"🔍 {discovered_count} service(s) partagé(s) découvert(s)")
+            else:
+                logger.info("🔍 Aucun service partagé découvert (IS_SHARED non activé ou aucun service disponible)")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur découverte services: {e}")
+    
+    # 5. Stocker les infos de démarrage dans app.state
+    app.state.startup_time = startup_time
+    app.state.is_registered = registered
+    app.state.discovered_services_count = discovered_count
+    
+    startup_duration = (datetime.utcnow() - startup_time).total_seconds()
+    logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
     
     yield  # L'application tourne
     
@@ -105,10 +126,69 @@ app.include_router(docs_router)
 @app.get("/api/health", tags=["Public"])
 async def health_check():
     """Health check - toujours accessible."""
+    # Déterminer le statut basé sur les composants critiques
+    hub_registered = getattr(app.state, 'is_registered', False)
+    
     return {
         "status": "healthy",
         "app": settings.APP_SLUG,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "hub_connected": hub_registered,
+    }
+
+
+@app.get("/api/health/detailed", tags=["Public"])
+async def health_check_detailed():
+    """
+    Health check détaillé avec informations sur les dépendances.
+    Utile pour le monitoring avancé et le debugging.
+    """
+    now = datetime.utcnow()
+    startup_time = getattr(app.state, 'startup_time', None)
+    uptime_seconds = (now - startup_time).total_seconds() if startup_time else None
+    
+    # État de la connexion Hub
+    hub_registered = hub_client.is_registered
+    hub_can_authenticate = False
+    if hub_registered:
+        try:
+            token = await hub_client.get_m2m_token()
+            hub_can_authenticate = token is not None
+        except Exception:
+            pass
+    
+    # Services découverts
+    discovered_services = await hub_client.list_discovered_services()
+    services_cache_age = None
+    if hub_client._discovered_services_fetched_at:
+        services_cache_age = (now - hub_client._discovered_services_fetched_at).total_seconds()
+    
+    return {
+        "status": "healthy" if hub_registered else "degraded",
+        "app": {
+            "slug": settings.APP_SLUG,
+            "name": settings.APP_NAME,
+            "version": APP_VERSION,
+        },
+        "timestamp": now.isoformat(),
+        "uptime_seconds": uptime_seconds,
+        "hub": {
+            "connected": hub_registered,
+            "can_authenticate": hub_can_authenticate,
+            "api_url": settings.hub_api_url,
+        },
+        "services": {
+            "discovered_count": len(discovered_services),
+            "cache_age_seconds": services_cache_age,
+            "services": [
+                {"slug": s.slug, "status": s.status, "is_healthy": s.is_healthy}
+                for s in discovered_services[:10]  # Limiter à 10 pour le health check
+            ]
+        },
+        "config": {
+            "is_shared": settings.IS_SHARED,
+            "debug": settings.DEBUG,
+        }
     }
 
 
@@ -312,13 +392,17 @@ async def test_m2m_call(
         return {"success": False, "error": str(e)}
 
 
-@app.get("/api/m2m/discover", tags=["M2M"])
-async def discover_m2m_services(
+@app.get("/api/apps/discover", response_model=ServiceDiscoveryResponse, tags=["Services"])
+async def discover_services(
     force_refresh: bool = Query(False, description="Forcer le rafraîchissement du cache"),
-    user: TokenPayload = Depends(require_role("admin"))
+    user: TokenPayload = Depends(get_current_user)
 ):
     """
     Découvre les services partagés (IS_SHARED=true) disponibles via le Hub.
+    
+    Cet endpoint permet aux utilisateurs authentifiés de voir les services
+    disponibles dans l'écosystème. Utile pour construire des intégrations
+    ou afficher les services disponibles dans le frontend.
     
     Utilise le endpoint GET /api/apps/discover du Hub qui retourne tous les 
     services en mode IS_SHARED avec leur api_url dynamique.
@@ -326,7 +410,54 @@ async def discover_m2m_services(
     Les résultats sont mis en cache pendant 60 secondes.
     
     Returns:
-        Liste des services découverts avec toutes leurs informations.
+        Liste des services découverts avec leurs informations publiques.
+    """
+    try:
+        services = await hub_client.list_discovered_services(force_refresh=force_refresh)
+        
+        return ServiceDiscoveryResponse(
+            count=len(services),
+            services=[
+                DiscoveredServiceResponse(
+                    slug=svc.slug,
+                    name=svc.name,
+                    description=svc.description,
+                    api_url=svc.api_url,
+                    frontend_url=svc.frontend_url,
+                    version=svc.version,
+                    status=svc.status,
+                    is_healthy=svc.is_healthy,
+                )
+                for svc in services
+            ],
+            cached_at=hub_client._discovered_services_fetched_at.isoformat() if hub_client._discovered_services_fetched_at else None
+        )
+    except Exception as e:
+        logger.error(f"Erreur découverte services: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Impossible de découvrir les services: {str(e)}"
+        )
+
+
+@app.get("/api/m2m/discover", tags=["M2M"])
+async def discover_m2m_services(
+    force_refresh: bool = Query(False, description="Forcer le rafraîchissement du cache"),
+    user: TokenPayload = Depends(require_role("admin"))
+):
+    """
+    Découvre les services partagés (IS_SHARED=true) avec toutes les informations M2M.
+    
+    Version admin qui inclut des informations techniques supplémentaires
+    comme les ports, IPs et détails d'enregistrement.
+    
+    Utilise le endpoint GET /api/apps/discover du Hub qui retourne tous les 
+    services en mode IS_SHARED avec leur api_url dynamique.
+    
+    Les résultats sont mis en cache pendant 60 secondes.
+    
+    Returns:
+        Liste des services découverts avec toutes leurs informations techniques.
     """
     try:
         services = await hub_client.list_discovered_services(force_refresh=force_refresh)

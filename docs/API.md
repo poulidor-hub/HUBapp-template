@@ -12,6 +12,8 @@
 
 ![Version](https://img.shields.io/badge/version-1.6.0-blue)
 
+![Version](https://img.shields.io/badge/version-1.6.0-blue)
+
 Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 ## 🔗 Accès à la documentation interactive
@@ -32,8 +34,9 @@ L'API propose une documentation Swagger/OpenAPI interactive :
 4. [Gestion des Rôles](#gestion-des-rôles)
 5. [Items (CRUD)](#items-crud)
 6. [Préférences Utilisateur](#préférences-utilisateur)
-7. [Machine-to-Machine (M2M)](#machine-to-machine-m2m)
-8. [Codes d'erreur](#codes-derreur)
+7. [Découverte des Services](#découverte-des-services)
+8. [Machine-to-Machine (M2M)](#machine-to-machine-m2m)
+9. [Codes d'erreur](#codes-derreur)
 
 ---
 
@@ -495,6 +498,114 @@ PUT /api/preferences
 | `email_notifications` | bool | true/false | true |
 
 **Réponse** `200 OK` : Préférences mises à jour
+
+---
+
+## 🔍 Découverte des Services
+
+Endpoints pour découvrir les services partagés dans l'écosystème Hub.
+
+### Découverte des Services (utilisateur)
+
+```http
+GET /api/apps/discover
+```
+
+**Authentification** : Requise (tout utilisateur authentifié)
+
+Découvre les services partagés (IS_SHARED=true) disponibles via le Hub.
+Cet endpoint permet aux utilisateurs authentifiés de voir les services
+disponibles dans l'écosystème, utile pour construire des intégrations
+ou afficher les services disponibles dans le frontend.
+
+Les résultats sont mis en cache pendant 60 secondes.
+
+**Paramètres de requête**
+
+| Paramètre | Type | Défaut | Description |
+|-----------|------|--------|-------------|
+| `force_refresh` | boolean | false | Force le rafraîchissement du cache |
+
+**Réponse** `200 OK`
+```json
+{
+  "count": 2,
+  "services": [
+    {
+      "slug": "inventaire-app",
+      "name": "Application Inventaire",
+      "description": "Gestion de l'inventaire",
+      "api_url": "http://192.168.1.100:9045",
+      "frontend_url": "http://192.168.1.100:7676",
+      "version": "1.2.0",
+      "status": "online",
+      "is_healthy": true
+    },
+    {
+      "slug": "commandes-app",
+      "name": "Application Commandes",
+      "description": "Gestion des commandes",
+      "api_url": "http://192.168.1.101:9045",
+      "frontend_url": "http://192.168.1.101:7676",
+      "version": "2.0.1",
+      "status": "online",
+      "is_healthy": true
+    }
+  ],
+  "cached_at": "2026-01-05T14:30:00.000000"
+}
+```
+
+**Erreurs possibles**
+
+| Code | Description |
+|------|-------------|
+| `401` | Token invalide ou absent |
+| `503` | Hub non accessible |
+
+---
+
+### Health Check Détaillé
+
+```http
+GET /api/health/detailed
+```
+
+**Authentification** : Non requise
+
+Retourne des informations détaillées sur l'état de l'application,
+incluant la connexion au Hub et les services découverts.
+
+**Réponse** `200 OK`
+```json
+{
+  "status": "healthy",
+  "app": {
+    "slug": "myapp",
+    "name": "Mon Application",
+    "version": "1.6.0"
+  },
+  "timestamp": "2026-01-05T14:30:00.000000",
+  "uptime_seconds": 3600.5,
+  "hub": {
+    "connected": true,
+    "can_authenticate": true,
+    "api_url": "http://192.168.1.1:8000"
+  },
+  "services": {
+    "discovered_count": 2,
+    "cache_age_seconds": 45.2,
+    "services": [
+      {"slug": "inventaire-app", "status": "online", "is_healthy": true},
+      {"slug": "commandes-app", "status": "online", "is_healthy": true}
+    ]
+  },
+  "config": {
+    "is_shared": false,
+    "debug": false
+  }
+}
+```
 
 ---
 

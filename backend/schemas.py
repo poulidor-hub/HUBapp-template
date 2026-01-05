@@ -98,5 +98,36 @@ class PaginatedResponse(BaseModel):
     items: list
     total: int
     page: int
+
+
+# ============ Services Discovery ============
+
+class DiscoveredServiceResponse(BaseModel):
+    """Service découvert via le Hub."""
+    slug: str = Field(..., description="Identifiant unique du service")
+    name: str = Field(..., description="Nom du service")
+    description: Optional[str] = Field(None, description="Description du service")
+    api_url: str = Field(..., description="URL de l'API du service")
+    frontend_url: Optional[str] = Field(None, description="URL du frontend du service")
+    version: Optional[str] = Field(None, description="Version du service")
+    status: Optional[str] = Field(None, description="Statut du service (online, offline, degraded)")
+    is_healthy: bool = Field(True, description="Le service est-il en bonne santé")
+
+
+class DiscoveredServiceDetailResponse(DiscoveredServiceResponse):
+    """Service découvert avec informations techniques (admin only)."""
+    ip: Optional[str] = Field(None, description="Adresse IP du service")
+    api_port: Optional[int] = Field(None, description="Port de l'API")
+    frontend_port: Optional[int] = Field(None, description="Port du frontend")
+    registered_at: Optional[str] = Field(None, description="Date d'enregistrement")
+    last_seen: Optional[str] = Field(None, description="Dernière activité")
+    is_shared: bool = Field(True, description="Service en mode partagé")
+
+
+class ServiceDiscoveryResponse(BaseModel):
+    """Réponse de découverte des services."""
+    count: int = Field(..., description="Nombre de services découverts")
+    services: list[DiscoveredServiceResponse] = Field(..., description="Liste des services")
+    cached_at: Optional[str] = Field(None, description="Date de mise en cache")
     per_page: int
     pages: int
