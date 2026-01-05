@@ -314,64 +314,117 @@ async def test_m2m_call(
 
 @app.get("/api/m2m/discover", tags=["M2M"])
 async def discover_m2m_services(
+    force_refresh: bool = Query(False, description="Forcer le rafraîchissement du cache"),
     user: TokenPayload = Depends(require_role("admin"))
 ):
     """
-    Découvre les services M2M disponibles via le Hub.
-    Interroge le Hub avec le token M2M pour récupérer la liste des APIs partagées.
-    Requiert admin car utilise les credentials M2M de l'application.
+    Découvre les services partagés (IS_SHARED=true) disponibles via le Hub.
+    
+    Utilise le endpoint GET /api/apps/discover du Hub qui retourne tous les 
+    services en mode IS_SHARED avec leur api_url dynamique.
+    
+    Les résultats sont mis en cache pendant 60 secondes.
+    
+    Returns:
+        Liste des services découverts avec toutes leurs informations.
     """
-    import httpx
-    
-    token = await hub_client.get_m2m_token()
-    if not token:
-        raise HTTPException(
-            status_code=503, 
-            detail="Impossible d'obtenir un token M2M. Vérifiez l'enregistrement auprès du Hub."
-        )
-    
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Appel au Hub pour découvrir les services partagés
-            response = await client.get(
-                f"{settings.hub_api_url}/api/apps/discover",
-                headers={"Authorization": f"Bearer {token}"}
+        services = await hub_client.list_discovered_services(force_refresh=force_refresh)
+        
+        return {
+            "count": len(services),
+            "services": [
+                {
+                    "slug": svc.slug,
+                    "name": svc.name,
+                    "description": svc.description,
+                    # Informations réseau
+                    "ip": svc.ip,
+                    "api_url": svc.api_url,
+                    "api_port": svc.api_port,
+                    "frontend_url": svc.frontend_url,
+                    "frontend_port": svc.frontend_port,
+                    # Métadonnées
+                    "version": svc.version,
+                    "registered_at": svc.registered_at,
+                    "last_seen": svc.last_seen,
+                    # Statut
+                    "status": svc.status,
+                    "is_healthy": svc.is_healthy,
+                    "is_shared": svc.is_shared,
+                }
+                for svc in services
+            ],
+            "cached_at": hub_client._discovered_services_fetched_at.isoformat() if hub_client._discovered_services_fetched_at else None
+        }
+    except Exception as e:
+        logger.error(f"Erreur découverte services: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Impossible de découvrir les services: {str(e)}"
+        )
+
+
+@app.post("/api/m2m/call/{service_slug}", tags=["M2M"])
+async def call_discovered_service(
+    service_slug: str,
+    endpoint: str = Query(..., description="Endpoint à appeler sur le service (ex: /api/items)"),
+    method: str = Query("GET", description="Méthode HTTP (GET, POST, PUT, DELETE)"),
+    user: TokenPayload = Depends(require_role("admin"))
+):
+    """
+    Appelle un service découvert via son slug et le système M2M.
+    
+    Utilise l'api_url récupérée dynamiquement via GET /api/apps/discover
+    et ajoute le header X-Slug pour l'identification.
+    
+    Args:
+        service_slug: Identifiant unique du service cible
+        endpoint: Endpoint à appeler sur le service
+        method: Méthode HTTP à utiliser
+    
+    Returns:
+        Réponse du service appelé
+    """
+    # Vérifier que le service existe
+    service = await hub_client.get_service_by_slug(service_slug)
+    if not service:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Service '{service_slug}' non trouvé parmi les services partagés"
+        )
+    
+    # Appeler le service
+    try:
+        result = await hub_client.call_discovered_service(
+            service_slug=service_slug,
+            endpoint=endpoint,
+            method=method.upper()
+        )
+        
+        if result is None:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Aucune réponse du service '{service_slug}'"
             )
-            
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 401:
-                raise HTTPException(
-                    status_code=401, 
-                    detail="Token M2M rejeté par le Hub. Resynchronisation nécessaire."
-                )
-            elif response.status_code == 403:
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Accès refusé au Hub. Le Service Account n'a pas les droits."
-                )
-            else:
-                raise HTTPException(
-                    status_code=response.status_code, 
-                    detail=f"Erreur Hub: {response.text}"
-                )
-                
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503, 
-            detail=f"Impossible de contacter le Hub à {settings.hub_api_url}"
-        )
-    except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504, 
-            detail="Timeout lors de la connexion au Hub"
-        )
+        
+        return {
+            "success": True,
+            "service": {
+                "slug": service.slug,
+                "api_url": service.api_url
+            },
+            "endpoint": endpoint,
+            "method": method.upper(),
+            "response": result
+        }
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Erreur appel service {service_slug}: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Erreur inattendue: {str(e)}"
+            status_code=502,
+            detail=f"Erreur lors de l'appel au service '{service_slug}': {str(e)}"
         )
 
 

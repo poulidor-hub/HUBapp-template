@@ -8,6 +8,8 @@
 
 ![Version](https://img.shields.io/badge/version-1.6.0-blue)
 
+![Version](https://img.shields.io/badge/version-1.6.0-blue)
+
 Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 ## 🔗 Accès à la documentation interactive
@@ -540,6 +542,142 @@ POST /api/m2m/test-call
   "status_code": 200,
   "response": { ... }
 }
+```
+
+---
+
+### Découverte des Services Partagés
+
+```http
+GET /api/m2m/discover
+```
+
+**Rôle requis** : `admin`
+
+Découvre dynamiquement tous les services partagés (IS_SHARED=true) via le Hub.
+Utilise l'endpoint `GET /api/apps/discover` du Hub qui retourne les services avec leur `api_url`.
+
+Les résultats sont mis en cache pendant 60 secondes pour optimiser les performances.
+
+**Paramètres de requête**
+
+| Paramètre | Type | Défaut | Description |
+|-----------|------|--------|-------------|
+| `force_refresh` | boolean | false | Force le rafraîchissement du cache |
+
+**Réponse** `200 OK`
+```json
+{
+  "count": 2,
+  "services": [
+    {
+      "slug": "inventaire-app",
+      "name": "Application Inventaire",
+      "description": "Gestion de l'inventaire",
+      "ip": "192.168.1.100",
+      "api_url": "http://192.168.1.100:9045",
+      "api_port": 9045,
+      "frontend_url": "http://192.168.1.100:7676",
+      "frontend_port": 7676,
+      "version": "1.2.0",
+      "registered_at": "2026-01-01T10:00:00",
+      "last_seen": "2026-01-05T14:25:00",
+      "status": "online",
+      "is_healthy": true,
+      "is_shared": true
+    },
+    {
+      "slug": "commandes-app",
+      "name": "Application Commandes",
+      "description": "Gestion des commandes",
+      "ip": "192.168.1.101",
+      "api_url": "http://192.168.1.101:9045",
+      "api_port": 9045,
+      "frontend_url": "http://192.168.1.101:7676",
+      "frontend_port": 7676,
+      "version": "2.0.1",
+      "registered_at": "2026-01-02T08:30:00",
+      "last_seen": "2026-01-05T14:28:00",
+      "status": "online",
+      "is_healthy": true,
+      "is_shared": true
+    }
+  ],
+  "cached_at": "2026-01-05T14:30:00.000000"
+}
+```
+
+**Erreurs possibles**
+
+| Code | Description |
+|------|-------------|
+| `401` | Token invalide |
+| `403` | Rôle admin requis |
+| `503` | Hub non accessible |
+
+---
+
+### Appel d'un Service Découvert
+
+```http
+POST /api/m2m/call/{service_slug}
+```
+
+**Rôle requis** : `admin`
+
+Appelle un service découvert via le système M2M. L'api_url est récupérée dynamiquement 
+via la découverte de services, et le header `X-Slug` est automatiquement ajouté pour 
+identifier le service cible.
+
+**Paramètres de chemin**
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `service_slug` | string | Identifiant unique du service cible |
+
+**Paramètres de requête**
+
+| Paramètre | Type | Défaut | Description |
+|-----------|------|--------|-------------|
+| `endpoint` | string | *requis* | Endpoint à appeler sur le service (ex: `/api/items`) |
+| `method` | string | "GET" | Méthode HTTP (GET, POST, PUT, DELETE) |
+
+**Réponse** `200 OK`
+```json
+{
+  "success": true,
+  "service": {
+    "slug": "inventaire-app",
+    "api_url": "http://192.168.1.100:9045"
+  },
+  "endpoint": "/api/items",
+  "method": "GET",
+  "response": {
+    "items": [...],
+    "total": 42
+  }
+}
+```
+
+**Erreurs possibles**
+
+| Code | Description |
+|------|-------------|
+| `401` | Token invalide |
+| `403` | Rôle admin requis |
+| `404` | Service non trouvé parmi les services partagés |
+| `502` | Erreur lors de l'appel au service distant |
+
+**Exemple avec cURL**
+
+```bash
+# Découvrir les services disponibles
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:9045/api/m2m/discover"
+
+# Appeler /api/items sur le service inventaire-app
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:9045/api/m2m/call/inventaire-app?endpoint=/api/items&method=GET"
 ```
 
 ---

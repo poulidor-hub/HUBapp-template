@@ -7,10 +7,11 @@ Fonctionnalités :
 - Cache du token M2M avec renouvellement automatique
 - Retry automatique en cas d'erreur d'authentification
 - Thread-safety avec asyncio.Lock()
+- Découverte dynamique des services partagés (IS_SHARED)
 """
 import httpx
 import asyncio
-from typing import Optional
+from typing import Optional, List, Dict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -21,6 +22,31 @@ logger = logging.getLogger(__name__)
 
 # Nombre max de tentatives de resync automatique
 MAX_RESYNC_ATTEMPTS = 3
+
+# Durée de cache pour les services découverts (en secondes)
+DISCOVERED_SERVICES_CACHE_TTL = 60
+
+
+@dataclass
+class DiscoveredService:
+    """Service découvert via le Hub (en mode IS_SHARED)."""
+    slug: str
+    name: str
+    api_url: str
+    description: Optional[str] = None
+    # Informations réseau
+    ip: Optional[str] = None
+    api_port: Optional[int] = None
+    frontend_port: Optional[int] = None
+    frontend_url: Optional[str] = None
+    # Métadonnées
+    version: Optional[str] = None
+    registered_at: Optional[str] = None
+    last_seen: Optional[str] = None
+    # Statut détaillé
+    is_healthy: bool = True
+    is_shared: bool = True
+    status: Optional[str] = None  # ex: "online", "offline", "degraded"
 
 
 @dataclass
@@ -53,6 +79,9 @@ class HubClient:
         self._resync_lock = asyncio.Lock()
         self._last_resync_attempt: Optional[datetime] = None
         self._resync_count: int = 0
+        # Cache des services découverts
+        self._discovered_services: Dict[str, DiscoveredService] = {}
+        self._discovered_services_fetched_at: Optional[datetime] = None
     
     @property
     def is_registered(self) -> bool:
@@ -383,6 +412,220 @@ class HubClient:
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur appel service {service_slug}: {e}")
             return None
+
+    async def discover_services(self, force_refresh: bool = False) -> Dict[str, DiscoveredService]:
+        """
+        Découvre les services partagés (IS_SHARED=true) disponibles via le Hub.
+        
+        Appelle GET /api/apps/discover qui retourne tous les services partagés
+        avec leur api_url dynamique.
+        
+        Args:
+            force_refresh: Force le rafraîchissement du cache
+        
+        Returns:
+            Dictionnaire {slug: DiscoveredService}
+        """
+        # Vérifier le cache
+        if not force_refresh and self._discovered_services_fetched_at:
+            elapsed = (datetime.utcnow() - self._discovered_services_fetched_at).total_seconds()
+            if elapsed < DISCOVERED_SERVICES_CACHE_TTL:
+                logger.debug(f"✅ Services découverts en cache ({len(self._discovered_services)} services)")
+                return self._discovered_services
+        
+        logger.info(f"🔍 Découverte des services partagés via le Hub...")
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.settings.hub_api_url}/api/apps/discover",
+                    headers={"X-Slug": self.settings.APP_SLUG}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    services = data if isinstance(data, list) else data.get("services", data.get("apps", []))
+                    
+                    self._discovered_services = {}
+                    for svc in services:
+                        slug = svc.get("slug")
+                        if slug:
+                            self._discovered_services[slug] = DiscoveredService(
+                                slug=slug,
+                                name=svc.get("name", slug),
+                                api_url=svc.get("api_url", ""),
+                                description=svc.get("description"),
+                                # Informations réseau
+                                ip=svc.get("ip"),
+                                api_port=svc.get("api_port"),
+                                frontend_port=svc.get("frontend_port"),
+                                frontend_url=svc.get("frontend_url"),
+                                # Métadonnées
+                                version=svc.get("version"),
+                                registered_at=svc.get("registered_at"),
+                                last_seen=svc.get("last_seen"),
+                                # Statut détaillé
+                                is_healthy=svc.get("is_healthy", True),
+                                is_shared=svc.get("is_shared", True),
+                                status=svc.get("status", "online" if svc.get("is_healthy", True) else "offline")
+                            )
+                    
+                    self._discovered_services_fetched_at = datetime.utcnow()
+                    logger.info(f"✅ {len(self._discovered_services)} service(s) partagé(s) découvert(s)")
+                    for slug, svc in self._discovered_services.items():
+                        logger.debug(f"   - {slug}: {svc.api_url} (v{svc.version or '?'}, {svc.status})")
+                    
+                    return self._discovered_services
+                else:
+                    logger.error(f"❌ Échec découverte services: {response.status_code} - {response.text}")
+                    return self._discovered_services
+                    
+        except httpx.RequestError as e:
+            logger.error(f"❌ Erreur découverte services: {e}")
+            return self._discovered_services
+    
+    async def get_service_by_slug(self, slug: str, force_refresh: bool = False) -> Optional[DiscoveredService]:
+        """
+        Récupère un service découvert par son slug.
+        
+        Args:
+            slug: Identifiant unique du service
+            force_refresh: Force le rafraîchissement du cache
+        
+        Returns:
+            DiscoveredService ou None si non trouvé
+        """
+        services = await self.discover_services(force_refresh=force_refresh)
+        return services.get(slug)
+    
+    async def call_discovered_service(
+        self,
+        service_slug: str,
+        endpoint: str,
+        method: str = "GET",
+        _retry_on_401: bool = True,
+        _retry_on_discover: bool = True,
+        **kwargs
+    ) -> Optional[dict]:
+        """
+        Appelle un service découvert dynamiquement via M2M.
+        
+        Utilise l'api_url récupérée via discover et ajoute le header X-Slug
+        pour l'identification du service cible.
+        
+        Args:
+            service_slug: Slug du service cible (ex: "mon-autre-app")
+            endpoint: Endpoint à appeler (ex: "/api/users")
+            method: Méthode HTTP (GET, POST, PUT, DELETE, etc.)
+            _retry_on_401: Réessayer automatiquement si 401 (défaut: True)
+            _retry_on_discover: Re-découvrir si service non trouvé (défaut: True)
+            **kwargs: Arguments supplémentaires pour httpx (json, data, params, etc.)
+        
+        Returns:
+            Réponse JSON ou None si erreur
+        
+        Example:
+            # Appeler GET /api/items sur le service "inventaire"
+            result = await hub_client.call_discovered_service(
+                "inventaire",
+                "/api/items",
+                method="GET"
+            )
+            
+            # Appeler POST /api/orders sur le service "commandes"
+            result = await hub_client.call_discovered_service(
+                "commandes",
+                "/api/orders",
+                method="POST",
+                json={"product_id": 123, "quantity": 2}
+            )
+        """
+        # Récupérer le service découvert
+        service = await self.get_service_by_slug(service_slug)
+        
+        if not service:
+            if _retry_on_discover:
+                logger.warning(f"⚠️ Service '{service_slug}' non trouvé, rafraîchissement du cache...")
+                service = await self.get_service_by_slug(service_slug, force_refresh=True)
+            
+            if not service:
+                logger.error(f"❌ Service '{service_slug}' non trouvé parmi les services partagés")
+                return None
+        
+        if not service.api_url:
+            logger.error(f"❌ Pas d'api_url pour le service '{service_slug}'")
+            return None
+        
+        # Obtenir le token M2M
+        token = await self.get_m2m_token()
+        if not token:
+            logger.error(f"❌ Impossible d'obtenir un token M2M pour appeler {service_slug}")
+            return None
+        
+        # Construire l'URL complète
+        url = f"{service.api_url.rstrip('/')}{endpoint}"
+        logger.debug(f"📡 Appel service découvert: {method} {url} (X-Slug: {service_slug})")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                headers = kwargs.pop("headers", {})
+                headers["Authorization"] = f"Bearer {token}"
+                headers["X-Slug"] = service_slug  # Identification du service cible
+                
+                response = await client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    **kwargs
+                )
+                
+                if response.status_code == 200:
+                    logger.debug(f"✅ Réponse OK de {service_slug}")
+                    return response.json()
+                
+                elif response.status_code == 401 and _retry_on_401:
+                    # Token rejeté → resync et retry
+                    logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
+                    if await self._auto_resync():
+                        logger.info(f"🔄 Retry après resync...")
+                        return await self.call_discovered_service(
+                            service_slug, endpoint, method,
+                            _retry_on_401=False,
+                            _retry_on_discover=False,
+                            **kwargs
+                        )
+                    logger.error(f"❌ Resync échoué, abandon de l'appel")
+                    return None
+                
+                elif response.status_code == 404 and _retry_on_discover:
+                    # Service peut avoir changé d'URL → re-découvrir
+                    logger.warning(f"⚠️ 404 sur {url}, le service a peut-être changé d'URL...")
+                    return await self.call_discovered_service(
+                        service_slug, endpoint, method,
+                        _retry_on_401=_retry_on_401,
+                        _retry_on_discover=False,
+                        **kwargs
+                    )
+                else:
+                    logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
+                    return None
+                    
+        except httpx.RequestError as e:
+            logger.error(f"❌ Erreur appel service {service_slug}: {e}")
+            return None
+    
+    async def list_discovered_services(self, force_refresh: bool = False) -> List[DiscoveredService]:
+        """
+        Liste tous les services partagés disponibles.
+        
+        Args:
+            force_refresh: Force le rafraîchissement du cache
+        
+        Returns:
+            Liste des services découverts
+        """
+        services = await self.discover_services(force_refresh=force_refresh)
+        return list(services.values())
 
 
 # Instance singleton
