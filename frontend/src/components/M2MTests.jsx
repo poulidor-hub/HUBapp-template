@@ -2,6 +2,108 @@ import React, { useState, useEffect } from 'react'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
+// Liste des endpoints disponibles basée sur le template HUBapp
+const AVAILABLE_ENDPOINTS = [
+  // Endpoints publics (sans authentification)
+  { 
+    value: '/api/health', 
+    label: 'Health Check', 
+    category: 'Public',
+    method: 'GET',
+    description: 'Vérifie que l\'API est opérationnelle'
+  },
+  { 
+    value: '/api/health/detailed', 
+    label: 'Health Détaillé', 
+    category: 'Public',
+    method: 'GET',
+    description: 'Health check avec infos sur les dépendances'
+  },
+  { 
+    value: '/api/version', 
+    label: 'Version', 
+    category: 'Public',
+    method: 'GET',
+    description: 'Retourne la version de l\'application'
+  },
+  { 
+    value: '/api/config', 
+    label: 'Configuration', 
+    category: 'Public',
+    method: 'GET',
+    description: 'Configuration publique pour le frontend'
+  },
+  { 
+    value: '/api/public', 
+    label: 'Public Endpoint', 
+    category: 'Public',
+    method: 'GET',
+    description: 'Endpoint accessible sans authentification'
+  },
+  // Endpoints protégés (authentification requise)
+  { 
+    value: '/api/protected', 
+    label: 'Protected', 
+    category: 'Protégé',
+    method: 'GET',
+    description: 'Requiert un token valide'
+  },
+  { 
+    value: '/api/me', 
+    label: 'User Info', 
+    category: 'Protégé',
+    method: 'GET',
+    description: 'Informations de l\'utilisateur/service connecté'
+  },
+  // Endpoints par rôle
+  { 
+    value: '/api/viewer-only', 
+    label: 'Viewer+', 
+    category: 'Rôles',
+    method: 'GET',
+    description: 'Accessible aux rôles viewer, user, manager, admin'
+  },
+  { 
+    value: '/api/user-only', 
+    label: 'User+', 
+    category: 'Rôles',
+    method: 'GET',
+    description: 'Accessible aux rôles user, manager, admin'
+  },
+  { 
+    value: '/api/manager-only', 
+    label: 'Manager+', 
+    category: 'Rôles',
+    method: 'GET',
+    description: 'Accessible aux rôles manager et admin'
+  },
+  { 
+    value: '/api/admin-only', 
+    label: 'Admin', 
+    category: 'Rôles',
+    method: 'GET',
+    description: 'Accessible uniquement aux admins'
+  },
+  { 
+    value: '/api/service-only', 
+    label: 'Service Account', 
+    category: 'M2M',
+    method: 'GET',
+    description: 'Réservé aux service accounts (M2M)'
+  },
+  // Endpoints données
+  { 
+    value: '/api/items', 
+    label: 'Liste Items', 
+    category: 'Données',
+    method: 'GET',
+    description: 'Liste les items (paginé)'
+  },
+]
+
+// Grouper les endpoints par catégorie
+const ENDPOINT_CATEGORIES = [...new Set(AVAILABLE_ENDPOINTS.map(e => e.category))]
+
 function M2MTests() {
   const config = useConfig()
   const { token, user } = useAuth()
@@ -16,6 +118,8 @@ function M2MTests() {
   })
   const [testResults, setTestResults] = useState({})
   const [error, setError] = useState(null)
+  // État pour l'endpoint sélectionné par service
+  const [selectedEndpoints, setSelectedEndpoints] = useState({})
 
   // Vérifier si l'utilisateur est admin
   const isAdmin = user?.roles?.includes('admin') || 
@@ -101,8 +205,12 @@ function M2MTests() {
     }))
     
     try {
-      // Construire l'URL de test (health check du service)
-      const testUrl = `${service.api_url}/api/health`
+      // Récupérer l'endpoint sélectionné pour ce service (par défaut /api/health)
+      const selectedEndpoint = selectedEndpoints[serviceKey] || '/api/health'
+      const endpointInfo = AVAILABLE_ENDPOINTS.find(e => e.value === selectedEndpoint)
+      
+      // Construire l'URL de test
+      const testUrl = `${service.api_url}${selectedEndpoint}`
       
       const response = await fetch(`${config.apiUrl}/api/m2m/test-call?target_url=${encodeURIComponent(testUrl)}`, {
         method: 'POST',
@@ -127,15 +235,21 @@ function M2MTests() {
           status: data.status_code,
           response: data.response,
           error: data.error,
+          endpoint: selectedEndpoint,
+          endpointLabel: endpointInfo?.label || selectedEndpoint,
           timestamp: new Date().toLocaleTimeString()
         }
       }))
     } catch (err) {
+      const selectedEndpoint = selectedEndpoints[serviceKey] || '/api/health'
+      const endpointInfo = AVAILABLE_ENDPOINTS.find(e => e.value === selectedEndpoint)
       setTestResults(prev => ({
         ...prev,
         [serviceKey]: {
           success: false,
           error: err.message,
+          endpoint: selectedEndpoint,
+          endpointLabel: endpointInfo?.label || selectedEndpoint,
           timestamp: new Date().toLocaleTimeString()
         }
       }))
@@ -259,14 +373,62 @@ function M2MTests() {
                     <strong>{service.name || service.slug}</strong>
                     <span className="service-slug">({service.slug})</span>
                   </div>
-                  <button 
-                    className="btn btn-small btn-primary"
-                    onClick={() => testService(service)}
-                    disabled={loading.test[service.slug]}
-                  >
-                    {loading.test[service.slug] ? '...' : '🧪 Tester'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {/* Dropdown de sélection d'endpoint */}
+                    <select
+                      className="endpoint-select"
+                      value={selectedEndpoints[service.slug] || '/api/health'}
+                      onChange={(e) => setSelectedEndpoints(prev => ({
+                        ...prev,
+                        [service.slug]: e.target.value
+                      }))}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85em',
+                        minWidth: '180px'
+                      }}
+                    >
+                      {ENDPOINT_CATEGORIES.map(category => (
+                        <optgroup key={category} label={`── ${category} ──`}>
+                          {AVAILABLE_ENDPOINTS
+                            .filter(ep => ep.category === category)
+                            .map(endpoint => (
+                              <option key={endpoint.value} value={endpoint.value}>
+                                {endpoint.label} ({endpoint.method})
+                              </option>
+                            ))
+                          }
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button 
+                      className="btn btn-small btn-primary"
+                      onClick={() => testService(service)}
+                      disabled={loading.test[service.slug]}
+                    >
+                      {loading.test[service.slug] ? '...' : '🧪 Tester'}
+                    </button>
+                  </div>
                 </div>
+                
+                {/* Description de l'endpoint sélectionné */}
+                {(() => {
+                  const ep = AVAILABLE_ENDPOINTS.find(e => e.value === (selectedEndpoints[service.slug] || '/api/health'))
+                  return ep?.description ? (
+                    <div style={{ 
+                      fontSize: '0.8em', 
+                      color: 'var(--text-secondary)', 
+                      marginBottom: '8px',
+                      fontStyle: 'italic'
+                    }}>
+                      💡 {ep.description}
+                    </div>
+                  ) : null
+                })()}
                 
                 {service.description && (
                   <div className="service-description">{service.description}</div>
@@ -279,6 +441,9 @@ function M2MTests() {
                 {/* Résultat du test */}
                 {testResults[service.slug] && (
                   <div className={`test-result ${testResults[service.slug].success ? 'success' : 'error'}`}>
+                    <div style={{ marginBottom: '4px', fontSize: '0.85em', color: 'var(--text-secondary)' }}>
+                      🎯 Endpoint testé: <code>{testResults[service.slug].endpoint || '/api/health'}</code>
+                    </div>
                     {testResults[service.slug].success ? (
                       <>
                         ✅ <strong>{testResults[service.slug].status}</strong> OK
@@ -286,8 +451,8 @@ function M2MTests() {
                         {testResults[service.slug].response && (
                           <pre className="test-response">
                             {typeof testResults[service.slug].response === 'string' 
-                              ? testResults[service.slug].response.substring(0, 200)
-                              : JSON.stringify(testResults[service.slug].response, null, 2).substring(0, 200)}
+                              ? testResults[service.slug].response.substring(0, 300)
+                              : JSON.stringify(testResults[service.slug].response, null, 2).substring(0, 300)}
                           </pre>
                         )}
                       </>
@@ -328,9 +493,33 @@ function M2MTests() {
         <h4 style={{ margin: '0 0 10px 0' }}>ℹ️ Comment ça fonctionne</h4>
         <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
           <li><strong>Découverte</strong>: Appelle <code>GET /api/apps/discover</code> sur le Hub avec un token M2M</li>
-          <li><strong>Test</strong>: Effectue un appel M2M vers le <code>/api/health</code> du service cible</li>
+          <li><strong>Endpoints</strong>: Sélectionnez l'endpoint à tester via le dropdown (basé sur le template HUBapp)</li>
+          <li><strong>Test</strong>: Effectue un appel M2M vers l'endpoint sélectionné du service cible</li>
           <li><strong>Authentification</strong>: Utilise le Service Account de cette application</li>
         </ul>
+        
+        <details style={{ marginTop: '10px' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+            📋 Liste des endpoints disponibles ({AVAILABLE_ENDPOINTS.length})
+          </summary>
+          <div style={{ marginTop: '10px', fontSize: '0.9em' }}>
+            {ENDPOINT_CATEGORIES.map(category => (
+              <div key={category} style={{ marginBottom: '10px' }}>
+                <strong style={{ color: 'var(--primary-color)' }}>{category}</strong>
+                <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px' }}>
+                  {AVAILABLE_ENDPOINTS
+                    .filter(ep => ep.category === category)
+                    .map(ep => (
+                      <li key={ep.value}>
+                        <code>{ep.method} {ep.value}</code> - {ep.description}
+                      </li>
+                    ))
+                  }
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
     </div>
   )
