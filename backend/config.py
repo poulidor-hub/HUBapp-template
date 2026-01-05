@@ -5,24 +5,22 @@ import socket
 from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, Union
 
 
 def get_app_version() -> str:
     """Lit la version depuis le fichier VERSION à la racine du projet."""
-    # Cherche le fichier VERSION (peut être à la racine ou copié dans /app)
     possible_paths = [
-        Path(__file__).parent.parent / "VERSION",  # ../VERSION (dev local)
-        Path(__file__).parent / "VERSION",          # ./VERSION (copié dans backend/)
-        Path("/app/VERSION"),                       # /app/VERSION (Docker)
+        Path(__file__).parent.parent / "VERSION",
+        Path(__file__).parent / "VERSION",
+        Path("/app/VERSION"),
     ]
     for path in possible_paths:
         if path.exists():
             return path.read_text().strip()
-    return "0.0.0"  # Fallback
+    return "0.0.0"
 
 
-# Version de l'application (source unique de vérité)
 APP_VERSION = get_app_version()
 
 
@@ -46,7 +44,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Mon Application"
     APP_DESCRIPTION: str = "Template d'application avec authentification Hub"
     
-    # Ports (valeurs par défaut alignées avec .env)
+    # Ports
     API_PORT: int = 9045
     FRONTEND_PORT: int = 4250
     
@@ -54,6 +52,11 @@ class Settings(BaseSettings):
     HUB_HOST: Optional[str] = None
     HUB_API_PORT: int = 8000
     HUB_FRONTEND_PORT: int = 80
+    
+    # === HTTPS / SSL ===
+    HUB_HTTPS_ENABLED: bool = False
+    HUB_HTTPS_PORT: int = 443
+    HUB_CA_CERT_PATH: Optional[str] = None
     
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
@@ -88,22 +91,58 @@ class Settings(BaseSettings):
     
     @property
     def hub_api_url(self) -> str:
-        """URL complète de l'API Hub."""
+        """URL complète de l'API Hub (HTTP ou HTTPS)."""
+        if self.HUB_HTTPS_ENABLED:
+            port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
+            return f"https://{self.hub_host}{port}"
         return f"http://{self.hub_host}:{self.HUB_API_PORT}"
     
     @property
     def hub_frontend_url(self) -> str:
-        """URL complète du frontend Hub."""
+        """URL complète du frontend Hub (HTTP ou HTTPS)."""
+        if self.HUB_HTTPS_ENABLED:
+            port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
+            return f"https://{self.hub_host}{port}"
         return f"http://{self.hub_host}:{self.HUB_FRONTEND_PORT}"
     
     @property
+    def hub_ssl_verify(self) -> Union[str, bool]:
+        """
+        Certificat CA pour vérifier le Hub en HTTPS.
+        
+        Retourne:
+        - Chemin du CA si HTTPS activé et CA configuré et présent
+        - False si HTTPS activé sans CA (⚠️ non recommandé)
+        - True si HTTP (pas de vérification SSL)
+        
+        Note: Le certificat est fourni dynamiquement par le Hub.
+        Utiliser wait_for_hub_certificate() au démarrage si HTTPS est activé.
+        """
+        if self.HUB_HTTPS_ENABLED:
+            if self.HUB_CA_CERT_PATH:
+                ca_path = Path(self.HUB_CA_CERT_PATH)
+                if ca_path.exists():
+                    return str(ca_path)
+            # HTTPS sans CA = désactiver vérification (⚠️ non sécurisé)
+            return False
+        return True  # HTTP = pas de SSL
+    
+    def is_hub_certificate_available(self) -> bool:
+        """Vérifie si le certificat CA du Hub est disponible."""
+        if not self.HUB_HTTPS_ENABLED:
+            return True  # Pas besoin de certificat en HTTP
+        if not self.HUB_CA_CERT_PATH:
+            return False
+        return Path(self.HUB_CA_CERT_PATH).exists()
+    
+    @property
     def api_url(self) -> str:
-        """URL de l'API de cette application (accessible depuis l'extérieur)."""
+        """URL de l'API de cette application."""
         return f"http://{self.hub_host}:{self.API_PORT}"
     
     @property
     def frontend_url(self) -> str:
-        """URL du frontend de cette application (accessible depuis l'extérieur)."""
+        """URL du frontend de cette application."""
         return f"http://{self.hub_host}:{self.FRONTEND_PORT}"
     
     @property

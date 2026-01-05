@@ -8,12 +8,14 @@ Fonctionnalités :
 - Retry automatique en cas d'erreur d'authentification
 - Thread-safety avec asyncio.Lock()
 - Découverte dynamique des services partagés (IS_SHARED)
+- Attente du certificat CA fourni par le Hub (si HTTPS activé)
 """
 import httpx
 import asyncio
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 import logging
 
 from config import get_settings
@@ -25,6 +27,10 @@ MAX_RESYNC_ATTEMPTS = 3
 
 # Durée de cache pour les services découverts (en secondes)
 DISCOVERED_SERVICES_CACHE_TTL = 60
+
+# Configuration attente certificat Hub
+CERT_WAIT_INTERVAL = 2  # secondes entre chaque vérification
+CERT_WAIT_TIMEOUT = 120  # timeout max en secondes (2 minutes)
 
 
 @dataclass
@@ -56,6 +62,79 @@ class HubCredentials:
     client_secret: str
     access_token: Optional[str] = None
     token_expires_at: Optional[datetime] = None
+
+
+async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
+    """
+    Attend que le certificat CA du Hub soit disponible.
+    
+    Le certificat est fourni dynamiquement par le Hub et monté via docker-compose.
+    Cette fonction bloque le démarrage jusqu'à ce que le certificat soit présent
+    ou que le timeout soit atteint.
+    
+    Une fois trouvé, le certificat est installé au niveau système pour que
+    Python/SSL puisse l'utiliser.
+    
+    Args:
+        timeout: Temps max d'attente en secondes (défaut: 120s)
+    
+    Returns:
+        True si le certificat est disponible, False si timeout atteint
+    
+    Note: 
+        - Si HTTPS n'est pas activé, retourne immédiatement True
+        - Appelée automatiquement par HubClient.register() si nécessaire
+    """
+    import subprocess
+    import shutil
+    
+    settings = get_settings()
+    
+    # Pas besoin d'attendre si HTTPS désactivé
+    if not settings.HUB_HTTPS_ENABLED:
+        logger.debug("HTTPS désactivé, pas d'attente du certificat CA")
+        return True
+    
+    # Pas de chemin configuré
+    if not settings.HUB_CA_CERT_PATH:
+        logger.warning("HUB_CA_CERT_PATH non configuré mais HTTPS activé")
+        return False
+    
+    cert_path = Path(settings.HUB_CA_CERT_PATH)
+    system_cert_path = Path("/usr/local/share/ca-certificates/hub-ca.crt")
+    elapsed = 0
+    
+    logger.info(f"⏳ Attente du certificat CA du Hub: {cert_path}")
+    
+    while elapsed < timeout:
+        if cert_path.exists():
+            # Vérifier que le fichier n'est pas vide
+            if cert_path.stat().st_size > 0:
+                logger.info(f"✅ Certificat CA du Hub disponible: {cert_path}")
+                
+                # Installer le certificat au niveau système si pas déjà fait
+                try:
+                    if not system_cert_path.exists() or system_cert_path.read_bytes() != cert_path.read_bytes():
+                        logger.info("🔐 Installation du certificat dans le système...")
+                        shutil.copy(cert_path, system_cert_path)
+                        subprocess.run(["update-ca-certificates"], capture_output=True, check=True)
+                        logger.info("✅ Certificat installé au niveau système")
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible d'installer le certificat au niveau système: {e}")
+                    # Continue quand même, httpx utilisera le chemin direct
+                
+                return True
+            else:
+                logger.debug(f"Certificat présent mais vide, attente...")
+        
+        await asyncio.sleep(CERT_WAIT_INTERVAL)
+        elapsed += CERT_WAIT_INTERVAL
+        
+        if elapsed % 10 == 0:  # Log toutes les 10 secondes
+            logger.info(f"⏳ Attente du certificat CA... ({elapsed}s/{timeout}s)")
+    
+    logger.error(f"❌ Timeout: certificat CA non disponible après {timeout}s")
+    return False
 
 
 class HubClient:
@@ -97,9 +176,18 @@ class HubClient:
         """
         Auto-enregistrement auprès du Hub.
         À appeler au démarrage de l'application.
+        
+        Note: Attend automatiquement le certificat CA si HTTPS est activé.
         """
+        # Attendre le certificat CA si HTTPS activé
+        if self.settings.HUB_HTTPS_ENABLED:
+            cert_available = await wait_for_hub_certificate()
+            if not cert_available:
+                logger.error("Impossible de s'enregistrer: certificat CA du Hub non disponible")
+                return False
+        
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/apps/register",
                     json={
@@ -148,7 +236,7 @@ class HubClient:
         async with self._resync_lock:
             logger.debug(f"🔐 Lock acquis pour régénération des credentials")
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                     logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
                     response = await client.post(
                         f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
@@ -233,7 +321,7 @@ class HubClient:
         
         # Obtenir un nouveau token
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/auth/token",
                     data={
@@ -300,7 +388,7 @@ class HubClient:
             return self._jwks
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
                 )
@@ -325,7 +413,7 @@ class HubClient:
             return self._public_key
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/auth/public-key"
                 )
@@ -378,7 +466,7 @@ class HubClient:
         logger.debug(f"📡 Appel service: {method} {url}")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, verify=self.settings.hub_ssl_verify) as client:
                 headers = kwargs.pop("headers", {})
                 headers["Authorization"] = f"Bearer {token}"
                 
@@ -442,7 +530,7 @@ class HubClient:
             return self._discovered_services
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/apps/discover",
                     headers={
@@ -577,7 +665,7 @@ class HubClient:
         logger.debug(f"📡 Appel service découvert: {method} {url} (X-Slug: {service_slug})")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, verify=self.settings.hub_ssl_verify) as client:
                 headers = kwargs.pop("headers", {})
                 headers["Authorization"] = f"Bearer {token}"
                 headers["X-Slug"] = service_slug  # Identification du service cible

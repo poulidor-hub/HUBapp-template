@@ -52,9 +52,15 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - DEBUG=${DEBUG:-false}
       - IS_SHARED=${IS_SHARED:-false}
+      - HUB_HTTPS_ENABLED=${HUB_HTTPS_ENABLED:-false}
+      - HUB_HTTPS_PORT=${HUB_HTTPS_PORT:-443}
+      - HUB_CA_CERT_PATH=${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}
       - UPLOADS_DIR=/app/uploads
     volumes:
       - uploads_data:/app/uploads
+      # Dossier des certificats (le Hub y dépose hub-ca.crt dynamiquement)
+      # L'API attend sa disponibilité au démarrage si HTTPS est activé
+      - ./certs:/app/certs:ro
     ports:
       - "${API_PORT:-9045}:8000"
     depends_on:

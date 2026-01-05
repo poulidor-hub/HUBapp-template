@@ -87,3 +87,4 @@ logs/
 *.pem
 *.key
 secrets/
+*.crt
