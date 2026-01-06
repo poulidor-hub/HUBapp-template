@@ -9,10 +9,11 @@ const env = {
   API_PORT: import.meta.env.VITE_API_PORT || '9045',
   HUB_API_PORT: import.meta.env.VITE_HUB_API_PORT || '8000',
   HUB_FRONTEND_PORT: import.meta.env.VITE_HUB_FRONTEND_PORT || '80',
+  HUB_HTTPS_PORT: import.meta.env.VITE_HUB_HTTPS_PORT || '443',
   APP_SLUG: import.meta.env.VITE_APP_SLUG || 'mon-app',
 }
 
-// Construire les URLs dynamiquement basées sur l'hostname du navigateur
+// Construire les URLs dynamiquement basées sur l'hostname et le protocole du navigateur
 const getHost = () => {
   if (typeof window !== 'undefined') {
     return window.location.hostname
@@ -20,21 +21,36 @@ const getHost = () => {
   return 'localhost'
 }
 
+// Détecte automatiquement si on est en HTTPS
+const getProtocol = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.protocol
+  }
+  return 'http:'
+}
+
+// Retourne true si on est en HTTPS
+const isHttps = () => getProtocol() === 'https:'
+
 const config = {
   // Slug de l'application
   appSlug: env.APP_SLUG,
   
-  // URLs construites dynamiquement
+  // URLs construites dynamiquement (adapte automatiquement HTTP/HTTPS)
   get apiUrl() {
-    return `http://${getHost()}:${env.API_PORT}`
+    return `${getProtocol()}//${getHost()}:${env.API_PORT}`
   },
   
   get hubApiUrl() {
-    return `http://${getHost()}:${env.HUB_API_PORT}`
+    // Le Hub utilise le port HTTPS si on est en HTTPS
+    const port = isHttps() ? env.HUB_HTTPS_PORT : env.HUB_API_PORT
+    return `${getProtocol()}//${getHost()}:${port}`
   },
   
   get hubFrontendUrl() {
-    return `http://${getHost()}:${env.HUB_FRONTEND_PORT}`
+    // Le Hub frontend utilise le port HTTPS si on est en HTTPS
+    const port = isHttps() ? env.HUB_HTTPS_PORT : env.HUB_FRONTEND_PORT
+    return `${getProtocol()}//${getHost()}:${port}`
   },
   
   // Clés de stockage localStorage

@@ -38,8 +38,10 @@ COPY CHANGELOG.md /app/CHANGELOG.md
 # Rendre l'entrypoint exécutable
 RUN chmod +x /app/entrypoint.sh
 
-# Port exposé (interne au container)
+# Ports exposés (internes au container)
+# 8000 = HTTP, 8443 = HTTPS (si certificats disponibles)
 EXPOSE 8000
+EXPOSE 8443
 
 # Utiliser l'entrypoint pour installer le certificat CA avant de lancer l'app
 ENTRYPOINT ["/app/entrypoint.sh"]

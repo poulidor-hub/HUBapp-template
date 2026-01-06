@@ -13,11 +13,16 @@ const config = {
     hubApiUrl: '',
     hubFrontendUrl: '',
     
-    // Ports injectés par Docker (voir Dockerfile.frontend)
+    // Ports HTTP injectés par Docker (voir Dockerfile.frontend)
     // Ces valeurs sont remplacées au démarrage du container par envsubst
     injectedApiPort: '${API_PORT}',
     injectedHubApiPort: '${HUB_API_PORT}',
     injectedHubFrontendPort: '${HUB_FRONTEND_PORT}',
+    
+    // Ports HTTPS injectés par Docker (optionnels)
+    injectedApiHttpsPort: '${API_HTTPS_PORT}',
+    injectedFrontendHttpsPort: '${FRONTEND_HTTPS_PORT}',
+    injectedHubHttpsPort: '${HUB_HTTPS_PORT}',
     
     // Clés de stockage localStorage
     storageKeys: {
@@ -30,17 +35,33 @@ const config = {
 
 /**
  * Charge la configuration depuis l'API backend.
- * Utilise uniquement le port API configuré dans le .env (API_PORT).
+ * Utilise HTTPS si le port HTTPS est configuré, sinon HTTP.
  */
 async function loadConfig() {
     try {
-        // Utiliser l'hostname du navigateur et le port API injecté par Docker
+        // Utiliser l'hostname du navigateur
         const host = window.location.hostname;
-        // Le port est injecté par le script de démarrage Docker (envsubst)
-        const apiPort = config.injectedApiPort !== '__API_PORT__' 
+        
+        // Déterminer le protocole et port de l'API
+        // Priorité : HTTPS si configuré et page en HTTPS, sinon HTTP
+        const isHttps = window.location.protocol === 'https:';
+        const apiHttpsPort = config.injectedApiHttpsPort !== '${API_HTTPS_PORT}' && config.injectedApiHttpsPort 
+            ? config.injectedApiHttpsPort 
+            : null;
+        const apiHttpPort = config.injectedApiPort !== '${API_PORT}' 
             ? config.injectedApiPort 
-            : window.location.port || '80';  // Fallback: même port que le frontend
-        const apiUrl = `http://${host}:${apiPort}`;
+            : window.location.port || '80';
+        
+        // Utiliser HTTPS si disponible et page en HTTPS, sinon HTTP
+        let apiUrl;
+        if (isHttps && apiHttpsPort) {
+            apiUrl = `https://${host}:${apiHttpsPort}`;
+        } else if (apiHttpsPort) {
+            // Port HTTPS configuré mais page en HTTP - essayer HTTPS quand même
+            apiUrl = `https://${host}:${apiHttpsPort}`;
+        } else {
+            apiUrl = `http://${host}:${apiHttpPort}`;
+        }
         
         console.log(`🔄 Chargement config depuis ${apiUrl}/api/config...`);
         
@@ -66,13 +87,35 @@ async function loadConfig() {
         
         // Valeurs par défaut en cas d'erreur - utiliser les ports injectés
         const host = window.location.hostname;
-        const apiPort = config.injectedApiPort !== '__API_PORT__' ? config.injectedApiPort : window.location.port;
-        const hubApiPort = config.injectedHubApiPort !== '__HUB_API_PORT__' ? config.injectedHubApiPort : '8000';
-        const hubFrontendPort = config.injectedHubFrontendPort !== '__HUB_FRONTEND_PORT__' ? config.injectedHubFrontendPort : '80';
+        const isHttps = window.location.protocol === 'https:';
         
-        config.apiUrl = `http://${host}:${apiPort}`;
-        config.hubApiUrl = `http://${host}:${hubApiPort}`;
-        config.hubFrontendUrl = `http://${host}:${hubFrontendPort}`;
+        // API URL - Priorité HTTPS
+        const apiHttpsPort = config.injectedApiHttpsPort !== '${API_HTTPS_PORT}' && config.injectedApiHttpsPort
+            ? config.injectedApiHttpsPort : null;
+        const apiHttpPort = config.injectedApiPort !== '${API_PORT}' 
+            ? config.injectedApiPort : window.location.port;
+        
+        if (apiHttpsPort) {
+            config.apiUrl = `https://${host}:${apiHttpsPort}`;
+        } else {
+            config.apiUrl = `http://${host}:${apiHttpPort}`;
+        }
+        
+        // Hub URLs - Priorité HTTPS
+        const hubHttpsPort = config.injectedHubHttpsPort !== '${HUB_HTTPS_PORT}' && config.injectedHubHttpsPort
+            ? config.injectedHubHttpsPort : null;
+        const hubApiPort = config.injectedHubApiPort !== '${HUB_API_PORT}' 
+            ? config.injectedHubApiPort : '8000';
+        const hubFrontendPort = config.injectedHubFrontendPort !== '${HUB_FRONTEND_PORT}' 
+            ? config.injectedHubFrontendPort : '80';
+        
+        if (hubHttpsPort) {
+            config.hubApiUrl = `https://${host}:${hubHttpsPort}`;
+            config.hubFrontendUrl = `https://${host}:${hubHttpsPort}`;
+        } else {
+            config.hubApiUrl = `http://${host}:${hubApiPort}`;
+            config.hubFrontendUrl = `http://${host}:${hubFrontendPort}`;
+        }
         
         console.warn('⚠️ Utilisation des valeurs par défaut:', config);
     }

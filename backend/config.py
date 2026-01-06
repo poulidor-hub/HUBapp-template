@@ -44,9 +44,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "Mon Application"
     APP_DESCRIPTION: str = "Template d'application avec authentification Hub"
     
-    # Ports
+    # Ports HTTP
     API_PORT: int = 9045
     FRONTEND_PORT: int = 4250
+    
+    # Ports HTTPS (optionnels - si définis, seront utilisés en priorité)
+    API_HTTPS_PORT: Optional[int] = None  # Port HTTPS de l'API backend
+    FRONTEND_HTTPS_PORT: Optional[int] = None  # Port HTTPS du frontend
     
     # Hub - Auto-détecté si non spécifié
     HUB_HOST: Optional[str] = None
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
     HUB_HTTPS_ENABLED: bool = False
     HUB_HTTPS_PORT: int = 443
     HUB_CA_CERT_PATH: Optional[str] = None
+    
+    # Certificats SSL de cette application (si API_HTTPS_PORT est défini)
+    APP_SSL_CERT_PATH: Optional[str] = None
+    APP_SSL_KEY_PATH: Optional[str] = None
     
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
@@ -144,13 +152,27 @@ class Settings(BaseSettings):
     
     @property
     def api_url(self) -> str:
-        """URL de l'API de cette application."""
+        """URL de l'API de cette application (HTTPS si configuré, sinon HTTP)."""
+        if self.API_HTTPS_PORT:
+            return f"https://{self.hub_host}:{self.API_HTTPS_PORT}"
         return f"http://{self.hub_host}:{self.API_PORT}"
     
     @property
     def frontend_url(self) -> str:
-        """URL du frontend de cette application."""
+        """URL du frontend de cette application (HTTPS si configuré, sinon HTTP)."""
+        if self.FRONTEND_HTTPS_PORT:
+            return f"https://{self.hub_host}:{self.FRONTEND_HTTPS_PORT}"
         return f"http://{self.hub_host}:{self.FRONTEND_PORT}"
+    
+    @property
+    def is_api_https_enabled(self) -> bool:
+        """Indique si l'API utilise HTTPS."""
+        return self.API_HTTPS_PORT is not None
+    
+    @property
+    def is_frontend_https_enabled(self) -> bool:
+        """Indique si le frontend utilise HTTPS."""
+        return self.FRONTEND_HTTPS_PORT is not None
     
     @property
     def database_url(self) -> str:

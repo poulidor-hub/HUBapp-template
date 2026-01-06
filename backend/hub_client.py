@@ -271,15 +271,25 @@ class HubClient:
         
         try:
             async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+                # Construire le payload avec les ports HTTPS si disponibles
+                payload = {
+                    "slug": self.settings.APP_SLUG,
+                    "name": self.settings.APP_NAME,
+                    "description": self.settings.APP_DESCRIPTION,
+                    "api_port": self.settings.API_PORT,
+                    "frontend_port": self.settings.FRONTEND_PORT,
+                    "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
+                }
+                # Ajouter le port HTTPS de l'API si configuré
+                if self.settings.API_HTTPS_PORT:
+                    payload["api_https_port"] = self.settings.API_HTTPS_PORT
+                # Ajouter le port HTTPS du frontend si configuré
+                if self.settings.FRONTEND_HTTPS_PORT:
+                    payload["frontend_https_port"] = self.settings.FRONTEND_HTTPS_PORT
+                
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/apps/register",
-                    json={
-                        "slug": self.settings.APP_SLUG,
-                        "name": self.settings.APP_NAME,
-                        "description": self.settings.APP_DESCRIPTION,
-                        "api_port": self.settings.API_PORT,
-                        "frontend_port": self.settings.FRONTEND_PORT,
-                    }
+                    json=payload
                 )
                 
                 if response.status_code == 200:

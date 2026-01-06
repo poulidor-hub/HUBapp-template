@@ -31,5 +31,20 @@ if [ "$HUB_HTTPS_ENABLED" = "true" ]; then
 fi
 
 # === Démarrage de l'application ===
-echo -e "${GREEN}🚀 Démarrage de l'API...${NC}"
-exec uvicorn main:app --host 0.0.0.0 --port 8000
+# Vérifier si les certificats SSL de l'application sont disponibles pour HTTPS
+SSL_CERT="${APP_SSL_CERT_PATH:-/app/certs/server/mon-app/app.crt}"
+SSL_KEY="${APP_SSL_KEY_PATH:-/app/certs/server/mon-app/app.key}"
+
+if [ -n "$API_HTTPS_PORT" ] && [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+    echo -e "${GREEN}🔒 Certificats SSL trouvés, démarrage HTTPS sur le port 8443...${NC}"
+    echo -e "${GREEN}🚀 Démarrage de l'API (HTTP:8000 + HTTPS:8443)...${NC}"
+    
+    # Démarrer le serveur HTTPS en arrière-plan
+    uvicorn main:app --host 0.0.0.0 --port 8443 --ssl-certfile "$SSL_CERT" --ssl-keyfile "$SSL_KEY" &
+    
+    # Démarrer le serveur HTTP au premier plan
+    exec uvicorn main:app --host 0.0.0.0 --port 8000
+else
+    echo -e "${GREEN}🚀 Démarrage de l'API (HTTP uniquement)...${NC}"
+    exec uvicorn main:app --host 0.0.0.0 --port 8000
+fi

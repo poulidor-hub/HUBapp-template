@@ -3,6 +3,8 @@ Configuration pytest pour les tests.
 """
 import pytest
 import asyncio
+import os
+import tempfile
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
@@ -11,6 +13,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 # Import de l'application
 import sys
 sys.path.insert(0, '.')
+
+# Créer un répertoire temporaire pour le storage AVANT tout import de main/storage
+_test_uploads_dir = tempfile.mkdtemp(prefix="test_uploads_")
+os.environ["UPLOADS_DIR"] = _test_uploads_dir
 
 from database import Base, get_db
 from config import get_settings
@@ -116,8 +122,8 @@ def create_mock_token(
 # ============================================================
 
 @pytest.fixture
-async def client(db_session, mock_hub_client, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
-    """Client HTTP pour tester l'API."""
+async def app_with_db(db_session, mock_hub_client, mock_hub_auth):
+    """App avec la session DB injectée."""
     from main import app
     
     # Override de la dépendance DB
@@ -126,28 +132,38 @@ async def client(db_session, mock_hub_client, mock_hub_auth) -> AsyncGenerator[A
     
     app.dependency_overrides[get_db] = override_get_db
     
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    yield app
     
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-async def authenticated_client(client, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
+async def client(app_with_db) -> AsyncGenerator[AsyncClient, None]:
+    """Client HTTP pour tester l'API (non authentifié)."""
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+@pytest.fixture
+async def authenticated_client(app_with_db, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
     """Client authentifié avec un utilisateur standard."""
     mock_hub_auth.decode_token.return_value = create_mock_token(
         username="testuser",
         app_role="user"
     )
     
-    # Ajouter le header Authorization
-    client.headers["Authorization"] = "Bearer mock_token"
-    yield client
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(
+        transport=transport, 
+        base_url="http://test",
+        headers={"Authorization": "Bearer mock_token"}
+    ) as ac:
+        yield ac
 
 
 @pytest.fixture
-async def admin_client(client, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
+async def admin_client(app_with_db, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
     """Client authentifié avec un admin."""
     mock_hub_auth.decode_token.return_value = create_mock_token(
         username="admin",
@@ -155,17 +171,83 @@ async def admin_client(client, mock_hub_auth) -> AsyncGenerator[AsyncClient, Non
         global_roles=["admin"]
     )
     
-    client.headers["Authorization"] = "Bearer admin_mock_token"
-    yield client
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(
+        transport=transport, 
+        base_url="http://test",
+        headers={"Authorization": "Bearer admin_mock_token"}
+    ) as ac:
+        yield ac
 
 
 @pytest.fixture
-async def viewer_client(client, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
+async def viewer_client(app_with_db, mock_hub_auth) -> AsyncGenerator[AsyncClient, None]:
     """Client authentifié avec un viewer."""
     mock_hub_auth.decode_token.return_value = create_mock_token(
         username="viewer",
         app_role="viewer"
     )
     
-    client.headers["Authorization"] = "Bearer viewer_mock_token"
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(
+        transport=transport, 
+        base_url="http://test",
+        headers={"Authorization": "Bearer viewer_mock_token"}
+    ) as ac:
+        yield ac
+
+
+# ============================================================
+# M2M (Machine-to-Machine) FIXTURES
+# ============================================================
+
+@pytest.fixture
+def mock_m2m_token():
+    """Crée un token M2M mock pour les tests inter-services."""
+    from hub_auth import TokenPayload
+    
+    return TokenPayload(
+        sub="sa_test_service_account",
+        roles=[],
+        apps={"mon-app": "service"},  # Rôle "service" pour les service accounts
+        token_type="m2m",
+        exp=9999999999,
+        iat=1000000000,
+        jti="test-m2m-token-id"
+    )
+
+
+@pytest.fixture
+async def m2m_client(client, mock_hub_auth, mock_m2m_token) -> AsyncGenerator[AsyncClient, None]:
+    """Client authentifié avec un token M2M (service account)."""
+    mock_hub_auth.decode_token.return_value = mock_m2m_token
+    
+    client.headers["Authorization"] = "Bearer mock_m2m_token"
     yield client
+
+
+@pytest.fixture
+def mock_hub_client_with_m2m(mock_hub_client):
+    """Mock du client Hub avec support M2M complet."""
+    from unittest.mock import AsyncMock, PropertyMock
+    from dataclasses import dataclass
+    
+    @dataclass
+    class MockCredentials:
+        client_id: str = "sa_test_client_id"
+        client_secret: str = "test_secret"
+        access_token: str = "mock_m2m_access_token"
+    
+    mock_hub_client.credentials = MockCredentials()
+    mock_hub_client.is_registered = PropertyMock(return_value=True)
+    mock_hub_client.get_m2m_token = AsyncMock(return_value="mock_m2m_token")
+    mock_hub_client.discover_services = AsyncMock(return_value=[
+        {
+            "slug": "test-service",
+            "name": "Test Service",
+            "api_url": "https://localhost:9000",
+            "is_shared": True
+        }
+    ])
+    
+    return mock_hub_client
