@@ -22,17 +22,22 @@ Lorsque le Hub est configuré en HTTPS avec un certificat auto-signé (ou une CA
 2. **Installer le certificat** au niveau système pour que Python/SSL lui fasse confiance
 3. **Attendre le certificat** au démarrage si HTTPS est activé mais le certificat pas encore disponible
 
+> **🔒 Politique de sécurité stricte** : La communication avec le Hub est **REFUSÉE** si le 
+> certificat CA n'est pas disponible. Il n'est pas possible de contourner la vérification SSL.
+> Cela garantit que toute communication est authentifiée par le Hub et protège contre les 
+> attaques man-in-the-middle.
+
 ```
 ┌─────────────────┐     HTTPS (443)      ┌─────────────────┐
 │   Application   │ ◄──────────────────► │      Hub        │
 │    (Backend)    │   Certificat CA      │   (API + Auth)  │
-└─────────────────┘                      └─────────────────┘
+└─────────────────┘   obligatoire ✓      └─────────────────┘
         │
         │ Monte le dossier ./certs
         ▼
 ┌─────────────────┐
 │  ./certs/       │
-│  hub-ca.crt     │ ← Fourni par le Hub
+│  hub-ca.crt     │ ← Fourni par le Hub (OBLIGATOIRE si HTTPS)
 └─────────────────┘
 ```
 
@@ -171,13 +176,22 @@ class Settings(BaseSettings):
     
     @property
     def hub_ssl_verify(self) -> Union[str, bool]:
-        """Certificat CA pour vérifier le Hub en HTTPS."""
+        """
+        Certificat CA pour vérifier le Hub en HTTPS.
+        
+        ⚠️ SÉCURITÉ : La communication non certifiée est INTERDITE.
+        Une RuntimeError est levée si HTTPS est activé sans certificat CA valide.
+        """
         if self.HUB_HTTPS_ENABLED:
             if self.HUB_CA_CERT_PATH:
                 ca_path = Path(self.HUB_CA_CERT_PATH)
                 if ca_path.exists():
                     return str(ca_path)
-            return False  # HTTPS sans CA (⚠️ non sécurisé)
+            # REFUSER la communication si le certificat n'est pas disponible
+            raise RuntimeError(
+                "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
+                "La communication non certifiée par le Hub n'est pas autorisée."
+            )
         return True  # HTTP = pas de SSL
     
     def is_hub_certificate_available(self) -> bool:
@@ -188,6 +202,10 @@ class Settings(BaseSettings):
             return False
         return Path(self.HUB_CA_CERT_PATH).exists()
 ```
+
+> **🔒 Politique de sécurité** : Depuis la version actuelle, la communication avec le Hub 
+> est **refusée** si le certificat CA n'est pas disponible. Il n'est plus possible de 
+> contourner la vérification SSL. Cela protège contre les attaques man-in-the-middle.
 
 ### backend/hub_client.py
 
@@ -279,6 +297,24 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
 ---
 
 ## Dépannage
+
+### Erreur : `RuntimeError: Communication HTTPS impossible`
+
+```
+RuntimeError: ❌ Communication HTTPS impossible : certificat CA du Hub non disponible.
+La communication non certifiée par le Hub n'est pas autorisée.
+```
+
+**Cette erreur est normale** si HTTPS est activé mais le certificat CA n'est pas disponible.
+L'application **refuse intentionnellement** toute communication non certifiée pour des raisons de sécurité.
+
+**Solutions :**
+1. **Vérifiez que le certificat existe** :
+   ```bash
+   ls -la ./certs/hub-ca.crt
+   ```
+2. **Obtenez le certificat du Hub** : Contactez l'administrateur du Hub pour obtenir `hub-ca.crt`
+3. **Attendez le démarrage** : Si le Hub fournit le certificat dynamiquement, attendez quelques secondes
 
 ### Erreur : `CERTIFICATE_VERIFY_FAILED`
 

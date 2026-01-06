@@ -112,8 +112,11 @@ class Settings(BaseSettings):
         
         Retourne:
         - Chemin du CA si HTTPS activé et CA configuré et présent
-        - False si HTTPS activé sans CA (⚠️ non recommandé)
-        - True si HTTP (pas de vérification SSL)
+        - True si HTTP (pas de vérification SSL nécessaire)
+        
+        Raises:
+            RuntimeError: Si HTTPS est activé mais le certificat CA n'est pas disponible.
+                         La communication non certifiée n'est PAS autorisée.
         
         Note: Le certificat est fourni dynamiquement par le Hub.
         Utiliser wait_for_hub_certificate() au démarrage si HTTPS est activé.
@@ -123,8 +126,12 @@ class Settings(BaseSettings):
                 ca_path = Path(self.HUB_CA_CERT_PATH)
                 if ca_path.exists():
                     return str(ca_path)
-            # HTTPS sans CA = désactiver vérification (⚠️ non sécurisé)
-            return False
+            # HTTPS sans CA = REFUSER la communication (sécurité obligatoire)
+            raise RuntimeError(
+                "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
+                "La communication non certifiée par le Hub n'est pas autorisée. "
+                f"Vérifiez que HUB_CA_CERT_PATH={self.HUB_CA_CERT_PATH} existe."
+            )
         return True  # HTTP = pas de SSL
     
     def is_hub_certificate_available(self) -> bool:
