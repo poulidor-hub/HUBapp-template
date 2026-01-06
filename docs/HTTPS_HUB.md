@@ -5,6 +5,7 @@ Ce document décrit la configuration nécessaire pour que l'application communiq
 ## Table des matières
 
 - [Vue d'ensemble](#vue-densemble)
+- [Modes de distribution du certificat](#modes-de-distribution-du-certificat)
 - [Prérequis](#prérequis)
 - [Configuration](#configuration)
 - [Architecture technique](#architecture-technique)
@@ -18,36 +19,65 @@ Ce document décrit la configuration nécessaire pour que l'application communiq
 
 Lorsque le Hub est configuré en HTTPS avec un certificat auto-signé (ou une CA interne), l'application doit :
 
-1. **Recevoir le certificat CA** du Hub (fourni dynamiquement)
+1. **Obtenir le certificat CA** du Hub (automatiquement via HTTP ou via volume Docker)
 2. **Installer le certificat** au niveau système pour que Python/SSL lui fasse confiance
-3. **Attendre le certificat** au démarrage si HTTPS est activé mais le certificat pas encore disponible
+3. **Communiquer en HTTPS** avec le Hub une fois le certificat installé
 
 > **🔒 Politique de sécurité stricte** : La communication avec le Hub est **REFUSÉE** si le 
 > certificat CA n'est pas disponible. Il n'est pas possible de contourner la vérification SSL.
 > Cela garantit que toute communication est authentifiée par le Hub et protège contre les 
 > attaques man-in-the-middle.
 
+---
+
+## Modes de distribution du certificat
+
+L'application supporte **deux modes** pour obtenir le certificat CA du Hub :
+
+### Mode 1 : Téléchargement automatique via HTTP (recommandé pour hôtes distants)
+
 ```
-┌─────────────────┐     HTTPS (443)      ┌─────────────────┐
-│   Application   │ ◄──────────────────► │      Hub        │
-│    (Backend)    │   Certificat CA      │   (API + Auth)  │
-└─────────────────┘   obligatoire ✓      └─────────────────┘
-        │
-        │ Monte le dossier ./certs
-        ▼
-┌─────────────────┐
-│  ./certs/       │
-│  hub-ca.crt     │ ← Fourni par le Hub (OBLIGATOIRE si HTTPS)
-└─────────────────┘
+┌─────────────────┐                           ┌─────────────────┐
+│   Application   │                           │      Hub        │
+│   (Hôte distant)│                           │                 │
+└────────┬────────┘                           └────────┬────────┘
+         │                                             │
+         │  1. GET http://hub:8000/api/pki/ca.crt     │
+         │ ─────────────────────────────────────────► │
+         │                                             │
+         │  2. Certificat CA (PEM)                    │
+         │ ◄───────────────────────────────────────── │
+         │                                             │
+         │  3. HTTPS (port 443) avec certificat       │
+         │ ◄──────────────────────────────────────────►│
+         │                                             │
 ```
+
+**Avantages :**
+- ✅ Fonctionne sur des hôtes distants (pas besoin de partage de volume)
+- ✅ Configuration automatique au démarrage
+- ✅ Le certificat CA est une information publique (pas de risque de sécurité)
+
+### Mode 2 : Volume Docker partagé (même hôte que le Hub)
+
+```
+┌─────────────────┐                           ┌─────────────────┐
+│   Application   │     Volume partagé        │      Hub        │
+│   (Même hôte)   │ ◄── ./certs:/app/certs ──►│                 │
+└─────────────────┘                           └─────────────────┘
+```
+
+**Avantages :**
+- ✅ Pas de requête HTTP initiale nécessaire
+- ✅ Le certificat est disponible immédiatement
 
 ---
 
 ## Prérequis
 
-1. **Hub configuré en HTTPS** avec un certificat valide
-2. **Certificat CA du Hub** (`hub-ca.crt`) disponible
-3. **Dossier `./certs/`** existant dans le projet
+1. **Hub configuré en HTTPS** avec un certificat valide (voir `python pki.py init`)
+2. **Port HTTP du Hub accessible** (8000) pour le téléchargement initial du certificat
+3. **Dossier `./certs/`** existant dans le projet (optionnel si téléchargement auto)
 
 ---
 

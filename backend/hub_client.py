@@ -64,13 +64,86 @@ class HubCredentials:
     token_expires_at: Optional[datetime] = None
 
 
+async def download_hub_ca_certificate() -> bool:
+    """
+    Télécharge le certificat CA du Hub via HTTP.
+    
+    Cette fonction permet aux applications distantes (sur un autre hôte que le Hub)
+    de récupérer automatiquement le certificat CA pour établir des connexions HTTPS.
+    
+    Le certificat CA est une information publique, donc ce téléchargement initial
+    via HTTP est sécuritairement acceptable (similaire aux CA publiques).
+    
+    Returns:
+        True si le certificat a été téléchargé avec succès, False sinon
+    
+    Note:
+        - Utilise HTTP (non HTTPS) car c'est le bootstrap initial
+        - Le Hub doit exposer GET /api/pki/ca.crt (endpoint public)
+    """
+    settings = get_settings()
+    
+    if not settings.HUB_CA_CERT_PATH:
+        logger.error("HUB_CA_CERT_PATH non configuré")
+        return False
+    
+    cert_path = Path(settings.HUB_CA_CERT_PATH)
+    
+    # URL HTTP pour télécharger le certificat (bootstrap initial)
+    # On utilise le port HTTP (HUB_API_PORT) et non HTTPS pour ce premier contact
+    hub_http_url = f"http://{settings.hub_host}:{settings.HUB_API_PORT}/api/pki/ca.crt"
+    
+    logger.info(f"📥 Téléchargement du certificat CA depuis {hub_http_url}...")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(hub_http_url)
+            
+            if response.status_code == 200:
+                # Créer le dossier parent si nécessaire
+                cert_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Sauvegarder le certificat
+                cert_path.write_bytes(response.content)
+                
+                # Vérifier que c'est bien un certificat PEM
+                content = response.content.decode('utf-8', errors='ignore')
+                if '-----BEGIN CERTIFICATE-----' in content:
+                    logger.info(f"✅ Certificat CA téléchargé et sauvegardé: {cert_path}")
+                    return True
+                else:
+                    logger.error("❌ Le fichier téléchargé n'est pas un certificat PEM valide")
+                    cert_path.unlink(missing_ok=True)
+                    return False
+            
+            elif response.status_code == 404:
+                logger.error("❌ CA non initialisée sur le Hub. Exécutez 'python pki.py init' sur le Hub.")
+                return False
+            else:
+                logger.error(f"❌ Erreur téléchargement CA: {response.status_code} - {response.text}")
+                return False
+                
+    except httpx.ConnectError:
+        logger.error(f"❌ Impossible de contacter le Hub sur {hub_http_url}")
+        logger.error("   Vérifiez que le Hub est accessible et que le port HTTP est ouvert")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du téléchargement du certificat CA: {e}")
+        return False
+
+
 async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
     """
     Attend que le certificat CA du Hub soit disponible.
     
-    Le certificat est fourni dynamiquement par le Hub et monté via docker-compose.
-    Cette fonction bloque le démarrage jusqu'à ce que le certificat soit présent
-    ou que le timeout soit atteint.
+    Cette fonction tente d'abord de télécharger le certificat via HTTP
+    si celui-ci n'existe pas localement. Cela permet aux applications
+    sur des hôtes distants de fonctionner sans partage de volume Docker.
+    
+    Flux:
+    1. Si le certificat existe déjà localement → l'utiliser
+    2. Sinon, tenter de le télécharger via HTTP depuis le Hub
+    3. Si le téléchargement échoue, attendre qu'il soit fourni via volume
     
     Une fois trouvé, le certificat est installé au niveau système pour que
     Python/SSL puisse l'utiliser.
@@ -102,38 +175,48 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
     
     cert_path = Path(settings.HUB_CA_CERT_PATH)
     system_cert_path = Path("/usr/local/share/ca-certificates/hub-ca.crt")
-    elapsed = 0
     
-    logger.info(f"⏳ Attente du certificat CA du Hub: {cert_path}")
-    
-    while elapsed < timeout:
-        if cert_path.exists():
-            # Vérifier que le fichier n'est pas vide
-            if cert_path.stat().st_size > 0:
-                logger.info(f"✅ Certificat CA du Hub disponible: {cert_path}")
+    # === ÉTAPE 1: Vérifier si le certificat existe déjà ===
+    if cert_path.exists() and cert_path.stat().st_size > 0:
+        logger.info(f"✅ Certificat CA déjà présent: {cert_path}")
+    else:
+        # === ÉTAPE 2: Tenter de télécharger le certificat via HTTP ===
+        logger.info("📡 Certificat CA absent, tentative de téléchargement depuis le Hub...")
+        downloaded = await download_hub_ca_certificate()
+        
+        if not downloaded:
+            # === ÉTAPE 3: Attendre que le certificat soit fourni via volume ===
+            logger.info("⏳ Téléchargement échoué, attente du certificat via volume Docker...")
+            elapsed = 0
+            
+            while elapsed < timeout:
+                if cert_path.exists() and cert_path.stat().st_size > 0:
+                    logger.info(f"✅ Certificat CA disponible via volume: {cert_path}")
+                    break
                 
-                # Installer le certificat au niveau système si pas déjà fait
-                try:
-                    if not system_cert_path.exists() or system_cert_path.read_bytes() != cert_path.read_bytes():
-                        logger.info("🔐 Installation du certificat dans le système...")
-                        shutil.copy(cert_path, system_cert_path)
-                        subprocess.run(["update-ca-certificates"], capture_output=True, check=True)
-                        logger.info("✅ Certificat installé au niveau système")
-                except Exception as e:
-                    logger.warning(f"⚠️ Impossible d'installer le certificat au niveau système: {e}")
-                    # Continue quand même, httpx utilisera le chemin direct
+                await asyncio.sleep(CERT_WAIT_INTERVAL)
+                elapsed += CERT_WAIT_INTERVAL
                 
-                return True
+                if elapsed % 10 == 0:
+                    logger.info(f"⏳ Attente du certificat CA... ({elapsed}s/{timeout}s)")
             else:
-                logger.debug(f"Certificat présent mais vide, attente...")
-        
-        await asyncio.sleep(CERT_WAIT_INTERVAL)
-        elapsed += CERT_WAIT_INTERVAL
-        
-        if elapsed % 10 == 0:  # Log toutes les 10 secondes
-            logger.info(f"⏳ Attente du certificat CA... ({elapsed}s/{timeout}s)")
+                logger.error(f"❌ Timeout: certificat CA non disponible après {timeout}s")
+                return False
     
-    logger.error(f"❌ Timeout: certificat CA non disponible après {timeout}s")
+    # === ÉTAPE 4: Installer le certificat au niveau système ===
+    if cert_path.exists() and cert_path.stat().st_size > 0:
+        try:
+            if not system_cert_path.exists() or system_cert_path.read_bytes() != cert_path.read_bytes():
+                logger.info("🔐 Installation du certificat dans le système...")
+                shutil.copy(cert_path, system_cert_path)
+                subprocess.run(["update-ca-certificates"], capture_output=True, check=True)
+                logger.info("✅ Certificat installé au niveau système")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible d'installer le certificat au niveau système: {e}")
+            # Continue quand même, httpx utilisera le chemin direct
+        
+        return True
+    
     return False
 
 
