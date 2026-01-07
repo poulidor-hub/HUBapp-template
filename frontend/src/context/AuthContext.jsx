@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { useConfig } from './ConfigContext'
 import config from '../config'
 
@@ -89,13 +89,23 @@ export function AuthProvider({ children }) {
     window.location.href = hubLogoutUrl
   }, [appConfig.hubFrontendUrl])
 
+  // Référence pour éviter le rafraîchissement en double
+  const refreshingRef = useRef(false)
+
   const refreshAccessToken = useCallback(async () => {
+    // Éviter les rafraîchissements concurrents
+    if (refreshingRef.current) {
+      console.log('⏳ Rafraîchissement déjà en cours...')
+      return false
+    }
+    
     const refreshToken = localStorage.getItem(config.storageKeys.refreshToken)
     if (!refreshToken) {
       console.error('Pas de refresh token disponible')
       return false
     }
 
+    refreshingRef.current = true
     try {
       const response = await fetch(`${appConfig.hubApiUrl}/api/auth/token/refresh`, {
         method: 'POST',
@@ -122,8 +132,91 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('❌ Erreur rafraîchissement token:', error)
       return false
+    } finally {
+      refreshingRef.current = false
     }
   }, [appConfig.hubApiUrl, logout])
+
+  // Écouter les événements SSE du Hub pour les changements de permissions
+  useEffect(() => {
+    if (!user || !appConfig.hubApiUrl) return
+    
+    let eventSource = null
+    let reconnectTimeout = null
+    
+    const connectSSE = () => {
+      try {
+        const sseUrl = `${appConfig.hubApiUrl}/api/events/stream`
+        console.log('🔌 Connexion SSE au Hub:', sseUrl)
+        eventSource = new EventSource(sseUrl)
+        
+        eventSource.onopen = () => {
+          console.log('✅ SSE connecté - écoute des changements de permissions')
+        }
+        
+        eventSource.onmessage = async (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            
+            // Ignorer les ping keep-alive
+            if (data.type === 'ping' || data.type === 'connected') return
+            
+            console.log('📡 SSE event:', data.type, data.data)
+            
+            // Changement de permissions de l'utilisateur courant
+            if (data.type === 'user_permissions_changed') {
+              if (data.data?.username === user.sub) {
+                console.log('🔄 Vos permissions ont changé, rafraîchissement du token...')
+                const refreshed = await refreshAccessToken()
+                if (refreshed) {
+                  console.log('✅ Permissions mises à jour')
+                }
+              }
+            }
+            
+            // Déconnexion forcée par l'admin
+            if (data.type === 'force_logout') {
+              if (data.data?.username === user.sub) {
+                console.log('🚪 Déconnexion forcée par l\'administrateur')
+                alert('Votre session a été révoquée par un administrateur.')
+                logout()
+              }
+            }
+            
+            // Nouvelle application ajoutée/approuvée - rafraîchir pour obtenir les nouveaux accès
+            if (data.type === 'apps_updated') {
+              if (data.data?.action === 'approved' || data.data?.action === 'created') {
+                console.log('🔄 Nouvelle application disponible, rafraîchissement du token...')
+                await refreshAccessToken()
+              }
+            }
+            
+          } catch (e) {
+            console.warn('SSE: erreur parsing message', e)
+          }
+        }
+        
+        eventSource.onerror = () => {
+          console.warn('⚠️ SSE déconnecté, reconnexion dans 10s...')
+          eventSource?.close()
+          reconnectTimeout = setTimeout(connectSSE, 10000)
+        }
+        
+      } catch (e) {
+        console.warn('SSE: impossible de créer la connexion', e)
+      }
+    }
+    
+    connectSSE()
+    
+    return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      if (eventSource) {
+        eventSource.close()
+        console.log('🔌 SSE déconnecté')
+      }
+    }
+  }, [user, appConfig.hubApiUrl, refreshAccessToken, logout])
 
   // Fetch authentifié avec gestion automatique du refresh
   const authFetch = useCallback(async (url, options = {}) => {
@@ -168,6 +261,12 @@ export function AuthProvider({ children }) {
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[minRole] || 0)
   }, [user, getAppRole])
 
+  // Force le rafraîchissement du token (utile après modification des droits)
+  const forceRefreshToken = useCallback(async () => {
+    console.log('🔄 Rafraîchissement forcé du token...')
+    return await refreshAccessToken()
+  }, [refreshAccessToken])
+
   const value = {
     user,
     token,
@@ -176,7 +275,8 @@ export function AuthProvider({ children }) {
     logout,
     authFetch,
     getAppRole,
-    hasMinRole
+    hasMinRole,
+    refreshAccessToken: forceRefreshToken
   }
 
   return (
