@@ -273,8 +273,7 @@ async def viewer_endpoint(user: TokenPayload = Depends(require_role("viewer"))):
     return {
         "message": "Accès viewer accordé",
         "user": user.sub,
-        "role": user.get_app_role(settings.APP_SLUG),
-        "level": "viewer (lecture seule)"
+        "role": user.get_app_role(settings.APP_SLUG)
     }
 
 
@@ -287,8 +286,7 @@ async def user_endpoint(user: TokenPayload = Depends(require_role("user"))):
     return {
         "message": "Accès user accordé",
         "user": user.sub,
-        "role": user.get_app_role(settings.APP_SLUG),
-        "level": "user (lecture/écriture)"
+        "role": user.get_app_role(settings.APP_SLUG)
     }
 
 
@@ -301,8 +299,7 @@ async def manager_endpoint(user: TokenPayload = Depends(require_role("manager"))
     return {
         "message": "Accès manager accordé",
         "user": user.sub,
-        "role": user.get_app_role(settings.APP_SLUG),
-        "level": "manager (gestion)"
+        "role": user.get_app_role(settings.APP_SLUG)
     }
 
 
@@ -315,8 +312,7 @@ async def admin_endpoint(user: TokenPayload = Depends(require_role("admin"))):
     return {
         "message": "Accès admin accordé",
         "user": user.sub,
-        "role": user.get_app_role(settings.APP_SLUG),
-        "level": "admin (tous droits)"
+        "role": user.get_app_role(settings.APP_SLUG)
     }
 
 
@@ -378,7 +374,8 @@ async def test_m2m_call(
         return {"success": False, "error": "Impossible d'obtenir un token M2M"}
     
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # Utiliser hub_ssl_verify pour la vérification SSL (certificat CA du Hub)
+        async with httpx.AsyncClient(timeout=10.0, verify=settings.hub_ssl_verify) as client:
             response = await client.get(
                 target_url,
                 headers={"Authorization": f"Bearer {token}"}
@@ -583,7 +580,7 @@ async def list_items(
     if user is None:
         # Non authentifié: uniquement publics
         query = query.where(Item.is_public == True)
-    elif user.get_app_role(settings.APP_SLUG) == "admin" or user.has_global_role("admin"):
+    elif user.get_app_role(settings.APP_SLUG) == "admin":
         # Admin: tous les items
         pass
     else:
@@ -673,8 +670,8 @@ async def update_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item non trouvé")
     
-    # Vérifier les droits
-    is_admin = user.get_app_role(settings.APP_SLUG) == "admin" or user.has_global_role("admin")
+    # Vérifier les droits (seul le rôle applicatif compte)
+    is_admin = user.get_app_role(settings.APP_SLUG) == "admin"
     if item.owner != user.sub and not is_admin:
         raise HTTPException(status_code=403, detail="Seul le propriétaire peut modifier")
     
@@ -705,8 +702,8 @@ async def delete_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item non trouvé")
     
-    # Vérifier les droits
-    is_admin = user.get_app_role(settings.APP_SLUG) == "admin" or user.has_global_role("admin")
+    # Vérifier les droits (seul le rôle applicatif compte)
+    is_admin = user.get_app_role(settings.APP_SLUG) == "admin"
     if item.owner != user.sub and not is_admin:
         raise HTTPException(status_code=403, detail="Seul le propriétaire peut supprimer")
     

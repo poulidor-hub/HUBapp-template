@@ -18,7 +18,7 @@ import uuid
 import hashlib
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
@@ -323,10 +323,10 @@ async def download_backup(
 @router.post("/restore", response_model=RestoreResponse)
 async def restore_backup(
     file: UploadFile = File(...),
-    clear_existing: bool = False,
-    restore_items: bool = True,
-    restore_preferences: bool = True,
-    restore_files: bool = True,
+    clear_existing: str = Form("false"),
+    restore_items: str = Form("true"),
+    restore_preferences: str = Form("true"),
+    restore_files: str = Form("true"),
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
 ):
@@ -342,6 +342,12 @@ async def restore_backup(
     
     ⚠️ ATTENTION: clear_existing=true supprime TOUTES les données existantes!
     """
+    # Convertir les strings en booléens
+    clear_existing_bool = clear_existing.lower() in ("true", "1", "yes", "on")
+    restore_items_bool = restore_items.lower() in ("true", "1", "yes", "on")
+    restore_preferences_bool = restore_preferences.lower() in ("true", "1", "yes", "on")
+    restore_files_bool = restore_files.lower() in ("true", "1", "yes", "on")
+    
     errors = []
     warnings = []
     items_restored = 0
@@ -350,7 +356,7 @@ async def restore_backup(
     items_skipped = 0
     files_skipped = 0
     
-    logger.info(f"🔄 Restauration démarrée par {user.sub} (clear_existing={clear_existing})")
+    logger.info(f"🔄 Restauration démarrée par {user.sub} (clear_existing={clear_existing_bool})")
     
     try:
         # 1. Lire le fichier ZIP
@@ -375,25 +381,25 @@ async def restore_backup(
                 warnings.append(f"Le backup provient d'une application différente ({metadata.get('app_slug')})")
             
             # 4. Clear existing si demandé
-            if clear_existing:
+            if clear_existing_bool:
                 logger.warning("🗑️ Suppression des données existantes...")
-                if restore_items:
+                if restore_items_bool:
                     await db.execute(delete(Item))
-                if restore_preferences:
+                if restore_preferences_bool:
                     await db.execute(delete(UserPreference))
-                if restore_files:
+                if restore_files_bool:
                     await db.execute(delete(UploadedFile))
                 await db.commit()
             
             # 5. Restaurer les items
-            if restore_items:
+            if restore_items_bool:
                 for item_data in data.get("items", []):
                     try:
                         # Vérifier si existe déjà
                         existing = await db.execute(
                             select(Item).where(Item.id == item_data.get("id"))
                         )
-                        if existing.scalar() and not clear_existing:
+                        if existing.scalar() and not clear_existing_bool:
                             items_skipped += 1
                             continue
                         
@@ -411,13 +417,13 @@ async def restore_backup(
                         errors.append(f"Item {item_data.get('id')}: {str(e)}")
             
             # 6. Restaurer les préférences
-            if restore_preferences:
+            if restore_preferences_bool:
                 for pref_data in data.get("user_preferences", []):
                     try:
                         existing = await db.execute(
                             select(UserPreference).where(UserPreference.username == pref_data.get("username"))
                         )
-                        if existing.scalar() and not clear_existing:
+                        if existing.scalar() and not clear_existing_bool:
                             continue
                         
                         pref = UserPreference(
@@ -435,7 +441,7 @@ async def restore_backup(
                         errors.append(f"Preference {pref_data.get('username')}: {str(e)}")
             
             # 7. Restaurer les fichiers
-            if restore_files:
+            if restore_files_bool:
                 for file_data in data.get("uploaded_files", []):
                     try:
                         relative_path = file_data.get("relative_path")
@@ -508,6 +514,9 @@ async def restore_backup(
         raise HTTPException(status_code=400, detail="Le fichier uploadé n'est pas un ZIP valide")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Le fichier data.json est corrompu")
+    except HTTPException:
+        # Re-raise HTTPException sans les transformer
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur restauration: {e}")
         await db.rollback()

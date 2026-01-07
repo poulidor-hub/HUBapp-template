@@ -52,15 +52,37 @@ nano .env
 
 ### 2. Lancement avec Docker
 
-```bash
-# Démarrer le Hub d'abord (si pas déjà fait)
-# cd /path/to/hub && docker-compose up -d
+**Méthode recommandée** (détection automatique du Hub) :
 
-# Démarrer l'application
+```bash
+# Linux/macOS
+./start.sh
+
+# Windows (PowerShell)
+.\start.ps1
+```
+
+Le script détecte automatiquement si le réseau Hub existe et configure l'application en conséquence.
+
+**Commandes disponibles** :
+
+| Commande | Description |
+|----------|-------------|
+| `./start.sh` ou `./start.sh up` | Démarrer l'application |
+| `./start.sh down` | Arrêter l'application |
+| `./start.sh restart` | Redémarrer l'application |
+| `./start.sh logs` | Afficher les logs (suivis) |
+| `./start.sh build` | Reconstruire les images |
+| `./start.sh status` | Afficher l'état des services |
+
+**Méthode alternative** (docker-compose direct) :
+
+```bash
+# Si le Hub est démarré
 docker-compose up -d
 
-# Voir les logs
-docker-compose logs -f api
+# Si le Hub n'est pas démarré, définir les variables
+HUB_NETWORK_EXTERNAL=false docker-compose up -d
 ```
 
 ### 3. Accès
