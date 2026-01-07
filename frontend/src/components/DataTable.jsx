@@ -7,7 +7,7 @@ const CATEGORIES = ['general', 'infrastructure', 'stack', 'config', 'custom']
 
 function DataTable() {
   const config = useConfig()
-  const { token, isAuthenticated, userInfo } = useAuth()
+  const { token, isAuthenticated, hasMinRole } = useAuth()
   
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
@@ -191,8 +191,7 @@ function DataTable() {
   }
 
   // Vérifie si l'utilisateur peut modifier (rôle user+)
-  const canEdit = isAuthenticated && userInfo?.app_role && 
-    ['user', 'manager', 'admin'].includes(userInfo.app_role)
+  const canEdit = isAuthenticated && hasMinRole('user')
 
   return (
     <div className="card">
