@@ -175,17 +175,24 @@ class Settings(BaseSettings):
     @property
     def app_host(self) -> str:
         """
-        Host de cette application.
+        Host de cette application (auto-détecté si non spécifié).
         
-        - Si APP_HOST est défini : utilise APP_HOST (app sur serveur distant)
-        - Sinon : utilise le host du HUB (app sur même serveur que le HUB)
+        - Si APP_HOST est défini : utilise APP_HOST (configuration manuelle)
+        - Sinon : auto-détecte l'IP locale de la machine
+        
+        L'auto-détection fonctionne en créant une connexion UDP vers 8.8.8.8
+        pour déterminer l'interface réseau utilisée par défaut.
         """
-        return self.APP_HOST or self.hub_host
+        return self.APP_HOST or self.local_ip
     
     @property
     def is_remote_app(self) -> bool:
-        """True si cette application est sur un serveur distant (APP_HOST défini)."""
-        return bool(self.APP_HOST)
+        """
+        True si cette application est sur un serveur distant du Hub.
+        
+        Détecté automatiquement en comparant l'IP de l'app avec celle du Hub.
+        """
+        return self.app_host != self.hub_host
     
     @property
     def api_url(self) -> str:

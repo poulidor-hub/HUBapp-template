@@ -34,6 +34,8 @@
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+
 Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 ## 🔗 Accès à la documentation interactive

@@ -40,6 +40,7 @@ services:
       - APP_SLUG=${APP_SLUG}
       - APP_NAME=${APP_NAME}
       - APP_DESCRIPTION=${APP_DESCRIPTION}
+      - APP_HOST=${APP_HOST:-}
       - API_PORT=${API_PORT}
       - API_HTTPS_PORT=${API_HTTPS_PORT:-}
       - FRONTEND_PORT=${FRONTEND_PORT}
@@ -122,9 +123,19 @@ networks:
     name: ${APP_SLUG:-mon-app}-network
     driver: bridge
   
-  # Connexion au réseau existant du Hub (optionnel)
-  # Si le Hub est démarré, on utilise son réseau
-  # Sinon, on crée un réseau local temporaire
+  # Connexion au réseau du Hub
+  # ========================================
+  # MODES DE CONNEXION :
+  # 
+  # 1. App sur le MÊME HÔTE que le Hub (réseau Docker partagé) :
+  #    - HUB_NETWORK_EXTERNAL=true
+  #    - HUB_NETWORK_NAME=hub_hub-network
+  #
+  # 2. App sur un HÔTE DISTANT (réseau local/internet) :
+  #    - HUB_NETWORK_EXTERNAL=false (ou non défini)
+  #    - L'app contacte le Hub via son IP réseau (HUB_HOST)
+  #    - Configurer APP_WHITELIST_NETWORKS dans le Hub pour autoriser votre réseau
+  # ========================================
   hub_hub-network:
     external: ${HUB_NETWORK_EXTERNAL:-false}
     name: ${HUB_NETWORK_NAME:-hub_hub-network}
