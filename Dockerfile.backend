@@ -8,11 +8,12 @@ LABEL maintainer="HUBapp Template"
 
 WORKDIR /app
 
-# Dépendances système pour psycopg2 et ca-certificates
+# Dépendances système pour psycopg2, ca-certificates et healthcheck
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Créer le répertoire pour le certificat CA Hub
