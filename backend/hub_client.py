@@ -9,9 +9,12 @@ Fonctionnalités :
 - Thread-safety avec asyncio.Lock()
 - Découverte dynamique des services partagés (IS_SHARED)
 - Attente du certificat CA fourni par le Hub (si HTTPS activé)
+- Protection contre les enregistrements concurrents (multi-workers)
 """
 import httpx
 import asyncio
+import fcntl
+import os
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -31,6 +34,11 @@ DISCOVERED_SERVICES_CACHE_TTL = 60
 # Configuration attente certificat Hub
 CERT_WAIT_INTERVAL = 2  # secondes entre chaque vérification
 CERT_WAIT_TIMEOUT = 120  # timeout max en secondes (2 minutes)
+
+# Fichier de lock pour éviter les enregistrements concurrents entre workers
+REGISTER_LOCK_FILE = "/tmp/.hub_register.lock"
+# Fichier de credentials partagé entre workers
+CREDENTIALS_FILE = "/tmp/.hub_credentials"
 
 
 @dataclass
@@ -255,10 +263,40 @@ class HubClient:
         """Retourne les credentials M2M."""
         return self._credentials
     
+    def _save_credentials_to_file(self) -> None:
+        """Sauvegarde les credentials dans un fichier partagé entre workers."""
+        if self._credentials:
+            try:
+                with open(CREDENTIALS_FILE, 'w') as f:
+                    f.write(f"{self._credentials.client_id}\n{self._credentials.client_secret}")
+                logger.debug(f"💾 Credentials sauvegardés dans {CREDENTIALS_FILE}")
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de sauvegarder les credentials: {e}")
+    
+    def _load_credentials_from_file(self) -> bool:
+        """Charge les credentials depuis le fichier partagé."""
+        try:
+            if os.path.exists(CREDENTIALS_FILE):
+                with open(CREDENTIALS_FILE, 'r') as f:
+                    lines = f.read().strip().split('\n')
+                    if len(lines) >= 2:
+                        self._credentials = HubCredentials(
+                            client_id=lines[0],
+                            client_secret=lines[1]
+                        )
+                        logger.info(f"📂 Credentials chargés depuis {CREDENTIALS_FILE}")
+                        return True
+        except Exception as e:
+            logger.debug(f"Pas de credentials en cache: {e}")
+        return False
+    
     async def register(self) -> bool:
         """
         Auto-enregistrement auprès du Hub.
         À appeler au démarrage de l'application.
+        
+        Utilise un lock fichier pour éviter que plusieurs workers
+        ne s'enregistrent simultanément.
         
         Note: Attend automatiquement le certificat CA si HTTPS est activé.
         """
@@ -269,6 +307,48 @@ class HubClient:
                 logger.error("Impossible de s'enregistrer: certificat CA du Hub non disponible")
                 return False
         
+        # Essayer de charger les credentials depuis le fichier partagé
+        # (un autre worker a peut-être déjà fait l'enregistrement)
+        if self._load_credentials_from_file():
+            return True
+        
+        # Utiliser un lock fichier pour éviter les enregistrements concurrents
+        lock_file = None
+        try:
+            lock_file = open(REGISTER_LOCK_FILE, 'w')
+            # Non-blocking lock - si on ne peut pas l'obtenir, un autre worker est en train de s'enregistrer
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (IOError, OSError):
+                # Un autre worker a le lock, attendre qu'il finisse
+                logger.info("⏳ Enregistrement en cours par un autre worker, attente...")
+                await asyncio.sleep(2)  # Attendre un peu
+                # Réessayer de charger les credentials
+                if self._load_credentials_from_file():
+                    return True
+                # Sinon, attendre le lock
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                # Revérifier si les credentials sont disponibles
+                if self._load_credentials_from_file():
+                    return True
+            
+            # On a le lock, vérifier une dernière fois si les credentials existent
+            if self._load_credentials_from_file():
+                return True
+            
+            # Faire l'enregistrement
+            return await self._do_register()
+            
+        finally:
+            if lock_file:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    lock_file.close()
+                except:
+                    pass
+    
+    async def _do_register(self) -> bool:
+        """Effectue l'enregistrement réel auprès du Hub."""
         try:
             async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
                 # Construire le payload avec les ports HTTPS si disponibles
@@ -311,6 +391,8 @@ class HubClient:
                         client_id=creds["client_id"],
                         client_secret=creds["client_secret"]
                     )
+                    # Sauvegarder pour les autres workers
+                    self._save_credentials_to_file()
                     logger.info(f"✅ Application '{self.settings.APP_SLUG}' {'enregistrée' if is_new else 'reconnectée'} au Hub")
                     return True
                 elif response.status_code == 409:
@@ -348,6 +430,8 @@ class HubClient:
                         )
                         self._last_resync_attempt = datetime.utcnow()
                         self._resync_count += 1
+                        # Sauvegarder pour les autres workers
+                        self._save_credentials_to_file()
                         logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}' (resync #{self._resync_count})")
                         logger.debug(f"   Client ID: {self._credentials.client_id}")
                         return True

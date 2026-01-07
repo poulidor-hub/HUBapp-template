@@ -9,7 +9,9 @@ from typing import Optional, Callable
 from functools import wraps
 from dataclasses import dataclass
 from enum import IntEnum
+from pathlib import Path
 import logging
+import ssl
 
 from config import get_settings
 from hub_client import hub_client
@@ -82,13 +84,58 @@ class HubAuth:
         self.settings = get_settings()
         self._jwk_client: Optional[PyJWKClient] = None
         self._public_key: Optional[str] = None
+        self._ssl_context: Optional[ssl.SSLContext] = None
+    
+    def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
+        """
+        Crée un contexte SSL avec le certificat CA du Hub si HTTPS est activé.
+        
+        Returns:
+            SSLContext configuré ou None si HTTPS désactivé
+        """
+        if not self.settings.HUB_HTTPS_ENABLED:
+            return None
+        
+        ssl_context = ssl.create_default_context()
+        
+        # Charger le certificat CA si disponible
+        if self.settings.HUB_CA_CERT_PATH:
+            ca_path = Path(self.settings.HUB_CA_CERT_PATH)
+            if ca_path.exists():
+                ssl_context.load_verify_locations(str(ca_path))
+                logger.debug(f"✅ Certificat CA chargé pour JWKS: {ca_path}")
+            else:
+                # Essayer le certificat système installé par update-ca-certificates
+                system_cert = Path("/usr/local/share/ca-certificates/hub-ca.crt")
+                if system_cert.exists():
+                    ssl_context.load_verify_locations(str(system_cert))
+                    logger.debug(f"✅ Certificat CA système chargé pour JWKS: {system_cert}")
+                else:
+                    logger.warning(f"⚠️ Certificat CA non trouvé: {ca_path}")
+        
+        return ssl_context
     
     async def initialize(self):
         """Initialise le client JWKS."""
         try:
             jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
-            self._jwk_client = PyJWKClient(jwks_url)
-            logger.info(f"✅ Client JWKS initialisé: {jwks_url}")
+            
+            # Créer le contexte SSL si HTTPS activé
+            self._ssl_context = self._create_ssl_context()
+            
+            if self._ssl_context:
+                # Créer un PyJWKClient avec contexte SSL personnalisé
+                self._jwk_client = PyJWKClient(
+                    jwks_url,
+                    ssl_context=self._ssl_context,
+                    timeout=10  # Timeout de 10 secondes
+                )
+                logger.info(f"✅ Client JWKS initialisé (HTTPS): {jwks_url}")
+            else:
+                # Mode HTTP standard
+                self._jwk_client = PyJWKClient(jwks_url, timeout=10)
+                logger.info(f"✅ Client JWKS initialisé: {jwks_url}")
+                
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'initialiser JWKS, fallback sur clé PEM: {e}")
             # Fallback sur la clé PEM
