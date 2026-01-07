@@ -122,7 +122,9 @@ networks:
     name: ${APP_SLUG:-mon-app}-network
     driver: bridge
   
-  # Connexion au réseau existant du Hub
-  # Le Hub doit être démarré avant cette application
+  # Connexion au réseau existant du Hub (optionnel)
+  # Si le Hub est démarré, on utilise son réseau
+  # Sinon, on crée un réseau local temporaire
   hub_hub-network:
-    external: true
+    external: ${HUB_NETWORK_EXTERNAL:-false}
+    name: ${HUB_NETWORK_NAME:-hub_hub-network}
