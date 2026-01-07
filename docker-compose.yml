@@ -55,11 +55,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - DEBUG=${DEBUG:-false}
       - IS_SHARED=${IS_SHARED:-false}
-      - HUB_HTTPS_ENABLED=${HUB_HTTPS_ENABLED:-false}
       - HUB_HTTPS_PORT=${HUB_HTTPS_PORT:-443}
-      - HUB_CA_CERT_PATH=${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}
-      - APP_SSL_CERT_PATH=${APP_SSL_CERT_PATH:-/app/certs/server/mon-app/app.crt}
-      - APP_SSL_KEY_PATH=${APP_SSL_KEY_PATH:-/app/certs/server/mon-app/app.key}
       - UPLOADS_DIR=/app/uploads
     volumes:
       - uploads_data:/app/uploads

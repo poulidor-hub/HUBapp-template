@@ -86,32 +86,28 @@ class HubAuth:
         self._public_key: Optional[str] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
     
-    def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
+    def _create_ssl_context(self) -> ssl.SSLContext:
         """
-        Crée un contexte SSL avec le certificat CA du Hub si HTTPS est activé.
+        Crée un contexte SSL avec le certificat CA du Hub.
         
         Returns:
-            SSLContext configuré ou None si HTTPS désactivé
+            SSLContext configuré
         """
-        if not self.settings.HUB_HTTPS_ENABLED:
-            return None
-        
         ssl_context = ssl.create_default_context()
         
         # Charger le certificat CA si disponible
-        if self.settings.HUB_CA_CERT_PATH:
-            ca_path = Path(self.settings.HUB_CA_CERT_PATH)
-            if ca_path.exists():
-                ssl_context.load_verify_locations(str(ca_path))
-                logger.debug(f"✅ Certificat CA chargé pour JWKS: {ca_path}")
+        ca_path = Path(self.settings.HUB_CA_CERT_PATH)
+        if ca_path.exists():
+            ssl_context.load_verify_locations(str(ca_path))
+            logger.debug(f"✅ Certificat CA chargé pour JWKS: {ca_path}")
+        else:
+            # Essayer le certificat système installé par update-ca-certificates
+            system_cert = Path("/usr/local/share/ca-certificates/hub-ca.crt")
+            if system_cert.exists():
+                ssl_context.load_verify_locations(str(system_cert))
+                logger.debug(f"✅ Certificat CA système chargé pour JWKS: {system_cert}")
             else:
-                # Essayer le certificat système installé par update-ca-certificates
-                system_cert = Path("/usr/local/share/ca-certificates/hub-ca.crt")
-                if system_cert.exists():
-                    ssl_context.load_verify_locations(str(system_cert))
-                    logger.debug(f"✅ Certificat CA système chargé pour JWKS: {system_cert}")
-                else:
-                    logger.warning(f"⚠️ Certificat CA non trouvé: {ca_path}")
+                logger.warning(f"⚠️ Certificat CA non trouvé: {ca_path}")
         
         return ssl_context
     

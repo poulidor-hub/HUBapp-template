@@ -85,19 +85,18 @@ L'application supporte **deux modes** pour obtenir le certificat CA du Hub :
 
 ### Variables d'environnement
 
-Ajouter ces variables dans le fichier `.env` :
+La communication HTTPS est **toujours activée** par défaut. Seul le port peut être modifié si nécessaire :
 
 ```bash
 # === HTTPS / SSL ===
-# Activer HTTPS pour communiquer avec le Hub
-HUB_HTTPS_ENABLED=true
-
 # Port HTTPS du Hub (443 par défaut)
 HUB_HTTPS_PORT=443
-
-# Chemin vers le certificat CA du Hub (dans le conteneur)
-HUB_CA_CERT_PATH=/app/certs/hub-ca.crt
 ```
+
+> **Note** : Les chemins des certificats sont fixés dans le code pour garantir une configuration sécurisée :
+> - CA du Hub : `/app/certs/hub-ca.crt`
+> - Certificat de l'app : `/app/certs/server/mon-app/app.crt`
+> - Clé privée de l'app : `/app/certs/server/mon-app/app.key`
 
 ### Placement du certificat
 
@@ -136,9 +135,7 @@ mon-projet/
 services:
   api:
     environment:
-      - HUB_HTTPS_ENABLED=${HUB_HTTPS_ENABLED:-false}
       - HUB_HTTPS_PORT=${HUB_HTTPS_PORT:-443}
-      - HUB_CA_CERT_PATH=${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}
     volumes:
       # Dossier des certificats (le Hub y dépose hub-ca.crt dynamiquement)
       - ./certs:/app/certs:ro
@@ -170,18 +167,17 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 #!/bin/bash
 set -e
 
-CA_CERT_PATH="${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}"
+CA_CERT_PATH="/app/certs/hub-ca.crt"
 
-if [ "$HUB_HTTPS_ENABLED" = "true" ]; then
-    if [ -f "$CA_CERT_PATH" ] && [ -s "$CA_CERT_PATH" ]; then
-        echo "🔐 Installation du certificat CA du Hub dans le système..."
-        cp "$CA_CERT_PATH" /usr/local/share/ca-certificates/hub-ca.crt
-        update-ca-certificates > /dev/null 2>&1
-        echo "✅ Certificat CA installé avec succès"
-    else
-        echo "⚠️ HTTPS activé mais certificat CA non disponible"
-        echo "   L'application va attendre le certificat au démarrage..."
-    fi
+# HTTPS est toujours activé
+if [ -f "$CA_CERT_PATH" ] && [ -s "$CA_CERT_PATH" ]; then
+    echo "🔐 Installation du certificat CA du Hub dans le système..."
+    cp "$CA_CERT_PATH" /usr/local/share/ca-certificates/hub-ca.crt
+    update-ca-certificates > /dev/null 2>&1
+    echo "✅ Certificat CA installé avec succès"
+else
+    echo "⚠️ Certificat CA non disponible: $CA_CERT_PATH"
+    echo "   L'application va attendre le certificat au démarrage..."
 fi
 
 exec uvicorn main:app --host 0.0.0.0 --port 8000
@@ -191,51 +187,44 @@ exec uvicorn main:app --host 0.0.0.0 --port 8000
 
 ```python
 class Settings(BaseSettings):
-    # === HTTPS / SSL ===
-    HUB_HTTPS_ENABLED: bool = False
+    # === HTTPS / SSL (toujours activé) ===
     HUB_HTTPS_PORT: int = 443
-    HUB_CA_CERT_PATH: Optional[str] = None
+    
+    # Chemins fixes des certificats SSL (fournis par le Hub)
+    HUB_CA_CERT_PATH: str = "/app/certs/hub-ca.crt"
+    APP_SSL_CERT_PATH: str = "/app/certs/server/mon-app/app.crt"
+    APP_SSL_KEY_PATH: str = "/app/certs/server/mon-app/app.key"
     
     @property
     def hub_api_url(self) -> str:
-        """URL complète de l'API Hub (HTTP ou HTTPS)."""
-        if self.HUB_HTTPS_ENABLED:
-            port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
-            return f"https://{self.hub_host}{port}"
-        return f"http://{self.hub_host}:{self.HUB_API_PORT}"
+        """URL complète de l'API Hub (toujours HTTPS)."""
+        port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
+        return f"https://{self.hub_host}{port}"
     
     @property
-    def hub_ssl_verify(self) -> Union[str, bool]:
+    def hub_ssl_verify(self) -> str:
         """
         Certificat CA pour vérifier le Hub en HTTPS.
         
         ⚠️ SÉCURITÉ : La communication non certifiée est INTERDITE.
-        Une RuntimeError est levée si HTTPS est activé sans certificat CA valide.
+        Une RuntimeError est levée si le certificat CA n'est pas disponible.
         """
-        if self.HUB_HTTPS_ENABLED:
-            if self.HUB_CA_CERT_PATH:
-                ca_path = Path(self.HUB_CA_CERT_PATH)
-                if ca_path.exists():
-                    return str(ca_path)
-            # REFUSER la communication si le certificat n'est pas disponible
-            raise RuntimeError(
-                "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
-                "La communication non certifiée par le Hub n'est pas autorisée."
-            )
-        return True  # HTTP = pas de SSL
+        ca_path = Path(self.HUB_CA_CERT_PATH)
+        if ca_path.exists():
+            return str(ca_path)
+        raise RuntimeError(
+            "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
+            "La communication non certifiée par le Hub n'est pas autorisée."
+        )
     
     def is_hub_certificate_available(self) -> bool:
         """Vérifie si le certificat CA du Hub est disponible."""
-        if not self.HUB_HTTPS_ENABLED:
-            return True
-        if not self.HUB_CA_CERT_PATH:
-            return False
         return Path(self.HUB_CA_CERT_PATH).exists()
 ```
 
-> **🔒 Politique de sécurité** : Depuis la version actuelle, la communication avec le Hub 
-> est **refusée** si le certificat CA n'est pas disponible. Il n'est plus possible de 
-> contourner la vérification SSL. Cela protège contre les attaques man-in-the-middle.
+> **🔒 Politique de sécurité** : La communication avec le Hub est **toujours en HTTPS**.
+> Il n'est pas possible de désactiver la vérification SSL. Cela protège contre les 
+> attaques man-in-the-middle.
 
 ### backend/hub_client.py
 
@@ -253,13 +242,6 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
     ou que le timeout soit atteint.
     """
     settings = get_settings()
-    
-    if not settings.HUB_HTTPS_ENABLED:
-        return True  # Pas besoin d'attendre si HTTPS désactivé
-    
-    if not settings.HUB_CA_CERT_PATH:
-        logger.warning("HUB_CA_CERT_PATH non configuré mais HTTPS activé")
-        return False
     
     cert_path = Path(settings.HUB_CA_CERT_PATH)
     elapsed = 0
@@ -289,12 +271,10 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  1. entrypoint.sh                                                   │
-│     ├── HUB_HTTPS_ENABLED=true ?                                    │
-│     │   ├── OUI: Certificat présent ?                               │
-│     │   │   ├── OUI: Copie vers /usr/local/share/ca-certificates/  │
-│     │   │   │        + update-ca-certificates                       │
-│     │   │   └── NON: Log warning, continue                         │
-│     │   └── NON: Pas d'action SSL                                  │
+│     ├── Certificat CA présent dans /app/certs/hub-ca.crt ?         │
+│     │   ├── OUI: Copie vers /usr/local/share/ca-certificates/     │
+│     │   │        + update-ca-certificates                          │
+│     │   └── NON: Log warning, continue                             │
 │     └── Lance: uvicorn main:app                                    │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -307,12 +287,11 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  3. hub_client.py - register()                                      │
-│     ├── HUB_HTTPS_ENABLED=true ?                                    │
-│     │   └── OUI: wait_for_hub_certificate()                        │
-│     │       ├── Attend jusqu'à 120s que /app/certs/hub-ca.crt      │
-│     │       │   soit présent et non vide                            │
-│     │       ├── Installe au niveau système (backup)                │
-│     │       └── Retourne True/False                                │
+│     ├── wait_for_hub_certificate()                                 │
+│     │   ├── Attend jusqu'à 120s que /app/certs/hub-ca.crt           │
+│     │   │   soit présent et non vide                                │
+│     │   ├── Installe au niveau système (backup)                     │
+│     │   └── Retourne True/False                                    │
 │     └── httpx.AsyncClient(verify=settings.hub_ssl_verify)          │
 │         └── POST https://hub/api/apps/register                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -404,24 +383,11 @@ docker compose logs api | grep -E "(🔐|✅|⚠️|❌|SSL|certificate|HTTPS)"
 # ✅ Application 'mon-app' enregistrée au Hub
 ```
 
-### Mode dégradé (HTTP)
-
-Pour désactiver temporairement HTTPS et revenir en HTTP :
-
-```bash
-# Dans .env
-HUB_HTTPS_ENABLED=false
-HUB_API_PORT=8000
-HUB_FRONTEND_PORT=80
-```
-
 ---
 
 ## Checklist de déploiement
 
-- [ ] `HUB_HTTPS_ENABLED=true` dans `.env`
-- [ ] `HUB_HTTPS_PORT=443` (port HTTPS du Hub)
-- [ ] `HUB_CA_CERT_PATH=/app/certs/hub-ca.crt`
+- [ ] `HUB_HTTPS_PORT=443` (ou autre port HTTPS du Hub)
 - [ ] Dossier `./certs/` existant avec `.gitkeep`
 - [ ] Certificat `hub-ca.crt` présent dans `./certs/` (fourni par le Hub)
 - [ ] Volume monté : `./certs:/app/certs:ro` dans `docker-compose.yml`
@@ -429,13 +395,13 @@ HUB_FRONTEND_PORT=80
 
 ---
 
-## Résumé des modifications (commit 86d7426)
+## Résumé des modifications
 
 | Fichier | Modification |
 |---------|--------------|
 | `Dockerfile.backend` | Ajout `ca-certificates`, `ENTRYPOINT` vers `entrypoint.sh` |
-| `backend/entrypoint.sh` | Nouveau script d'installation du certificat au démarrage |
-| `backend/config.py` | Variables `HUB_HTTPS_*`, propriétés `hub_ssl_verify`, `is_hub_certificate_available` |
+| `backend/entrypoint.sh` | Script d'installation du certificat au démarrage (HTTPS toujours actif) |
+| `backend/config.py` | Variables `HUB_HTTPS_PORT` et chemins SSL fixes, propriétés `hub_ssl_verify`, `is_hub_certificate_available` |
 | `backend/hub_client.py` | Fonction `wait_for_hub_certificate()` avec installation système |
-| `docker-compose.yml` | Variables d'environnement HTTPS, volume `./certs:/app/certs:ro` |
+| `docker-compose.yml` | Variable `HUB_HTTPS_PORT`, volume `./certs:/app/certs:ro` |
 | `certs/.gitkeep` | Garde le dossier dans Git |

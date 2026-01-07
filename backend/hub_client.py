@@ -163,23 +163,12 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
         True si le certificat est disponible, False si timeout atteint
     
     Note: 
-        - Si HTTPS n'est pas activé, retourne immédiatement True
         - Appelée automatiquement par HubClient.register() si nécessaire
     """
     import subprocess
     import shutil
     
     settings = get_settings()
-    
-    # Pas besoin d'attendre si HTTPS désactivé
-    if not settings.HUB_HTTPS_ENABLED:
-        logger.debug("HTTPS désactivé, pas d'attente du certificat CA")
-        return True
-    
-    # Pas de chemin configuré
-    if not settings.HUB_CA_CERT_PATH:
-        logger.warning("HUB_CA_CERT_PATH non configuré mais HTTPS activé")
-        return False
     
     cert_path = Path(settings.HUB_CA_CERT_PATH)
     system_cert_path = Path("/usr/local/share/ca-certificates/hub-ca.crt")
@@ -298,14 +287,13 @@ class HubClient:
         Utilise un lock fichier pour éviter que plusieurs workers
         ne s'enregistrent simultanément.
         
-        Note: Attend automatiquement le certificat CA si HTTPS est activé.
+        Note: Attend automatiquement le certificat CA du Hub.
         """
-        # Attendre le certificat CA si HTTPS activé
-        if self.settings.HUB_HTTPS_ENABLED:
-            cert_available = await wait_for_hub_certificate()
-            if not cert_available:
-                logger.error("Impossible de s'enregistrer: certificat CA du Hub non disponible")
-                return False
+        # Attendre le certificat CA du Hub
+        cert_available = await wait_for_hub_certificate()
+        if not cert_available:
+            logger.error("Impossible de s'enregistrer: certificat CA du Hub non disponible")
+            return False
         
         # Essayer de charger les credentials depuis le fichier partagé
         # (un autre worker a peut-être déjà fait l'enregistrement)

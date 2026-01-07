@@ -84,7 +84,7 @@ APP_DESCRIPTION=Description de l'application
 
 # === HUB ===
 HUB_HOST=192.0.2.11          # IP du Hub
-HUB_API_PORT=8000               # Port API du Hub (HTTP)
+HUB_API_PORT=8000               # Port API du Hub (HTTP legacy)
 HUB_HTTPS_PORT=443              # Port HTTPS du Hub
 
 # === PORTS DE CETTE APPLICATION ===
@@ -92,10 +92,6 @@ API_PORT=9045                   # Port HTTP de l'API
 FRONTEND_PORT=4250              # Port HTTP du frontend
 API_HTTPS_PORT=9046             # Port HTTPS de l'API (optionnel)
 FRONTEND_HTTPS_PORT=4251        # Port HTTPS du frontend (optionnel)
-
-# === HTTPS (recommandé) ===
-HUB_HTTPS_ENABLED=true
-HUB_CA_CERT_PATH=/app/certs/hub-ca.crt
 
 # === DATABASE ===
 POSTGRES_HOST=mon-app-postgres

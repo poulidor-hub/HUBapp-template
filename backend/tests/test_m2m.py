@@ -69,21 +69,17 @@ class TestHTTPSConfiguration:
     
     def test_hub_https_url_construction(self, settings):
         """Vérifie la construction des URLs HTTPS du Hub."""
-        # Simuler HTTPS activé
-        original_https = settings.HUB_HTTPS_ENABLED
         original_port = settings.HUB_HTTPS_PORT
         
         try:
-            settings.HUB_HTTPS_ENABLED = True
             settings.HUB_HTTPS_PORT = 443
             
-            # Vérifier l'URL du Hub API
+            # Vérifier l'URL du Hub API (toujours HTTPS)
             hub_api_url = settings.hub_api_url
             assert hub_api_url.startswith("https://")
             # Port 443 ne doit pas apparaître dans l'URL
             assert ":443" not in hub_api_url or hub_api_url.count(":") == 1
         finally:
-            settings.HUB_HTTPS_ENABLED = original_https
             settings.HUB_HTTPS_PORT = original_port
     
     def test_app_https_url_construction(self, settings):
@@ -110,14 +106,10 @@ class TestHTTPSConfiguration:
     
     def test_ssl_verify_property(self, settings):
         """Vérifie la propriété hub_ssl_verify."""
-        if not settings.HUB_HTTPS_ENABLED:
-            # En mode HTTP, pas de vérification SSL
-            assert settings.hub_ssl_verify == True
-        else:
-            # En mode HTTPS avec CA configuré, utilise le chemin du CA
-            if settings.is_hub_certificate_available():
-                ssl_verify = settings.hub_ssl_verify
-                assert ssl_verify == settings.HUB_CA_CERT_PATH or ssl_verify == True
+        # En mode HTTPS (toujours activé) avec CA configuré, utilise le chemin du CA
+        if settings.is_hub_certificate_available():
+            ssl_verify = settings.hub_ssl_verify
+            assert ssl_verify == settings.HUB_CA_CERT_PATH
 
 
 class TestM2MEndpoints:

@@ -30,29 +30,27 @@ if [ -z "$APP_HOST" ]; then
 fi
 
 # === Installation du certificat CA du Hub (si présent) ===
-CA_CERT_PATH="${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}"
+CA_CERT_PATH="/app/certs/hub-ca.crt"
 
-if [ "$HUB_HTTPS_ENABLED" = "true" ]; then
-    if [ -f "$CA_CERT_PATH" ] && [ -s "$CA_CERT_PATH" ]; then
-        echo -e "${GREEN}🔐 Installation du certificat CA du Hub dans le système...${NC}"
-        
-        # Copier le certificat dans le répertoire système
-        cp "$CA_CERT_PATH" /usr/local/share/ca-certificates/hub-ca.crt
-        
-        # Mettre à jour les certificats du système
-        update-ca-certificates > /dev/null 2>&1
-        
-        echo -e "${GREEN}✅ Certificat CA installé avec succès${NC}"
-    else
-        echo -e "${YELLOW}⚠️ HTTPS activé mais certificat CA non disponible: $CA_CERT_PATH${NC}"
-        echo -e "${YELLOW}   L'application va attendre le certificat au démarrage...${NC}"
-    fi
+if [ -f "$CA_CERT_PATH" ] && [ -s "$CA_CERT_PATH" ]; then
+    echo -e "${GREEN}🔐 Installation du certificat CA du Hub dans le système...${NC}"
+    
+    # Copier le certificat dans le répertoire système
+    cp "$CA_CERT_PATH" /usr/local/share/ca-certificates/hub-ca.crt
+    
+    # Mettre à jour les certificats du système
+    update-ca-certificates > /dev/null 2>&1
+    
+    echo -e "${GREEN}✅ Certificat CA installé avec succès${NC}"
+else
+    echo -e "${YELLOW}⚠️ Certificat CA non disponible: $CA_CERT_PATH${NC}"
+    echo -e "${YELLOW}   L'application va attendre le certificat au démarrage...${NC}"
 fi
 
 # === Démarrage de l'application ===
 # Vérifier si les certificats SSL de l'application sont disponibles pour HTTPS
-SSL_CERT="${APP_SSL_CERT_PATH:-/app/certs/server/mon-app/app.crt}"
-SSL_KEY="${APP_SSL_KEY_PATH:-/app/certs/server/mon-app/app.key}"
+SSL_CERT="/app/certs/server/mon-app/app.crt"
+SSL_KEY="/app/certs/server/mon-app/app.key"
 
 if [ -n "$API_HTTPS_PORT" ] && [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
     echo -e "${GREEN}🔒 Certificats SSL trouvés, démarrage HTTPS sur le port 8443...${NC}"

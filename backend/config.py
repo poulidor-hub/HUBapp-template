@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from typing import Optional, Union
+from typing import Optional
 
 
 def get_app_version() -> str:
@@ -133,14 +133,13 @@ class Settings(BaseSettings):
     HUB_API_PORT: int = 8000
     HUB_FRONTEND_PORT: int = 80
     
-    # === HTTPS / SSL ===
-    HUB_HTTPS_ENABLED: bool = False
+    # === HTTPS / SSL (toujours activé) ===
     HUB_HTTPS_PORT: int = 443
-    HUB_CA_CERT_PATH: Optional[str] = None
     
-    # Certificats SSL de cette application (si API_HTTPS_PORT est défini)
-    APP_SSL_CERT_PATH: Optional[str] = None
-    APP_SSL_KEY_PATH: Optional[str] = None
+    # Chemins fixes des certificats SSL (fournis par le Hub)
+    HUB_CA_CERT_PATH: str = "/app/certs/hub-ca.crt"
+    APP_SSL_CERT_PATH: str = "/app/certs/server/mon-app/app.crt"
+    APP_SSL_KEY_PATH: str = "/app/certs/server/mon-app/app.key"
     
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
@@ -167,7 +166,7 @@ class Settings(BaseSettings):
             return None
         return int(v)
     
-    @field_validator('APP_HOST', 'HUB_HOST', 'HUB_CA_CERT_PATH', 'APP_SSL_CERT_PATH', 'APP_SSL_KEY_PATH', mode='before')
+    @field_validator('APP_HOST', 'HUB_HOST', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):
         """Convertit les chaînes vides en None pour les chaînes optionnelles."""
@@ -192,55 +191,43 @@ class Settings(BaseSettings):
     
     @property
     def hub_api_url(self) -> str:
-        """URL complète de l'API Hub (HTTP ou HTTPS)."""
-        if self.HUB_HTTPS_ENABLED:
-            port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
-            return f"https://{self.hub_host}{port}"
-        return f"http://{self.hub_host}:{self.HUB_API_PORT}"
+        """URL complète de l'API Hub (toujours HTTPS)."""
+        port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
+        return f"https://{self.hub_host}{port}"
     
     @property
     def hub_frontend_url(self) -> str:
-        """URL complète du frontend Hub (HTTP ou HTTPS)."""
-        if self.HUB_HTTPS_ENABLED:
-            port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
-            return f"https://{self.hub_host}{port}"
-        return f"http://{self.hub_host}:{self.HUB_FRONTEND_PORT}"
+        """URL complète du frontend Hub (toujours HTTPS)."""
+        port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
+        return f"https://{self.hub_host}{port}"
     
     @property
-    def hub_ssl_verify(self) -> Union[str, bool]:
+    def hub_ssl_verify(self) -> str:
         """
         Certificat CA pour vérifier le Hub en HTTPS.
         
         Retourne:
-        - Chemin du CA si HTTPS activé et CA configuré et présent
-        - True si HTTP (pas de vérification SSL nécessaire)
+        - Chemin du CA si le certificat est présent
         
         Raises:
-            RuntimeError: Si HTTPS est activé mais le certificat CA n'est pas disponible.
+            RuntimeError: Si le certificat CA n'est pas disponible.
                          La communication non certifiée n'est PAS autorisée.
         
         Note: Le certificat est fourni dynamiquement par le Hub.
-        Utiliser wait_for_hub_certificate() au démarrage si HTTPS est activé.
+        Utiliser wait_for_hub_certificate() au démarrage.
         """
-        if self.HUB_HTTPS_ENABLED:
-            if self.HUB_CA_CERT_PATH:
-                ca_path = Path(self.HUB_CA_CERT_PATH)
-                if ca_path.exists():
-                    return str(ca_path)
-            # HTTPS sans CA = REFUSER la communication (sécurité obligatoire)
-            raise RuntimeError(
-                "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
-                "La communication non certifiée par le Hub n'est pas autorisée. "
-                f"Vérifiez que HUB_CA_CERT_PATH={self.HUB_CA_CERT_PATH} existe."
-            )
-        return True  # HTTP = pas de SSL
+        ca_path = Path(self.HUB_CA_CERT_PATH)
+        if ca_path.exists():
+            return str(ca_path)
+        # Sans CA = REFUSER la communication (sécurité obligatoire)
+        raise RuntimeError(
+            "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
+            "La communication non certifiée par le Hub n'est pas autorisée. "
+            f"Vérifiez que {self.HUB_CA_CERT_PATH} existe."
+        )
     
     def is_hub_certificate_available(self) -> bool:
         """Vérifie si le certificat CA du Hub est disponible."""
-        if not self.HUB_HTTPS_ENABLED:
-            return True  # Pas besoin de certificat en HTTP
-        if not self.HUB_CA_CERT_PATH:
-            return False
         return Path(self.HUB_CA_CERT_PATH).exists()
     
     @property

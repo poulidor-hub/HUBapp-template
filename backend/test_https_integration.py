@@ -15,10 +15,10 @@ Usage:
 
 Variables d'environnement requises:
     - HUB_HOST: IP/hostname du Hub
-    - HUB_HTTPS_ENABLED: true pour activer HTTPS
     - HUB_HTTPS_PORT: Port HTTPS (défaut: 443)
-    - HUB_CA_CERT_PATH: Chemin du certificat CA
     - APP_SLUG: Slug de l'application
+    
+Note: HTTPS est toujours activé, le certificat CA est attendu dans /app/certs/hub-ca.crt
 """
 
 import os
@@ -40,20 +40,16 @@ def get_config():
     """Récupère la configuration depuis les variables d'environnement."""
     return {
         "hub_host": os.getenv("HUB_HOST", "localhost"),
-        "hub_https_enabled": os.getenv("HUB_HTTPS_ENABLED", "false").lower() in ("true", "1", "yes"),
         "hub_https_port": int(os.getenv("HUB_HTTPS_PORT", "443")),
-        "hub_api_port": int(os.getenv("HUB_API_PORT", "8000")),
-        "hub_ca_cert_path": os.getenv("HUB_CA_CERT_PATH", "/app/certs/hub-ca.crt"),
+        "hub_ca_cert_path": "/app/certs/hub-ca.crt",
         "app_slug": os.getenv("APP_SLUG", "test-app"),
     }
 
 
 def get_hub_url(config: dict) -> str:
-    """Construit l'URL du Hub."""
-    if config["hub_https_enabled"]:
-        port = f":{config['hub_https_port']}" if config["hub_https_port"] != 443 else ""
-        return f"https://{config['hub_host']}{port}"
-    return f"http://{config['hub_host']}:{config['hub_api_port']}"
+    """Construit l'URL du Hub (toujours HTTPS)."""
+    port = f":{config['hub_https_port']}" if config["hub_https_port"] != 443 else ""
+    return f"https://{config['hub_host']}{port}"
 
 
 async def test_certificate(config: dict) -> bool:
@@ -61,10 +57,6 @@ async def test_certificate(config: dict) -> bool:
     print("\n" + "="*60)
     print("🔐 TEST 1: Vérification du certificat CA")
     print("="*60)
-    
-    if not config["hub_https_enabled"]:
-        print("ℹ️  HTTPS désactivé, test ignoré")
-        return True
     
     ca_path = Path(config["hub_ca_cert_path"])
     
@@ -99,13 +91,12 @@ async def test_https_connection(config: dict) -> bool:
     
     # Configurer la vérification SSL
     ssl_verify: bool | str = True
-    if config["hub_https_enabled"]:
-        ca_path = config["hub_ca_cert_path"]
-        if Path(ca_path).exists():
-            ssl_verify = ca_path
-            print(f"   CA: {ca_path}")
-        else:
-            print("⚠️  CA non trouvé, utilisation du store système")
+    ca_path = config["hub_ca_cert_path"]
+    if Path(ca_path).exists():
+        ssl_verify = ca_path
+        print(f"   CA: {ca_path}")
+    else:
+        print("⚠️  CA non trouvé, utilisation du store système")
     
     try:
         async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
@@ -143,10 +134,9 @@ async def test_jwks(config: dict) -> bool:
     
     # Configurer la vérification SSL
     ssl_verify: bool | str = True
-    if config["hub_https_enabled"]:
-        ca_path = config["hub_ca_cert_path"]
-        if Path(ca_path).exists():
-            ssl_verify = ca_path
+    ca_path = config["hub_ca_cert_path"]
+    if Path(ca_path).exists():
+        ssl_verify = ca_path
     
     try:
         async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
@@ -184,10 +174,9 @@ async def test_app_register(config: dict) -> bool:
     
     # Configurer la vérification SSL
     ssl_verify: bool | str = True
-    if config["hub_https_enabled"]:
-        ca_path = config["hub_ca_cert_path"]
-        if Path(ca_path).exists():
-            ssl_verify = ca_path
+    ca_path = config["hub_ca_cert_path"]
+    if Path(ca_path).exists():
+        ssl_verify = ca_path
     
     try:
         async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
@@ -233,12 +222,8 @@ async def main():
     
     print(f"\n📋 Configuration:")
     print(f"   HUB_HOST: {config['hub_host']}")
-    print(f"   HUB_HTTPS_ENABLED: {config['hub_https_enabled']}")
-    if config['hub_https_enabled']:
-        print(f"   HUB_HTTPS_PORT: {config['hub_https_port']}")
-        print(f"   HUB_CA_CERT_PATH: {config['hub_ca_cert_path']}")
-    else:
-        print(f"   HUB_API_PORT: {config['hub_api_port']}")
+    print(f"   HUB_HTTPS_PORT: {config['hub_https_port']}")
+    print(f"   HUB_CA_CERT_PATH: {config['hub_ca_cert_path']}")
     print(f"   APP_SLUG: {config['app_slug']}")
     
     results = []
