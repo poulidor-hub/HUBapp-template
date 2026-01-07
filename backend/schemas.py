@@ -173,6 +173,7 @@ class BackupEstimate(BaseModel):
     total_items: int = Field(..., description="Nombre total d'items")
     total_preferences: int = Field(..., description="Nombre de préférences utilisateur")
     total_files: int = Field(..., description="Nombre de fichiers uploadés")
+    total_test_data: int = Field(0, description="Nombre de données de test")
     
     database_size_bytes: int = Field(..., description="Taille estimée des données DB")
     files_size_bytes: int = Field(..., description="Taille totale des fichiers")
@@ -199,6 +200,7 @@ class BackupMetadata(BaseModel):
     total_items: int = Field(..., description="Nombre d'items")
     total_preferences: int = Field(..., description="Nombre de préférences")
     total_files: int = Field(..., description="Nombre de fichiers")
+    total_test_data: int = Field(0, description="Nombre de données de test")
     total_size_bytes: int = Field(..., description="Taille totale")
     total_size_human: str = Field(..., description="Taille lisible")
     
@@ -249,4 +251,42 @@ class SyncFromHubRequest(BaseModel):
     """Requête de synchronisation depuis le Hub."""
     backup_id: Optional[str] = Field(None, description="ID spécifique (sinon dernier)")
     clear_existing: bool = Field(False, description="Supprimer données existantes")
+
+
+# ============ Test Data (pour test backup) ============
+
+class TestDataBase(BaseModel):
+    """Base pour les données de test."""
+    name: str = Field(..., min_length=1, max_length=255, description="Nom de la donnée")
+    value: Optional[str] = Field(None, max_length=500, description="Valeur de la donnée")
+    category: str = Field("general", max_length=100, description="Catégorie")
+
+
+class TestDataCreate(TestDataBase):
+    """Création d'une donnée de test."""
+    pass
+
+
+class TestDataUpdate(BaseModel):
+    """Mise à jour d'une donnée de test (tous les champs optionnels)."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    value: Optional[str] = Field(None, max_length=500)
+    category: Optional[str] = Field(None, max_length=100)
+
+
+class TestDataResponse(TestDataBase):
+    """Réponse avec une donnée de test."""
+    id: int
+    last_modified_by: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TestDataListResponse(BaseModel):
+    """Réponse avec liste de données de test."""
+    items: list[TestDataResponse]
+    total: int
 

@@ -7,6 +7,7 @@ import TokenCard from './components/TokenCard'
 import EndpointTests from './components/EndpointTests'
 import M2MTests from './components/M2MTests'
 import LoginPrompt from './components/LoginPrompt'
+import DataTable from './components/DataTable'
 
 function App() {
   const [theme, setTheme] = useState(() => 
@@ -45,6 +46,9 @@ function App() {
             <TokenCard />
           </>
         )}
+        
+        {/* Tableau de données de test pour backup */}
+        <DataTable />
         
         <EndpointTests />
         

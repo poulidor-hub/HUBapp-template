@@ -454,3 +454,224 @@ header h1 {
     gap: 10px;
   }
 }
+
+/* ============ Data Table (Test Backup) ============ */
+
+.data-table-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.data-table-container {
+  overflow-x: auto;
+  margin: 15px 0;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+  background: var(--bg-primary);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-primary);
+}
+
+.data-table .data-id {
+  font-family: monospace;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.data-table .data-name {
+  font-weight: 500;
+}
+
+.data-table .data-value {
+  font-family: monospace;
+  color: var(--accent);
+}
+
+.data-table .data-user {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.data-table .data-date {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.data-table .data-actions {
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+/* Inputs dans le tableau */
+.data-input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  width: 100%;
+  min-width: 100px;
+}
+
+.data-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.data-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.data-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Formulaire d'ajout */
+.data-form {
+  background: var(--bg-primary);
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+
+.data-form-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.data-form-row .data-input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.data-form-row .data-select {
+  min-width: 120px;
+}
+
+/* Badges de catégorie */
+.category-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.category-general { background: #e0e0e0; color: #424242; }
+.category-infrastructure { background: #e3f2fd; color: #1565c0; }
+.category-stack { background: #e8f5e9; color: #2e7d32; }
+.category-config { background: #fff3e0; color: #ef6c00; }
+.category-custom { background: #f3e5f5; color: #7b1fa2; }
+
+[data-theme="dark"] .category-general { background: #424242; color: #e0e0e0; }
+[data-theme="dark"] .category-infrastructure { background: #1565c0; color: #e3f2fd; }
+[data-theme="dark"] .category-stack { background: #2e7d32; color: #e8f5e9; }
+[data-theme="dark"] .category-config { background: #ef6c00; color: #fff3e0; }
+[data-theme="dark"] .category-custom { background: #7b1fa2; color: #f3e5f5; }
+
+/* États */
+.data-loading,
+.data-empty {
+  text-align: center;
+  padding: 30px;
+  color: var(--text-secondary);
+}
+
+.data-empty p {
+  margin-bottom: 15px;
+}
+
+.data-error {
+  background: #ffebee;
+  color: #c62828;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+[data-theme="dark"] .data-error {
+  background: #4a1515;
+  color: #ef9a9a;
+}
+
+.data-error button {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: inherit;
+  padding: 0 5px;
+}
+
+/* Statistiques */
+.data-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .data-table th,
+  .data-table td {
+    padding: 8px 6px;
+    font-size: 0.8rem;
+  }
+  
+  .data-table-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .data-form-row {
+    flex-direction: column;
+  }
+  
+  .data-form-row .data-input,
+  .data-form-row .data-select {
+    width: 100%;
+  }
+}

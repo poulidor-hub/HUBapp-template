@@ -28,7 +28,7 @@ from config import get_settings, APP_VERSION
 from database import get_db
 from hub_auth import require_role, TokenPayload
 from hub_client import hub_client
-from models import Item, UserPreference, UploadedFile
+from models import Item, UserPreference, UploadedFile, TestData
 from schemas import (
     BackupEstimate, BackupMetadata, BackupResponse,
     RestoreRequest, RestoreResponse,
@@ -45,6 +45,7 @@ router = APIRouter(prefix="/api/admin", tags=["Backup/Restore"])
 # Constantes pour l'estimation
 BYTES_PER_ITEM_AVG = 500  # Taille moyenne d'un item en JSON
 BYTES_PER_PREF_AVG = 300  # Taille moyenne d'une préférence en JSON
+BYTES_PER_TESTDATA_AVG = 400  # Taille moyenne d'une donnée de test en JSON
 BYTES_PER_SECOND_ESTIMATE = 10 * 1024 * 1024  # 10 MB/s estimation
 
 
@@ -99,9 +100,14 @@ async def estimate_backup(
     items_count = await db.scalar(select(func.count(Item.id)))
     prefs_count = await db.scalar(select(func.count(UserPreference.id)))
     files_count = await db.scalar(select(func.count(UploadedFile.id)))
+    test_data_count = await db.scalar(select(func.count(TestData.id)))
     
     # Calculer taille DB estimée
-    db_size = (items_count or 0) * BYTES_PER_ITEM_AVG + (prefs_count or 0) * BYTES_PER_PREF_AVG
+    db_size = (
+        (items_count or 0) * BYTES_PER_ITEM_AVG + 
+        (prefs_count or 0) * BYTES_PER_PREF_AVG +
+        (test_data_count or 0) * BYTES_PER_TESTDATA_AVG
+    )
     
     # Taille réelle des fichiers
     files_result = await db.execute(select(func.sum(UploadedFile.size)))
@@ -127,6 +133,7 @@ async def estimate_backup(
         total_items=items_count or 0,
         total_preferences=prefs_count or 0,
         total_files=files_count or 0,
+        total_test_data=test_data_count or 0,
         database_size_bytes=db_size,
         files_size_bytes=files_size,
         total_size_bytes=total_size,
@@ -203,7 +210,12 @@ async def create_backup(
         uploaded_files = files_result.scalars().all()
         files_data = [f.to_backup_dict() for f in uploaded_files]
         
-        # 4. Construire le JSON principal
+        # 4. Récupérer toutes les données de test
+        test_data_result = await db.execute(select(TestData))
+        test_data_entries = test_data_result.scalars().all()
+        test_data_list = [td.to_backup_dict() for td in test_data_entries]
+        
+        # 5. Construire le JSON principal
         backup_data = {
             "metadata": {
                 "backup_id": backup_id,
@@ -211,12 +223,13 @@ async def create_backup(
                 "app_version": APP_VERSION,
                 "created_at": created_at,
                 "created_by": user.sub,
-                "format_version": "1.0"
+                "format_version": "1.1"  # Version mise à jour pour test_data
             },
             "data": {
                 "items": items_data,
                 "user_preferences": prefs_data,
-                "uploaded_files": files_data
+                "uploaded_files": files_data,
+                "test_data": test_data_list
             }
         }
         
@@ -252,7 +265,7 @@ async def create_backup(
             category="backups"
         )
         
-        logger.info(f"✅ Backup {backup_id} créé: {len(items_data)} items, {len(prefs_data)} prefs, {files_added} fichiers ({_human_readable_size(total_size)})")
+        logger.info(f"✅ Backup {backup_id} créé: {len(items_data)} items, {len(prefs_data)} prefs, {len(test_data_list)} test_data, {files_added} fichiers ({_human_readable_size(total_size)})")
         
         metadata = BackupMetadata(
             backup_id=backup_id,
@@ -263,6 +276,7 @@ async def create_backup(
             total_items=len(items_data),
             total_preferences=len(prefs_data),
             total_files=files_added,
+            total_test_data=len(test_data_list),
             total_size_bytes=total_size,
             total_size_human=_human_readable_size(total_size),
             includes_files=True,
@@ -327,6 +341,7 @@ async def restore_backup(
     restore_items: str = Form("true"),
     restore_preferences: str = Form("true"),
     restore_files: str = Form("true"),
+    restore_test_data: str = Form("true"),
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
 ):
@@ -347,14 +362,17 @@ async def restore_backup(
     restore_items_bool = restore_items.lower() in ("true", "1", "yes", "on")
     restore_preferences_bool = restore_preferences.lower() in ("true", "1", "yes", "on")
     restore_files_bool = restore_files.lower() in ("true", "1", "yes", "on")
+    restore_test_data_bool = restore_test_data.lower() in ("true", "1", "yes", "on")
     
     errors = []
     warnings = []
     items_restored = 0
     prefs_restored = 0
     files_restored = 0
+    test_data_restored = 0
     items_skipped = 0
     files_skipped = 0
+    test_data_skipped = 0
     
     logger.info(f"🔄 Restauration démarrée par {user.sub} (clear_existing={clear_existing_bool})")
     
@@ -389,6 +407,8 @@ async def restore_backup(
                     await db.execute(delete(UserPreference))
                 if restore_files_bool:
                     await db.execute(delete(UploadedFile))
+                if restore_test_data_bool:
+                    await db.execute(delete(TestData))
                 await db.commit()
             
             # 5. Restaurer les items
@@ -494,9 +514,34 @@ async def restore_backup(
                     except Exception as e:
                         errors.append(f"Fichier {file_data.get('filename')}: {str(e)}")
             
+            # 8. Restaurer les données de test
+            if restore_test_data_bool:
+                for td_data in data.get("test_data", []):
+                    try:
+                        # Vérifier si existe déjà
+                        existing = await db.execute(
+                            select(TestData).where(TestData.id == td_data.get("id"))
+                        )
+                        if existing.scalar() and not clear_existing_bool:
+                            test_data_skipped += 1
+                            continue
+                        
+                        test_data_entry = TestData(
+                            name=td_data["name"],
+                            value=td_data.get("value"),
+                            category=td_data.get("category", "general"),
+                            last_modified_by=td_data.get("last_modified_by", user.sub),
+                            created_at=datetime.fromisoformat(td_data["created_at"]) if td_data.get("created_at") else None,
+                            updated_at=datetime.fromisoformat(td_data["updated_at"]) if td_data.get("updated_at") else None
+                        )
+                        db.add(test_data_entry)
+                        test_data_restored += 1
+                    except Exception as e:
+                        errors.append(f"TestData {td_data.get('id')}: {str(e)}")
+            
             await db.commit()
         
-        logger.info(f"✅ Restauration terminée: {items_restored} items, {prefs_restored} prefs, {files_restored} fichiers")
+        logger.info(f"✅ Restauration terminée: {items_restored} items, {prefs_restored} prefs, {test_data_restored} test_data, {files_restored} fichiers")
         
         return RestoreResponse(
             success=len(errors) == 0,

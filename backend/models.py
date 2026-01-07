@@ -121,3 +121,41 @@ class UploadedFile(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
+
+class TestData(Base):
+    """
+    Données de test partagées pour tester le système de backup.
+    Ces données sont modifiables par tous les utilisateurs authentifiés
+    et visibles par tous (partagées).
+    """
+    __tablename__ = "test_data"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Données modifiables
+    name = Column(String(255), nullable=False)
+    value = Column(String(500), nullable=True)
+    category = Column(String(100), default="general", index=True)
+    
+    # Metadata
+    last_modified_by = Column(String(100), nullable=False, index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<TestData(id={self.id}, name='{self.name}', value='{self.value}')>"
+    
+    def to_backup_dict(self) -> dict:
+        """Convertit en dict pour le backup."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "value": self.value,
+            "category": self.category,
+            "last_modified_by": self.last_modified_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+

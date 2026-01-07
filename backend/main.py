@@ -23,12 +23,13 @@ from hub_auth import (
     require_service_account,
     TokenPayload
 )
-from models import Item, UserPreference
+from models import Item, UserPreference, TestData
 from schemas import (
     ItemCreate, ItemUpdate, ItemResponse,
     UserPreferenceUpdate, UserPreferenceResponse,
     UserInfo, MessageResponse, PaginatedResponse,
-    ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse
+    ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse,
+    TestDataCreate, TestDataUpdate, TestDataResponse, TestDataListResponse
 )
 from routes.docs import router as docs_router
 from routes.backup import router as backup_router
@@ -710,6 +711,160 @@ async def delete_item(
     await db.delete(item)
     
     return MessageResponse(message="Item supprimé", detail=f"Item #{item_id} supprimé avec succès")
+
+
+# ============================================================
+# DONNÉES DE TEST (pour test backup)
+# ============================================================
+
+@app.get("/api/test-data", response_model=TestDataListResponse, tags=["Test Data"])
+async def list_test_data(
+    category: Optional[str] = Query(None, description="Filtrer par catégorie"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Liste toutes les données de test.
+    Accessible sans authentification pour visualisation.
+    Ces données sont partagées entre tous les utilisateurs.
+    """
+    query = select(TestData)
+    
+    if category:
+        query = query.where(TestData.category == category)
+    
+    query = query.order_by(TestData.id)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    return TestDataListResponse(
+        items=[TestDataResponse.model_validate(item) for item in items],
+        total=len(items)
+    )
+
+
+@app.post("/api/test-data", response_model=TestDataResponse, status_code=status.HTTP_201_CREATED, tags=["Test Data"])
+async def create_test_data(
+    data: TestDataCreate,
+    user: TokenPayload = Depends(require_role("user")),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Crée une nouvelle donnée de test.
+    Requiert le rôle user minimum.
+    """
+    test_data = TestData(
+        name=data.name,
+        value=data.value,
+        category=data.category,
+        last_modified_by=user.sub
+    )
+    db.add(test_data)
+    await db.flush()
+    await db.refresh(test_data)
+    
+    return TestDataResponse.model_validate(test_data)
+
+
+@app.put("/api/test-data/{data_id}", response_model=TestDataResponse, tags=["Test Data"])
+async def update_test_data(
+    data_id: int,
+    data: TestDataUpdate,
+    user: TokenPayload = Depends(require_role("user")),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Met à jour une donnée de test.
+    Tous les utilisateurs authentifiés (rôle user+) peuvent modifier.
+    """
+    result = await db.execute(select(TestData).where(TestData.id == data_id))
+    test_data = result.scalar_one_or_none()
+    
+    if not test_data:
+        raise HTTPException(status_code=404, detail="Donnée non trouvée")
+    
+    # Mise à jour des champs fournis
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(test_data, field, value)
+    
+    # Mettre à jour le modificateur
+    test_data.last_modified_by = user.sub
+    
+    await db.flush()
+    await db.refresh(test_data)
+    
+    return TestDataResponse.model_validate(test_data)
+
+
+@app.delete("/api/test-data/{data_id}", response_model=MessageResponse, tags=["Test Data"])
+async def delete_test_data(
+    data_id: int,
+    user: TokenPayload = Depends(require_role("user")),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Supprime une donnée de test.
+    Tous les utilisateurs authentifiés (rôle user+) peuvent supprimer.
+    """
+    result = await db.execute(select(TestData).where(TestData.id == data_id))
+    test_data = result.scalar_one_or_none()
+    
+    if not test_data:
+        raise HTTPException(status_code=404, detail="Donnée non trouvée")
+    
+    await db.delete(test_data)
+    
+    return MessageResponse(message="Donnée supprimée", detail=f"Donnée #{data_id} supprimée avec succès")
+
+
+@app.post("/api/test-data/seed", response_model=TestDataListResponse, tags=["Test Data"])
+async def seed_test_data(
+    user: TokenPayload = Depends(require_role("user")),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Initialise des données de test par défaut.
+    Utile pour avoir des données à sauvegarder/restaurer.
+    """
+    # Données de test initiales
+    seed_data = [
+        {"name": "Serveur Web", "value": "nginx", "category": "infrastructure"},
+        {"name": "Base de données", "value": "PostgreSQL 15", "category": "infrastructure"},
+        {"name": "Framework Backend", "value": "FastAPI", "category": "stack"},
+        {"name": "Framework Frontend", "value": "React", "category": "stack"},
+        {"name": "Version Python", "value": "3.11", "category": "stack"},
+        {"name": "Environnement", "value": "development", "category": "config"},
+        {"name": "Port API", "value": "8000", "category": "config"},
+        {"name": "Debug Mode", "value": "true", "category": "config"},
+    ]
+    
+    created = []
+    for item in seed_data:
+        # Vérifier si existe déjà
+        existing = await db.execute(
+            select(TestData).where(
+                TestData.name == item["name"],
+                TestData.category == item["category"]
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        
+        test_data = TestData(
+            name=item["name"],
+            value=item["value"],
+            category=item["category"],
+            last_modified_by=user.sub
+        )
+        db.add(test_data)
+        await db.flush()
+        await db.refresh(test_data)
+        created.append(test_data)
+    
+    return TestDataListResponse(
+        items=[TestDataResponse.model_validate(item) for item in created],
+        total=len(created)
+    )
 
 
 # ============================================================

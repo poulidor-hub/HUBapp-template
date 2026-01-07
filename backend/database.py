@@ -47,9 +47,18 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db():
-    """Initialise la base de données (crée les tables)."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Initialise la base de données (crée les tables si elles n'existent pas)."""
+    try:
+        async with engine.begin() as conn:
+            # checkfirst=True évite les erreurs si les tables existent déjà
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+    except Exception as e:
+        # Ignorer les erreurs de tables/types existants (race condition avec HTTPS/HTTP)
+        error_msg = str(e).lower()
+        if "already exists" in error_msg or "duplicate key" in error_msg:
+            pass  # Table ou type déjà créé par l'autre instance
+        else:
+            raise
 
 
 async def close_db():
