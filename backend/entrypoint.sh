@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Entrypoint Backend - Installation du certificat CA et démarrage
+# Entrypoint Backend - Auto-détection IP, certificats et démarrage
 # =============================================================================
 
 set -e
@@ -9,6 +9,25 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# === Auto-détection de l'IP de l'hôte ===
+# Si APP_HOST n'est pas défini, on détecte automatiquement l'IP
+if [ -z "$APP_HOST" ]; then
+    # Méthode 1 : Via la route par défaut (IP de sortie)
+    DETECTED_IP=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'src \K\S+' || true)
+    
+    # Méthode 2 : Si l'IP détectée est une IP Docker (172.x), utiliser HUB_HOST
+    if [ -z "$DETECTED_IP" ] || [[ "$DETECTED_IP" == 172.* ]]; then
+        # Dans Docker, on utilise HUB_HOST comme fallback (même serveur)
+        if [ -n "$HUB_HOST" ]; then
+            export APP_HOST="$HUB_HOST"
+            echo -e "${GREEN}🌐 APP_HOST auto-détecté (même serveur que Hub): $APP_HOST${NC}"
+        fi
+    else
+        export APP_HOST="$DETECTED_IP"
+        echo -e "${GREEN}🌐 APP_HOST auto-détecté: $APP_HOST${NC}"
+    fi
+fi
 
 # === Installation du certificat CA du Hub (si présent) ===
 CA_CERT_PATH="${HUB_CA_CERT_PATH:-/app/certs/hub-ca.crt}"

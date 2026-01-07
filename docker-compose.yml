@@ -25,7 +25,6 @@ services:
       retries: 5
     networks:
       - app-network
-      - hub_hub-network  # Connexion au réseau du Hub
     restart: unless-stopped
 
   # === API BACKEND ===
@@ -40,6 +39,7 @@ services:
       - APP_SLUG=${APP_SLUG}
       - APP_NAME=${APP_NAME}
       - APP_DESCRIPTION=${APP_DESCRIPTION}
+      # APP_HOST : auto-détecté au démarrage si vide
       - APP_HOST=${APP_HOST:-}
       - API_PORT=${API_PORT}
       - API_HTTPS_PORT=${API_HTTPS_PORT:-}
@@ -74,7 +74,9 @@ services:
         condition: service_healthy
     networks:
       - app-network
-      - hub_hub-network  # Connexion au réseau du Hub pour l'auto-enregistrement
+    # Permet de résoudre host.docker.internal vers l'IP de l'hôte
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health", "||", "curl", "-fk", "https://localhost:8443/api/health"]
@@ -118,24 +120,9 @@ volumes:
     name: ${APP_SLUG:-mon-app}-uploads-data
 
 # === RÉSEAUX ===
+# L'application communique avec le Hub via son IP (HUB_HOST)
+# Pas besoin de réseau Docker partagé
 networks:
   app-network:
     name: ${APP_SLUG:-mon-app}-network
     driver: bridge
-  
-  # Connexion au réseau du Hub
-  # ========================================
-  # MODES DE CONNEXION :
-  # 
-  # 1. App sur le MÊME HÔTE que le Hub (réseau Docker partagé) :
-  #    - HUB_NETWORK_EXTERNAL=true
-  #    - HUB_NETWORK_NAME=hub_hub-network
-  #
-  # 2. App sur un HÔTE DISTANT (réseau local/internet) :
-  #    - HUB_NETWORK_EXTERNAL=false (ou non défini)
-  #    - L'app contacte le Hub via son IP réseau (HUB_HOST)
-  #    - Configurer APP_WHITELIST_NETWORKS dans le Hub pour autoriser votre réseau
-  # ========================================
-  hub_hub-network:
-    external: ${HUB_NETWORK_EXTERNAL:-false}
-    name: ${HUB_NETWORK_NAME:-hub_hub-network}

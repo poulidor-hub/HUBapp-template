@@ -1,54 +1,72 @@
-# Applications distantes (hors réseau Docker du Hub)
+# Déploiement d'applications Hub
 
-Ce document explique comment configurer une application qui n'est **pas sur le même serveur** que le Hub.
+Ce document explique comment déployer une application connectée au Hub, **que ce soit sur le même serveur ou sur un serveur distant**.
 
 ## Table des matières
 
-- [Prérequis](#prérequis)
+- [Déploiement simplifié](#déploiement-simplifié)
 - [Configuration côté Hub](#configuration-côté-hub)
 - [Configuration côté Application](#configuration-côté-application)
-- [Fonctionnalités supportées](#fonctionnalités-supportées)
+- [Fonctionnalités](#fonctionnalités)
 - [Dépannage](#dépannage)
 
 ---
 
-## Prérequis
+## Déploiement simplifié
 
-### Côté Hub (serveur central)
-1. Hub démarré et accessible depuis le réseau
-2. Whitelist des IPs configurée pour accepter votre réseau
+L'application est conçue pour fonctionner **automatiquement** sur n'importe quel serveur du réseau local.
 
-### Côté Application (serveur distant)
-1. Réseau accessible vers le Hub (ports 8000/HTTP et 443/HTTPS)
-2. IP fixe ou hostname résolvable
+### Configuration minimale
+
+1. **Copier le `.env.example`** vers `.env`
+2. **Définir l'IP du Hub** :
+   ```bash
+   HUB_HOST=192.0.2.11
+   ```
+3. **Démarrer** :
+   ```bash
+   docker compose up -d
+   ```
+
+C'est tout ! L'application :
+- Détecte automatiquement son IP externe
+- Télécharge le certificat CA du Hub
+- S'enregistre auprès du Hub
+
+### Ce qui est automatique
+
+| Élément | Comportement |
+|---------|--------------|
+| **APP_HOST** | Auto-détecté (IP externe du serveur) |
+| **Certificat CA** | Téléchargé depuis le Hub au démarrage |
+| **Enregistrement** | Automatique via whitelist IP |
+| **Token M2M** | Obtenu automatiquement |
 
 ---
 
 ## Configuration côté Hub
 
-### 1. Autoriser le réseau de l'application distante
+### Autoriser les réseaux
 
-Éditer le fichier `.env` du Hub :
+Le Hub utilise une whitelist d'IP pour autoriser l'auto-enregistrement.
+
+Éditer le `.env` du Hub :
 
 ```bash
-# Autoriser les réseaux Docker + votre réseau local
-# Format : préfixes IP séparés par des virgules
-APP_WHITELIST_NETWORKS="172.,192.168.,10."
+# Autoriser les réseaux locaux (par défaut)
+APP_WHITELIST_NETWORKS="172.,192.,10."
 ```
 
 **Exemples selon votre réseau :**
 
 | Réseau | Configuration |
 |--------|---------------|
-| Docker uniquement | `172.` (par défaut) |
-| Réseau 192.168.x.x | `172.,192.168.` |
-| Réseau 10.0.x.x | `172.,10.` |
+| Docker + LAN | `172.,192.,10.` (recommandé) |
 | Sous-réseau précis | `172.,192.168.1.` |
+| IP spécifique | `172.,192.168.1.100` |
 
-### 2. Redémarrer le Hub
-
+Après modification, redémarrer le Hub :
 ```bash
-cd /path/to/HUB
 docker compose down && docker compose up -d
 ```
 
@@ -56,82 +74,85 @@ docker compose down && docker compose up -d
 
 ## Configuration côté Application
 
-### 1. Variables d'environnement (`.env`)
+### Variables d'environnement (`.env`)
 
 ```bash
-# === IDENTIFICATION ===
-APP_SLUG=mon-app-distante
-APP_NAME=Mon Application Distante
-APP_DESCRIPTION=Application sur serveur distant
+# === OBLIGATOIRE ===
+APP_SLUG=mon-app
+APP_NAME=Mon Application
+APP_DESCRIPTION=Description de l'application
 
-# === RÉSEAU ===
-# IP ou hostname de CE serveur (visible depuis le Hub)
-APP_HOST=192.168.1.100
-
-# IP ou hostname du Hub (visible depuis ce serveur)  
-HUB_HOST=192.0.2.11
-
-# Ports du Hub
-HUB_API_PORT=8000
-HUB_FRONTEND_PORT=80
+# === HUB ===
+HUB_HOST=192.0.2.11          # IP du Hub
+HUB_API_PORT=8000               # Port API du Hub (HTTP)
+HUB_HTTPS_PORT=443              # Port HTTPS du Hub
 
 # === PORTS DE CETTE APPLICATION ===
-API_PORT=9045
-FRONTEND_PORT=4250
+API_PORT=9045                   # Port HTTP de l'API
+FRONTEND_PORT=4250              # Port HTTP du frontend
+API_HTTPS_PORT=9046             # Port HTTPS de l'API (optionnel)
+FRONTEND_HTTPS_PORT=4251        # Port HTTPS du frontend (optionnel)
 
-# === HTTPS (optionnel mais recommandé) ===
+# === HTTPS (recommandé) ===
 HUB_HTTPS_ENABLED=true
-HUB_HTTPS_PORT=443
 HUB_CA_CERT_PATH=/app/certs/hub-ca.crt
-API_HTTPS_PORT=9046
-FRONTEND_HTTPS_PORT=4251
+
+# === DATABASE ===
+POSTGRES_HOST=mon-app-postgres
+POSTGRES_USER=app_user
+POSTGRES_PASSWORD=changeme_secure_123
+POSTGRES_DB=app_db
 ```
 
-### 2. Utiliser docker-compose.remote.yml
+### Variables optionnelles
 
 ```bash
-# Démarrage
-docker compose -f docker-compose.remote.yml up -d
+# Forcer l'IP (si auto-détection incorrecte)
+APP_HOST=192.168.1.100
 
-# Logs
-docker compose -f docker-compose.remote.yml logs -f api
-
-# Arrêt
-docker compose -f docker-compose.remote.yml down
+# Mode debug
+DEBUG=true
 ```
-
-### 3. Différences avec docker-compose.yml standard
-
-| Aspect | docker-compose.yml | docker-compose.remote.yml |
-|--------|-------------------|---------------------------|
-| Réseau Hub | Connecté via `hub_hub-network` | Pas de connexion Docker |
-| Communication | Réseau Docker interne | Réseau TCP/IP externe |
-| Résolution Hub | Via nom de conteneur | Via IP/hostname |
-| Certificat CA | Volume partagé | Téléchargement HTTP auto |
 
 ---
 
-## Fonctionnalités supportées
+## Fonctionnalités
 
-### ✅ Fonctionnent parfaitement
+### ✅ Fonctionnent automatiquement
 
-| Fonctionnalité | Comment ça marche |
-|----------------|-------------------|
-| **Auto-enregistrement** | Via IP réseau (whitelist) |
-| **Authentification JWT** | Token validé via JWKS public |
-| **Communication M2M** | Token `client_credentials` |
-| **Backup/Restore** | Via API avec token M2M |
-| **Sync Hub** | Upload/download via API |
-| **Téléchargement CA** | Endpoint HTTP public |
-| **HTTPS** | Avec certificat CA du Hub |
+| Fonctionnalité | Description |
+|----------------|-------------|
+| **Auto-enregistrement** | L'app s'enregistre au Hub via IP |
+| **Authentification JWT** | Tokens validés via JWKS public |
+| **Communication M2M** | Accès inter-applications via service accounts |
+| **Backup/Restore** | Sauvegarde automatique vers le Hub |
+| **HTTPS** | Certificats gérés par la PKI du Hub |
+| **Découverte services** | Les apps partagées sont découvertes automatiquement |
 
-### ⚠️ Points d'attention
+### Architecture réseau
 
-| Point | Explication |
-|-------|-------------|
-| **IP dans whitelist** | Votre IP doit correspondre à un préfixe dans `APP_WHITELIST_NETWORKS` |
-| **Certificat CA** | Téléchargé automatiquement au démarrage via HTTP |
-| **custom_host** | Envoyé au Hub pour qu'il connaisse votre IP |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Réseau local (192.168.1.0/24)               │
+│                                                                 │
+│  ┌─────────────────┐              ┌─────────────────────────┐   │
+│  │   Serveur Hub   │              │   Serveur Application   │   │
+│  │  192.0.2.11  │              │    192.168.1.100        │   │
+│  │                 │              │                         │   │
+│  │  ┌───────────┐  │◄────────────►│  ┌─────────────────┐    │   │
+│  │  │  Hub API  │  │   HTTPS      │  │  mon-app-api    │    │   │
+│  │  │  :8000    │  │   :443       │  │  :9045/:9046    │    │   │
+│  │  └───────────┘  │              │  └─────────────────┘    │   │
+│  │                 │              │                         │   │
+│  │  ┌───────────┐  │              │  ┌─────────────────┐    │   │
+│  │  │  Nginx    │  │              │  │  mon-app-nginx  │    │   │
+│  │  │  :80/:443 │  │              │  │  :4250/:4251    │    │   │
+│  │  └───────────┘  │              │  └─────────────────┘    │   │
+│  └─────────────────┘              └─────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+L'application communique avec le Hub via son IP (`HUB_HOST`), pas via un réseau Docker partagé.
 
 ---
 
@@ -145,112 +166,81 @@ docker compose -f docker-compose.remote.yml down
 1. Vérifier votre IP : `hostname -I`
 2. Ajouter le préfixe dans le `.env` du Hub :
    ```bash
-   APP_WHITELIST_NETWORKS="172.,192.168.,10."
+   APP_WHITELIST_NETWORKS="172.,192.,10."
    ```
 3. Redémarrer le Hub
 
 ### Erreur : "Impossible de contacter le Hub"
 
-**Causes possibles** :
-1. Hub non démarré
-2. Mauvaise IP/hostname dans `HUB_HOST`
-3. Firewall bloquant le port
-4. Mauvais port (`HUB_API_PORT`)
-
 **Diagnostic** :
 ```bash
-# Depuis le conteneur de l'app
-docker exec mon-app-api curl -v http://HUB_HOST:8000/api/health
+# Tester la connexion depuis le conteneur
+docker exec mon-app-api curl -v http://192.0.2.11:8000/api/health
 
-# Depuis l'hôte
-curl -v http://192.0.2.11:8000/api/health
+# Tester HTTPS
+docker exec mon-app-api curl -v --cacert /app/certs/hub-ca.crt https://192.0.2.11/api/health
 ```
 
-### Erreur : "certificat CA non disponible"
-
-**Cause** : L'app n'arrive pas à télécharger le certificat CA.
-
 **Solutions** :
-1. Vérifier que le Hub est accessible en HTTP (port 8000)
-2. Vérifier que la CA est initialisée : `curl http://HUB_HOST:8000/api/pki/ca.crt`
-3. Copier manuellement le certificat :
-   ```bash
-   # Depuis le serveur Hub
-   cp HUB/certs/ca/hub-ca.crt /path/to/app/certs/hub-ca.crt
-   ```
+- Vérifier que le Hub est démarré
+- Vérifier l'IP dans `HUB_HOST`
+- Vérifier que les ports sont ouverts (8000, 443)
 
-### L'IP détectée est incorrecte
+### L'IP détectée est incorrecte (172.x.x.x)
 
-**Cause** : L'auto-détection IP utilise une route vers 8.8.8.8.
+L'auto-détection devrait éviter les IPs Docker (172.x). Si ce n'est pas le cas :
 
-**Solution** : Définir explicitement `APP_HOST` dans le `.env` :
+**Solution** : Définir explicitement `APP_HOST` :
 ```bash
 APP_HOST=192.168.1.100
 ```
 
-### Vérifier la whitelist active sur le Hub
+### Erreur certificat CA
+
+**Diagnostic** :
+```bash
+# Vérifier que le Hub fournit le certificat
+curl http://192.0.2.11:8000/api/pki/ca.crt
+
+# Vérifier dans le conteneur
+docker exec mon-app-api ls -la /app/certs/
+```
+
+**Solution manuelle** (si le téléchargement échoue) :
+```bash
+# Copier le certificat
+curl http://192.0.2.11:8000/api/pki/ca.crt > certs/hub-ca.crt
+docker compose restart api
+```
+
+### Voir les logs détaillés
 
 ```bash
-# Voir les logs du Hub lors d'une tentative d'enregistrement
-docker logs hub-api 2>&1 | grep -i "whitelist\|auto-enregistrement\|IP:"
+# Logs de l'API
+docker compose logs -f api
+
+# Logs du Hub (pour voir les enregistrements)
+docker logs hub-api 2>&1 | grep -i "enregistrement\|register"
 ```
 
 ---
 
-## Architecture réseau
+## Migration depuis l'ancienne configuration
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    RÉSEAU LOCAL 192.168.1.x                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────┐            ┌─────────────────────────┐ │
-│  │ SERVEUR HUB     │            │ SERVEUR APPLICATION     │ │
-│  │ 192.0.2.11   │◄──────────►│ 192.168.1.100           │ │
-│  │                 │   TCP/IP   │                         │ │
-│  │ ┌─────────────┐ │            │ ┌─────────────────────┐ │ │
-│  │ │ hub-api     │ │            │ │ mon-app-api         │ │ │
-│  │ │ :8000/:443  │ │            │ │ :9045/:9046         │ │ │
-│  │ └─────────────┘ │            │ └─────────────────────┘ │ │
-│  │ ┌─────────────┐ │            │ ┌─────────────────────┐ │ │
-│  │ │hub-frontend │ │            │ │ mon-app-frontend    │ │ │
-│  │ │ :80/:443    │ │            │ │ :4250/:4251         │ │ │
-│  │ └─────────────┘ │            │ └─────────────────────┘ │ │
-│  └─────────────────┘            └─────────────────────────┘ │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+Si vous utilisiez l'ancienne configuration avec `HUB_NETWORK_EXTERNAL` :
 
-## Flux d'enregistrement (application distante)
+1. **Supprimer** ces variables du `.env` :
+   ```bash
+   # Supprimer :
+   # HUB_NETWORK_EXTERNAL=true
+   ```
 
-```
-┌──────────────┐                              ┌──────────────┐
-│ App distante │                              │     Hub      │
-│192.168.1.100 │                              │192.0.2.11 │
-└──────┬───────┘                              └──────┬───────┘
-       │                                             │
-       │ 1. GET /api/pki/ca.crt (HTTP:8000)         │
-       │────────────────────────────────────────────►│
-       │                                             │
-       │ 2. Certificat CA (PEM)                     │
-       │◄────────────────────────────────────────────│
-       │                                             │
-       │ 3. POST /api/apps/register (HTTPS:443)     │
-       │    {slug, name, custom_host: "192.168.1.100"}
-       │────────────────────────────────────────────►│
-       │                                      IP=192.168.1.100
-       │                                      ✓ Dans whitelist
-       │ 4. {client_id, client_secret}              │
-       │◄────────────────────────────────────────────│
-       │                                             │
-       │ 5. POST /api/auth/token                    │
-       │    (client_credentials)                    │
-       │────────────────────────────────────────────►│
-       │                                             │
-       │ 6. {access_token}                          │
-       │◄────────────────────────────────────────────│
-       │                                             │
-       │ 7. Appels API avec Bearer token            │
-       │◄───────────────────────────────────────────►│
-       │                                             │
-```
+2. **Supprimer** le fichier `docker-compose.remote.yml` s'il existe
+
+3. **Utiliser** simplement :
+   ```bash
+   docker compose down -v
+   docker compose up -d
+   ```
+
+L'application fonctionne maintenant de la même manière partout, sans configuration réseau Docker.

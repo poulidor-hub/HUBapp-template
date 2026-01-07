@@ -1,6 +1,7 @@
 """
 Configuration de l'application avec auto-détection IP.
 """
+import os
 import socket
 from functools import lru_cache
 from pathlib import Path
@@ -25,8 +26,78 @@ def get_app_version() -> str:
 APP_VERSION = get_app_version()
 
 
+def get_docker_host_ip() -> Optional[str]:
+    """
+    Récupère l'IP externe de l'hôte Docker depuis un conteneur.
+    
+    Dans Docker, on ne peut pas facilement obtenir l'IP externe de l'hôte.
+    Cette fonction tente plusieurs méthodes :
+    
+    1. Variable d'environnement APP_HOST (la plus fiable)
+    2. Connexion UDP vers l'extérieur (fonctionne si le conteneur a accès réseau)
+    
+    Note: host.docker.internal pointe vers la gateway Docker (172.x.x.x), 
+    pas vers l'IP externe de l'hôte.
+    
+    Returns:
+        IP externe de l'hôte ou None si non détectable
+    """
+    # Méthode 1 : Variable d'environnement explicite (la plus fiable)
+    app_host = os.environ.get("APP_HOST")
+    if app_host:
+        return app_host
+    
+    # Méthode 2 : Utiliser HUB_HOST si on est sur le même serveur
+    # (pas de APP_HOST = même serveur que le Hub)
+    hub_host = os.environ.get("HUB_HOST")
+    if hub_host:
+        return hub_host
+    
+    # Méthode 3 : Connexion UDP vers l'extérieur
+    # Dans Docker avec network mode bridge, cela retourne l'IP du conteneur
+    # Mais avec host network, cela retourne l'IP de l'hôte
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        # Ne retourner que si ce n'est pas une IP Docker interne
+        if not ip.startswith("172."):
+            return ip
+    except Exception:
+        pass
+    
+    return None
+
+
+def is_running_in_docker() -> bool:
+    """Détecte si on tourne dans un conteneur Docker."""
+    # Méthode 1 : Fichier .dockerenv
+    if Path("/.dockerenv").exists():
+        return True
+    # Méthode 2 : cgroup contient "docker"
+    try:
+        with open("/proc/1/cgroup") as f:
+            return "docker" in f.read()
+    except FileNotFoundError:
+        pass
+    return False
+
+
 def get_local_ip() -> str:
-    """Détecte l'IP locale de la machine (pas localhost)."""
+    """
+    Détecte l'IP locale de la machine.
+    
+    - Si dans Docker : retourne l'IP de l'hôte Docker
+    - Sinon : retourne l'IP de l'interface réseau principale
+    """
+    # Dans Docker, on veut l'IP de l'hôte, pas du conteneur
+    if is_running_in_docker():
+        docker_host = get_docker_host_ip()
+        if docker_host:
+            return docker_host
+    
+    # Détection classique via connexion UDP
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
