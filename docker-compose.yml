@@ -59,9 +59,10 @@ services:
       - UPLOADS_DIR=/app/uploads
     volumes:
       - uploads_data:/app/uploads
-      # Dossier des certificats (le Hub y dépose hub-ca.crt dynamiquement)
-      # L'API attend sa disponibilité au démarrage si HTTPS est activé
-      - ./certs:/app/certs:ro
+      # Volume pour les certificats téléchargés (hub-ca.crt)
+      - certs_data:/app/certs/hub
+      # Certificats serveur de l'application (lecture seule)
+      - ./certs/server/${APP_SLUG:-mon-app}:/app/certs/server:ro
     ports:
       - "${API_PORT:-9045}:8000"
       - "${API_HTTPS_PORT:-9046}:8443"
@@ -114,6 +115,8 @@ volumes:
     name: ${APP_SLUG:-mon-app}-postgres-data
   uploads_data:
     name: ${APP_SLUG:-mon-app}-uploads-data
+  certs_data:
+    name: ${APP_SLUG:-mon-app}-certs-data
 
 # === RÉSEAUX ===
 # L'application communique avec le Hub via son IP (HUB_HOST)

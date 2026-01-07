@@ -137,9 +137,11 @@ class Settings(BaseSettings):
     HUB_HTTPS_PORT: int = 443
     
     # Chemins fixes des certificats SSL (fournis par le Hub)
-    HUB_CA_CERT_PATH: str = "/app/certs/hub-ca.crt"
-    APP_SSL_CERT_PATH: str = "/app/certs/server/mon-app/app.crt"
-    APP_SSL_KEY_PATH: str = "/app/certs/server/mon-app/app.key"
+    # Le certificat CA est téléchargé dans un volume Docker accessible en écriture
+    HUB_CA_CERT_PATH: str = "/app/certs/hub/hub-ca.crt"
+    # Les certificats serveur sont montés en lecture seule depuis ./certs/server/{APP_SLUG}/
+    APP_SSL_CERT_PATH: str = "/app/certs/server/app.crt"
+    APP_SSL_KEY_PATH: str = "/app/certs/server/app.key"
     
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
