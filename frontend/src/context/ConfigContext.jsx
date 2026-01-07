@@ -32,16 +32,24 @@ export function ConfigProvider({ children }) {
 
       const data = await response.json()
       
+      // IMPORTANT: On garde les URLs calculées par config.js qui s'adaptent automatiquement
+      // au protocole (HTTP/HTTPS) utilisé par le navigateur.
+      // Les URLs de l'API backend sont utilisées uniquement pour app_slug et app_name.
       setAppConfig({
         appSlug: data.app_slug || config.appSlug,
-        apiUrl: data.api_url || config.apiUrl,
-        hubApiUrl: data.hub_api_url || config.hubApiUrl,
-        hubFrontendUrl: data.hub_frontend_url || config.hubFrontendUrl,
+        apiUrl: config.apiUrl,  // Garde l'URL dynamique basée sur le protocole du navigateur
+        hubApiUrl: config.hubApiUrl,  // Idem pour le Hub
+        hubFrontendUrl: config.hubFrontendUrl,  // Idem pour le frontend Hub
         loaded: true,
         error: null
       })
       
       console.log('✅ Configuration chargée:', data)
+      console.log('📌 URLs utilisées (basées sur le protocole navigateur):', {
+        apiUrl: config.apiUrl,
+        hubApiUrl: config.hubApiUrl,
+        hubFrontendUrl: config.hubFrontendUrl
+      })
     } catch (error) {
       console.error('❌ Erreur chargement config:', error)
       
