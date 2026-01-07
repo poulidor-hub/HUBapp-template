@@ -5,6 +5,7 @@ import socket
 from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional, Union
 
 
@@ -85,6 +86,23 @@ class Settings(BaseSettings):
     
     # Environnement
     DEBUG: bool = False
+    
+    # Validateurs pour gérer les chaînes vides comme None
+    @field_validator('API_HTTPS_PORT', 'FRONTEND_HTTPS_PORT', mode='before')
+    @classmethod
+    def empty_str_to_none_int(cls, v):
+        """Convertit les chaînes vides en None pour les ports optionnels."""
+        if v == '' or v is None:
+            return None
+        return int(v)
+    
+    @field_validator('APP_HOST', 'HUB_HOST', 'HUB_CA_CERT_PATH', 'APP_SSL_CERT_PATH', 'APP_SSL_KEY_PATH', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convertit les chaînes vides en None pour les chaînes optionnelles."""
+        if v == '':
+            return None
+        return v
     
     class Config:
         env_file = ".env"
