@@ -140,6 +140,156 @@ async def download_hub_ca_certificate() -> bool:
         return False
 
 
+async def download_app_certificate() -> bool:
+    """
+    Télécharge le certificat SSL de l'application depuis le Hub.
+    
+    Cette fonction permet aux applications de récupérer automatiquement
+    leur certificat SSL au démarrage. Si le certificat n'existe pas sur le Hub
+    ou n'est plus valide avec la CA actuelle, le Hub le génère automatiquement.
+    
+    Cela garantit que les applications utilisent toujours un certificat
+    signé par la CA actuelle du Hub, même après une régénération de la CA.
+    
+    Returns:
+        True si les certificats ont été téléchargés avec succès, False sinon
+    
+    Note:
+        - Utilise HTTP car c'est avant l'établissement de HTTPS
+        - Le Hub génère automatiquement le certificat si nécessaire
+        - Télécharge le certificat ET la clé privée
+    """
+    settings = get_settings()
+    
+    cert_path = Path(settings.APP_SSL_CERT_PATH)
+    key_path = Path(settings.APP_SSL_KEY_PATH)
+    
+    # URL HTTP pour télécharger les certificats
+    hub_http_url = f"http://{settings.hub_host}:{settings.HUB_API_PORT}/api/pki/app-cert/{settings.APP_SLUG}"
+    
+    # Passer l'IP de l'application pour les SANs du certificat
+    app_ip = settings.app_host
+    
+    logger.info(f"📥 Téléchargement du certificat app depuis {hub_http_url}?ip={app_ip}...")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Télécharger le certificat
+            response = await client.get(f"{hub_http_url}?file=cert&ip={app_ip}")
+            
+            if response.status_code == 200:
+                cert_path.parent.mkdir(parents=True, exist_ok=True)
+                cert_path.write_bytes(response.content)
+                
+                content = response.content.decode('utf-8', errors='ignore')
+                if '-----BEGIN CERTIFICATE-----' not in content:
+                    logger.error("❌ Le fichier téléchargé n'est pas un certificat PEM valide")
+                    return False
+                
+                logger.info(f"✅ Certificat app téléchargé: {cert_path}")
+            elif response.status_code == 503:
+                logger.warning("⚠️ Hub PKI non initialisée, certificat app non disponible")
+                return False
+            else:
+                logger.error(f"❌ Erreur téléchargement certificat: {response.status_code} - {response.text}")
+                return False
+            
+            # Télécharger la clé privée
+            response = await client.get(f"{hub_http_url}?file=key&ip={app_ip}")
+            
+            if response.status_code == 200:
+                key_path.parent.mkdir(parents=True, exist_ok=True)
+                key_path.write_bytes(response.content)
+                # Restreindre les permissions sur la clé
+                import os
+                os.chmod(key_path, 0o600)
+                
+                logger.info(f"✅ Clé privée app téléchargée: {key_path}")
+            else:
+                logger.error(f"❌ Erreur téléchargement clé: {response.status_code}")
+                return False
+            
+            return True
+                
+    except httpx.ConnectError:
+        logger.error(f"❌ Impossible de contacter le Hub sur {hub_http_url}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du téléchargement du certificat app: {e}")
+        return False
+
+
+def is_certificate_valid_with_ca(cert_path: Path, ca_path: Path) -> bool:
+    """
+    Vérifie si un certificat est signé par la CA spécifiée.
+    
+    Args:
+        cert_path: Chemin vers le certificat à vérifier
+        ca_path: Chemin vers le certificat CA
+    
+    Returns:
+        True si le certificat est valide et signé par la CA, False sinon
+    """
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.backends import default_backend
+        from datetime import datetime, timezone
+        
+        if not cert_path.exists() or not ca_path.exists():
+            return False
+        
+        with open(cert_path, 'rb') as f:
+            cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+        with open(ca_path, 'rb') as f:
+            ca_cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+        
+        # Vérifier que l'issuer du certificat correspond au subject de la CA
+        if cert.issuer != ca_cert.subject:
+            logger.warning(f"⚠️ Certificat {cert_path} n'est pas signé par la CA actuelle")
+            return False
+        
+        # Vérifier que le certificat n'est pas expiré
+        if cert.not_valid_after_utc < datetime.now(timezone.utc):
+            logger.warning(f"⚠️ Certificat {cert_path} expiré")
+            return False
+        
+        return True
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur vérification certificat: {e}")
+        return False
+
+
+async def ensure_valid_app_certificate() -> bool:
+    """
+    S'assure que l'application dispose d'un certificat SSL valide.
+    
+    Vérifie si le certificat actuel est signé par la CA du Hub.
+    Si ce n'est pas le cas (ou si le certificat n'existe pas),
+    télécharge automatiquement un nouveau certificat depuis le Hub.
+    
+    Returns:
+        True si un certificat valide est disponible, False sinon
+    """
+    settings = get_settings()
+    
+    cert_path = Path(settings.APP_SSL_CERT_PATH)
+    ca_path = Path(settings.HUB_CA_CERT_PATH)
+    
+    # Vérifier si le certificat actuel est valide avec la CA
+    if cert_path.exists() and is_certificate_valid_with_ca(cert_path, ca_path):
+        logger.info(f"✅ Certificat app valide: {cert_path}")
+        return True
+    
+    # Le certificat n'est pas valide, essayer de le télécharger
+    if cert_path.exists():
+        logger.info("🔄 Certificat app invalide ou signé par une ancienne CA, téléchargement...")
+    else:
+        logger.info("📥 Certificat app absent, téléchargement depuis le Hub...")
+    
+    return await download_app_certificate()
+
+
 async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
     """
     Attend que le certificat CA du Hub soit disponible.
@@ -211,6 +361,11 @@ async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'installer le certificat au niveau système: {e}")
             # Continue quand même, httpx utilisera le chemin direct
+        
+        # === ÉTAPE 5: Vérifier/télécharger le certificat de l'application ===
+        # Cela garantit que le certificat de l'app est signé par la CA actuelle
+        if settings.API_HTTPS_PORT:
+            await ensure_valid_app_certificate()
         
         return True
     
