@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "Mon Application"
     APP_DESCRIPTION: str = "Template d'application avec authentification Hub"
     
+    # Host de cette application (si différent du HUB - pour apps sur serveur distant)
+    # Laisser vide si l'app est sur le même serveur que le HUB
+    APP_HOST: Optional[str] = None
+    
     # Ports HTTP
     API_PORT: int = 9045
     FRONTEND_PORT: int = 4250
@@ -151,18 +155,33 @@ class Settings(BaseSettings):
         return Path(self.HUB_CA_CERT_PATH).exists()
     
     @property
+    def app_host(self) -> str:
+        """
+        Host de cette application.
+        
+        - Si APP_HOST est défini : utilise APP_HOST (app sur serveur distant)
+        - Sinon : utilise le host du HUB (app sur même serveur que le HUB)
+        """
+        return self.APP_HOST or self.hub_host
+    
+    @property
+    def is_remote_app(self) -> bool:
+        """True si cette application est sur un serveur distant (APP_HOST défini)."""
+        return bool(self.APP_HOST)
+    
+    @property
     def api_url(self) -> str:
         """URL de l'API de cette application (HTTPS si configuré, sinon HTTP)."""
         if self.API_HTTPS_PORT:
-            return f"https://{self.hub_host}:{self.API_HTTPS_PORT}"
-        return f"http://{self.hub_host}:{self.API_PORT}"
+            return f"https://{self.app_host}:{self.API_HTTPS_PORT}"
+        return f"http://{self.app_host}:{self.API_PORT}"
     
     @property
     def frontend_url(self) -> str:
         """URL du frontend de cette application (HTTPS si configuré, sinon HTTP)."""
         if self.FRONTEND_HTTPS_PORT:
-            return f"https://{self.hub_host}:{self.FRONTEND_HTTPS_PORT}"
-        return f"http://{self.hub_host}:{self.FRONTEND_PORT}"
+            return f"https://{self.app_host}:{self.FRONTEND_HTTPS_PORT}"
+        return f"http://{self.app_host}:{self.FRONTEND_PORT}"
     
     @property
     def is_api_https_enabled(self) -> bool:

@@ -286,6 +286,10 @@ class HubClient:
                 # Ajouter le port HTTPS du frontend si configuré
                 if self.settings.FRONTEND_HTTPS_PORT:
                     payload["frontend_https_port"] = self.settings.FRONTEND_HTTPS_PORT
+                # Ajouter custom_host si l'app est sur un serveur distant (APP_HOST défini)
+                if self.settings.is_remote_app:
+                    payload["custom_host"] = self.settings.APP_HOST
+                    logger.info(f"🌐 Application distante : enregistrement avec custom_host={self.settings.APP_HOST}")
                 
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/apps/register",
