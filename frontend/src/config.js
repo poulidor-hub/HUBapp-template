@@ -7,6 +7,7 @@
 // Variables d'environnement Vite (préfixées par VITE_)
 const env = {
   API_PORT: import.meta.env.VITE_API_PORT || '9045',
+  API_HTTPS_PORT: import.meta.env.VITE_API_HTTPS_PORT || '9046',
   HUB_API_PORT: import.meta.env.VITE_HUB_API_PORT || '8000',
   HUB_FRONTEND_PORT: import.meta.env.VITE_HUB_FRONTEND_PORT || '80',
   HUB_HTTPS_PORT: import.meta.env.VITE_HUB_HTTPS_PORT || '443',
@@ -38,7 +39,9 @@ const config = {
   
   // URLs construites dynamiquement (adapte automatiquement HTTP/HTTPS)
   get apiUrl() {
-    return `${getProtocol()}//${getHost()}:${env.API_PORT}`
+    // L'API utilise le port HTTPS si on est en HTTPS
+    const port = isHttps() ? env.API_HTTPS_PORT : env.API_PORT
+    return `${getProtocol()}//${getHost()}:${port}`
   },
   
   get hubApiUrl() {

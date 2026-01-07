@@ -213,12 +213,9 @@ def require_role(min_role: str):
     async def role_checker(
         user: TokenPayload = Depends(get_current_user)
     ) -> TokenPayload:
-        # Vérifier le rôle pour cette application
+        # Vérifier le rôle pour cette application uniquement
+        # Note: Les rôles globaux du Hub ne sont pas pris en compte ici
         user_level = user.get_app_role_level(settings.APP_SLUG)
-        
-        # Les admins globaux ont tous les droits
-        if user.has_global_role("admin"):
-            return user
         
         if user_level < min_level:
             role_name = user.get_app_role(settings.APP_SLUG) or "aucun"
@@ -246,11 +243,9 @@ def require_any_role(*roles: str):
     async def role_checker(
         user: TokenPayload = Depends(get_current_user)
     ) -> TokenPayload:
+        # Vérifier le rôle pour cette application uniquement
+        # Note: Les rôles globaux du Hub ne sont pas pris en compte ici
         user_role = user.get_app_role(settings.APP_SLUG)
-        
-        # Les admins globaux ont tous les droits
-        if user.has_global_role("admin"):
-            return user
         
         if user_role not in roles:
             raise HTTPException(
