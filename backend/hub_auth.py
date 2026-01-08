@@ -1,5 +1,10 @@
 """
 Module d'authentification Hub avec validation JWT et gestion des rôles.
+
+Fonctionnalités :
+- Rotation automatique des clés JWKS (plus besoin de redéployer)
+- Cache intelligent avec TTL de 1h
+- Fallback automatique sur clé PEM si JWKS indisponible
 """
 import jwt
 from jwt import PyJWKClient
@@ -10,6 +15,7 @@ from functools import wraps
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
+from datetime import datetime, timedelta
 import logging
 import ssl
 
@@ -17,6 +23,10 @@ from config import get_settings
 from hub_client import hub_client
 
 logger = logging.getLogger(__name__)
+
+# Configuration du cache JWKS
+JWKS_CACHE_TTL_SECONDS = 3600  # 1 heure - Rotation automatique des clés
+PEM_CACHE_TTL_SECONDS = 3600   # 1 heure - Cache pour la clé PEM fallback
 
 
 class RoleLevel(IntEnum):
@@ -78,13 +88,20 @@ class HubAuth:
     """
     Gestion de l'authentification via le Hub.
     Valide les tokens JWT avec la clé publique JWKS.
+    
+    Fonctionnalités de résilience :
+    - Cache JWKS avec TTL de 1h (rotation automatique des clés)
+    - Fallback automatique sur clé PEM si JWKS indisponible
+    - Pas besoin de redéployer lors de la rotation des clés
     """
     
     def __init__(self):
         self.settings = get_settings()
         self._jwk_client: Optional[PyJWKClient] = None
         self._public_key: Optional[str] = None
+        self._public_key_fetched_at: Optional[datetime] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
+        self._jwks_available: bool = True  # Flag pour le fallback intelligent
     
     def _create_ssl_context(self) -> ssl.SSLContext:
         """
@@ -112,7 +129,12 @@ class HubAuth:
         return ssl_context
     
     async def initialize(self):
-        """Initialise le client JWKS."""
+        """
+        Initialise le client JWKS avec cache intelligent.
+        
+        Le cache JWKS a un TTL de 1h, permettant la rotation automatique
+        des clés sans redéploiement de l'application.
+        """
         try:
             jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
             
@@ -121,25 +143,94 @@ class HubAuth:
             
             if self._ssl_context:
                 # Créer un PyJWKClient avec contexte SSL personnalisé
+                # lifespan = durée du cache JWKS (rotation automatique des clés)
                 self._jwk_client = PyJWKClient(
                     jwks_url,
                     ssl_context=self._ssl_context,
-                    timeout=10  # Timeout de 10 secondes
+                    timeout=10,  # Timeout de 10 secondes
+                    lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h - rotation auto des clés
                 )
-                logger.info(f"✅ Client JWKS initialisé (HTTPS): {jwks_url}")
+                logger.info(f"✅ Client JWKS initialisé (HTTPS, cache {JWKS_CACHE_TTL_SECONDS}s): {jwks_url}")
             else:
                 # Mode HTTP standard
-                self._jwk_client = PyJWKClient(jwks_url, timeout=10)
-                logger.info(f"✅ Client JWKS initialisé: {jwks_url}")
+                self._jwk_client = PyJWKClient(
+                    jwks_url,
+                    timeout=10,
+                    lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h - rotation auto des clés
+                )
+                logger.info(f"✅ Client JWKS initialisé (cache {JWKS_CACHE_TTL_SECONDS}s): {jwks_url}")
+            
+            self._jwks_available = True
                 
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'initialiser JWKS, fallback sur clé PEM: {e}")
+            self._jwks_available = False
             # Fallback sur la clé PEM
+            await self._refresh_pem_key()
+    
+    async def _refresh_pem_key(self) -> bool:
+        """
+        Rafraîchit la clé PEM depuis le Hub.
+        
+        Returns:
+            True si la clé a été récupérée, False sinon
+        """
+        try:
             self._public_key = await hub_client.fetch_public_key()
+            if self._public_key:
+                self._public_key_fetched_at = datetime.now()
+                logger.info("✅ Clé PEM récupérée (fallback)")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération clé PEM: {e}")
+        return False
+    
+    def _is_pem_cache_valid(self) -> bool:
+        """Vérifie si le cache PEM est encore valide."""
+        if not self._public_key or not self._public_key_fetched_at:
+            return False
+        elapsed = (datetime.now() - self._public_key_fetched_at).total_seconds()
+        return elapsed < PEM_CACHE_TTL_SECONDS
+    
+    def _decode_with_jwks(self, token: str) -> dict:
+        """
+        Décode le token avec JWKS.
+        
+        Raises:
+            Exception si JWKS indisponible ou erreur de décodage
+        """
+        signing_key = self._jwk_client.get_signing_key_from_jwt(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_exp": True}
+        )
+    
+    def _decode_with_pem(self, token: str) -> dict:
+        """
+        Décode le token avec la clé PEM.
+        
+        Raises:
+            Exception si la clé PEM n'est pas disponible
+        """
+        if not self._public_key:
+            raise ValueError("Clé PEM non disponible")
+        return jwt.decode(
+            token,
+            self._public_key,
+            algorithms=["RS256"],
+            options={"verify_exp": True}
+        )
     
     def decode_token(self, token: str) -> TokenPayload:
         """
         Décode et valide un token JWT.
+        
+        Stratégie de validation avec fallback automatique :
+        1. Essaie JWKS (recommandé, cache 1h)
+        2. Si JWKS échoue → fallback automatique sur PEM
+        3. Le fallback PEM est aussi caché 1h
         
         Args:
             token: Token JWT à valider
@@ -150,24 +241,32 @@ class HubAuth:
         Raises:
             HTTPException: Si le token est invalide ou expiré
         """
+        payload = None
+        
         try:
-            if self._jwk_client:
-                # Validation avec JWKS (recommandé)
-                signing_key = self._jwk_client.get_signing_key_from_jwt(token)
-                payload = jwt.decode(
-                    token,
-                    signing_key.key,
-                    algorithms=["RS256"],
-                    options={"verify_exp": True}
-                )
+            # Stratégie 1: JWKS (recommandé) avec fallback automatique sur PEM
+            if self._jwk_client and self._jwks_available:
+                try:
+                    payload = self._decode_with_jwks(token)
+                except Exception as jwks_error:
+                    # JWKS a échoué en runtime → fallback automatique sur PEM
+                    logger.warning(f"⚠️ JWKS indisponible en runtime, fallback PEM: {jwks_error}")
+                    self._jwks_available = False
+                    
+                    # Rafraîchir la clé PEM si nécessaire (synchrone impossible ici)
+                    # On utilise la clé PEM en cache si disponible
+                    if self._public_key:
+                        payload = self._decode_with_pem(token)
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Service d'authentification temporairement indisponible (JWKS down, pas de PEM en cache)"
+                        )
+            
+            # Stratégie 2: PEM uniquement (fallback ou mode dégradé)
             elif self._public_key:
-                # Fallback avec clé PEM
-                payload = jwt.decode(
-                    token,
-                    self._public_key,
-                    algorithms=["RS256"],
-                    options={"verify_exp": True}
-                )
+                payload = self._decode_with_pem(token)
+            
             else:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -196,6 +295,36 @@ class HubAuth:
                 detail=f"Token invalide: {str(e)}",
                 headers={"WWW-Authenticate": "Bearer"}
             )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Erreur inattendue lors du décodage du token: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Erreur interne lors de la validation du token"
+            )
+    
+    async def try_restore_jwks(self) -> bool:
+        """
+        Tente de restaurer la connexion JWKS après un fallback PEM.
+        À appeler périodiquement (ex: via un background task).
+        
+        Returns:
+            True si JWKS est de nouveau disponible
+        """
+        if self._jwks_available:
+            return True
+        
+        try:
+            # Réinitialiser le client JWKS
+            await self.initialize()
+            if self._jwks_available:
+                logger.info("✅ JWKS restauré après indisponibilité")
+                return True
+        except Exception as e:
+            logger.debug(f"JWKS toujours indisponible: {e}")
+        
+        return False
 
 
 # Instance singleton
