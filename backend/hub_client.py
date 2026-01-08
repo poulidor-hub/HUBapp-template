@@ -8,7 +8,6 @@ Fonctionnalités :
 - Retry automatique en cas d'erreur d'authentification
 - Thread-safety avec asyncio.Lock()
 - Découverte dynamique des services partagés (IS_SHARED)
-- Attente du certificat CA fourni par le Hub (si HTTPS activé)
 - Protection contre les enregistrements concurrents (multi-workers)
 """
 import httpx
@@ -18,7 +17,6 @@ import os
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 import logging
 
 from config import get_settings
@@ -30,10 +28,6 @@ MAX_RESYNC_ATTEMPTS = 3
 
 # Durée de cache pour les services découverts (en secondes)
 DISCOVERED_SERVICES_CACHE_TTL = 60
-
-# Configuration attente certificat Hub
-CERT_WAIT_INTERVAL = 2  # secondes entre chaque vérification
-CERT_WAIT_TIMEOUT = 120  # timeout max en secondes (2 minutes)
 
 # Fichier de lock pour éviter les enregistrements concurrents entre workers
 REGISTER_LOCK_FILE = "/tmp/.hub_register.lock"
@@ -70,306 +64,6 @@ class HubCredentials:
     client_secret: str
     access_token: Optional[str] = None
     token_expires_at: Optional[datetime] = None
-
-
-async def download_hub_ca_certificate() -> bool:
-    """
-    Télécharge le certificat CA du Hub via HTTP.
-    
-    Cette fonction permet aux applications distantes (sur un autre hôte que le Hub)
-    de récupérer automatiquement le certificat CA pour établir des connexions HTTPS.
-    
-    Le certificat CA est une information publique, donc ce téléchargement initial
-    via HTTP est sécuritairement acceptable (similaire aux CA publiques).
-    
-    Returns:
-        True si le certificat a été téléchargé avec succès, False sinon
-    
-    Note:
-        - Utilise HTTP (non HTTPS) car c'est le bootstrap initial
-        - Le Hub doit exposer GET /api/pki/ca.crt (endpoint public)
-    """
-    settings = get_settings()
-    
-    if not settings.HUB_CA_CERT_PATH:
-        logger.error("HUB_CA_CERT_PATH non configuré")
-        return False
-    
-    cert_path = Path(settings.HUB_CA_CERT_PATH)
-    
-    # URL HTTP pour télécharger le certificat (bootstrap initial)
-    # On utilise le port HTTP (HUB_API_PORT) et non HTTPS pour ce premier contact
-    hub_http_url = f"http://{settings.hub_host}:{settings.HUB_API_PORT}/api/pki/ca.crt"
-    
-    logger.info(f"📥 Téléchargement du certificat CA depuis {hub_http_url}...")
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(hub_http_url)
-            
-            if response.status_code == 200:
-                # Créer le dossier parent si nécessaire
-                cert_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Sauvegarder le certificat
-                cert_path.write_bytes(response.content)
-                
-                # Vérifier que c'est bien un certificat PEM
-                content = response.content.decode('utf-8', errors='ignore')
-                if '-----BEGIN CERTIFICATE-----' in content:
-                    logger.info(f"✅ Certificat CA téléchargé et sauvegardé: {cert_path}")
-                    return True
-                else:
-                    logger.error("❌ Le fichier téléchargé n'est pas un certificat PEM valide")
-                    cert_path.unlink(missing_ok=True)
-                    return False
-            
-            elif response.status_code == 404:
-                logger.error("❌ CA non initialisée sur le Hub. Exécutez 'python pki.py init' sur le Hub.")
-                return False
-            else:
-                logger.error(f"❌ Erreur téléchargement CA: {response.status_code} - {response.text}")
-                return False
-                
-    except httpx.ConnectError:
-        logger.error(f"❌ Impossible de contacter le Hub sur {hub_http_url}")
-        logger.error("   Vérifiez que le Hub est accessible et que le port HTTP est ouvert")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du téléchargement du certificat CA: {e}")
-        return False
-
-
-async def download_app_certificate() -> bool:
-    """
-    Télécharge le certificat SSL de l'application depuis le Hub.
-    
-    Cette fonction permet aux applications de récupérer automatiquement
-    leur certificat SSL au démarrage. Si le certificat n'existe pas sur le Hub
-    ou n'est plus valide avec la CA actuelle, le Hub le génère automatiquement.
-    
-    Cela garantit que les applications utilisent toujours un certificat
-    signé par la CA actuelle du Hub, même après une régénération de la CA.
-    
-    Returns:
-        True si les certificats ont été téléchargés avec succès, False sinon
-    
-    Note:
-        - Utilise HTTP car c'est avant l'établissement de HTTPS
-        - Le Hub génère automatiquement le certificat si nécessaire
-        - Télécharge le certificat ET la clé privée
-    """
-    settings = get_settings()
-    
-    cert_path = Path(settings.APP_SSL_CERT_PATH)
-    key_path = Path(settings.APP_SSL_KEY_PATH)
-    
-    # URL HTTP pour télécharger les certificats
-    hub_http_url = f"http://{settings.hub_host}:{settings.HUB_API_PORT}/api/pki/app-cert/{settings.APP_SLUG}"
-    
-    # Passer l'IP de l'application pour les SANs du certificat
-    app_ip = settings.app_host
-    
-    logger.info(f"📥 Téléchargement du certificat app depuis {hub_http_url}?ip={app_ip}...")
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Télécharger le certificat
-            response = await client.get(f"{hub_http_url}?file=cert&ip={app_ip}")
-            
-            if response.status_code == 200:
-                cert_path.parent.mkdir(parents=True, exist_ok=True)
-                cert_path.write_bytes(response.content)
-                
-                content = response.content.decode('utf-8', errors='ignore')
-                if '-----BEGIN CERTIFICATE-----' not in content:
-                    logger.error("❌ Le fichier téléchargé n'est pas un certificat PEM valide")
-                    return False
-                
-                logger.info(f"✅ Certificat app téléchargé: {cert_path}")
-            elif response.status_code == 503:
-                logger.warning("⚠️ Hub PKI non initialisée, certificat app non disponible")
-                return False
-            else:
-                logger.error(f"❌ Erreur téléchargement certificat: {response.status_code} - {response.text}")
-                return False
-            
-            # Télécharger la clé privée
-            response = await client.get(f"{hub_http_url}?file=key&ip={app_ip}")
-            
-            if response.status_code == 200:
-                key_path.parent.mkdir(parents=True, exist_ok=True)
-                key_path.write_bytes(response.content)
-                # Restreindre les permissions sur la clé
-                import os
-                os.chmod(key_path, 0o600)
-                
-                logger.info(f"✅ Clé privée app téléchargée: {key_path}")
-            else:
-                logger.error(f"❌ Erreur téléchargement clé: {response.status_code}")
-                return False
-            
-            return True
-                
-    except httpx.ConnectError:
-        logger.error(f"❌ Impossible de contacter le Hub sur {hub_http_url}")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du téléchargement du certificat app: {e}")
-        return False
-
-
-def is_certificate_valid_with_ca(cert_path: Path, ca_path: Path) -> bool:
-    """
-    Vérifie si un certificat est signé par la CA spécifiée.
-    
-    Args:
-        cert_path: Chemin vers le certificat à vérifier
-        ca_path: Chemin vers le certificat CA
-    
-    Returns:
-        True si le certificat est valide et signé par la CA, False sinon
-    """
-    try:
-        from cryptography import x509
-        from cryptography.hazmat.backends import default_backend
-        from datetime import datetime, timezone
-        
-        if not cert_path.exists() or not ca_path.exists():
-            return False
-        
-        with open(cert_path, 'rb') as f:
-            cert = x509.load_pem_x509_certificate(f.read(), default_backend())
-        with open(ca_path, 'rb') as f:
-            ca_cert = x509.load_pem_x509_certificate(f.read(), default_backend())
-        
-        # Vérifier que l'issuer du certificat correspond au subject de la CA
-        if cert.issuer != ca_cert.subject:
-            logger.warning(f"⚠️ Certificat {cert_path} n'est pas signé par la CA actuelle")
-            return False
-        
-        # Vérifier que le certificat n'est pas expiré
-        if cert.not_valid_after_utc < datetime.now(timezone.utc):
-            logger.warning(f"⚠️ Certificat {cert_path} expiré")
-            return False
-        
-        return True
-        
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur vérification certificat: {e}")
-        return False
-
-
-async def ensure_valid_app_certificate() -> bool:
-    """
-    S'assure que l'application dispose d'un certificat SSL valide.
-    
-    Vérifie si le certificat actuel est signé par la CA du Hub.
-    Si ce n'est pas le cas (ou si le certificat n'existe pas),
-    télécharge automatiquement un nouveau certificat depuis le Hub.
-    
-    Returns:
-        True si un certificat valide est disponible, False sinon
-    """
-    settings = get_settings()
-    
-    cert_path = Path(settings.APP_SSL_CERT_PATH)
-    ca_path = Path(settings.HUB_CA_CERT_PATH)
-    
-    # Vérifier si le certificat actuel est valide avec la CA
-    if cert_path.exists() and is_certificate_valid_with_ca(cert_path, ca_path):
-        logger.info(f"✅ Certificat app valide: {cert_path}")
-        return True
-    
-    # Le certificat n'est pas valide, essayer de le télécharger
-    if cert_path.exists():
-        logger.info("🔄 Certificat app invalide ou signé par une ancienne CA, téléchargement...")
-    else:
-        logger.info("📥 Certificat app absent, téléchargement depuis le Hub...")
-    
-    return await download_app_certificate()
-
-
-async def wait_for_hub_certificate(timeout: int = CERT_WAIT_TIMEOUT) -> bool:
-    """
-    Attend que le certificat CA du Hub soit disponible.
-    
-    Cette fonction tente d'abord de télécharger le certificat via HTTP
-    si celui-ci n'existe pas localement. Cela permet aux applications
-    sur des hôtes distants de fonctionner sans partage de volume Docker.
-    
-    Flux:
-    1. Si le certificat existe déjà localement → l'utiliser
-    2. Sinon, tenter de le télécharger via HTTP depuis le Hub
-    3. Si le téléchargement échoue, attendre qu'il soit fourni via volume
-    
-    Une fois trouvé, le certificat est installé au niveau système pour que
-    Python/SSL puisse l'utiliser.
-    
-    Args:
-        timeout: Temps max d'attente en secondes (défaut: 120s)
-    
-    Returns:
-        True si le certificat est disponible, False si timeout atteint
-    
-    Note: 
-        - Appelée automatiquement par HubClient.register() si nécessaire
-    """
-    import subprocess
-    import shutil
-    
-    settings = get_settings()
-    
-    cert_path = Path(settings.HUB_CA_CERT_PATH)
-    system_cert_path = Path("/usr/local/share/ca-certificates/hub-ca.crt")
-    
-    # === ÉTAPE 1: Vérifier si le certificat existe déjà ===
-    if cert_path.exists() and cert_path.stat().st_size > 0:
-        logger.info(f"✅ Certificat CA déjà présent: {cert_path}")
-    else:
-        # === ÉTAPE 2: Tenter de télécharger le certificat via HTTP ===
-        logger.info("📡 Certificat CA absent, tentative de téléchargement depuis le Hub...")
-        downloaded = await download_hub_ca_certificate()
-        
-        if not downloaded:
-            # === ÉTAPE 3: Attendre que le certificat soit fourni via volume ===
-            logger.info("⏳ Téléchargement échoué, attente du certificat via volume Docker...")
-            elapsed = 0
-            
-            while elapsed < timeout:
-                if cert_path.exists() and cert_path.stat().st_size > 0:
-                    logger.info(f"✅ Certificat CA disponible via volume: {cert_path}")
-                    break
-                
-                await asyncio.sleep(CERT_WAIT_INTERVAL)
-                elapsed += CERT_WAIT_INTERVAL
-                
-                if elapsed % 10 == 0:
-                    logger.info(f"⏳ Attente du certificat CA... ({elapsed}s/{timeout}s)")
-            else:
-                logger.error(f"❌ Timeout: certificat CA non disponible après {timeout}s")
-                return False
-    
-    # === ÉTAPE 4: Installer le certificat au niveau système ===
-    if cert_path.exists() and cert_path.stat().st_size > 0:
-        try:
-            if not system_cert_path.exists() or system_cert_path.read_bytes() != cert_path.read_bytes():
-                logger.info("🔐 Installation du certificat dans le système...")
-                shutil.copy(cert_path, system_cert_path)
-                subprocess.run(["update-ca-certificates"], capture_output=True, check=True)
-                logger.info("✅ Certificat installé au niveau système")
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible d'installer le certificat au niveau système: {e}")
-            # Continue quand même, httpx utilisera le chemin direct
-        
-        # === ÉTAPE 5: Vérifier/télécharger le certificat de l'application ===
-        # Cela garantit que le certificat de l'app est signé par la CA actuelle
-        if settings.API_HTTPS_PORT:
-            await ensure_valid_app_certificate()
-        
-        return True
-    
-    return False
 
 
 class HubClient:
@@ -441,15 +135,7 @@ class HubClient:
         
         Utilise un lock fichier pour éviter que plusieurs workers
         ne s'enregistrent simultanément.
-        
-        Note: Attend automatiquement le certificat CA du Hub.
         """
-        # Attendre le certificat CA du Hub
-        cert_available = await wait_for_hub_certificate()
-        if not cert_available:
-            logger.error("Impossible de s'enregistrer: certificat CA du Hub non disponible")
-            return False
-        
         # Essayer de charger les credentials depuis le fichier partagé
         # (un autre worker a peut-être déjà fait l'enregistrement)
         if self._load_credentials_from_file():
@@ -493,8 +179,8 @@ class HubClient:
     async def _do_register(self) -> bool:
         """Effectue l'enregistrement réel auprès du Hub."""
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
-                # Construire le payload avec les ports HTTPS si disponibles
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Construire le payload
                 payload = {
                     "slug": self.settings.APP_SLUG,
                     "name": self.settings.APP_NAME,
@@ -503,12 +189,6 @@ class HubClient:
                     "frontend_port": self.settings.FRONTEND_PORT,
                     "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
                 }
-                # Ajouter le port HTTPS de l'API si configuré
-                if self.settings.API_HTTPS_PORT:
-                    payload["api_https_port"] = self.settings.API_HTTPS_PORT
-                # Ajouter le port HTTPS du frontend si configuré
-                if self.settings.FRONTEND_HTTPS_PORT:
-                    payload["frontend_https_port"] = self.settings.FRONTEND_HTTPS_PORT
                 # Ajouter custom_host si l'app est sur un serveur distant (APP_HOST défini)
                 if self.settings.is_remote_app:
                     payload["custom_host"] = self.settings.APP_HOST
@@ -558,7 +238,7 @@ class HubClient:
         async with self._resync_lock:
             logger.debug(f"🔐 Lock acquis pour régénération des credentials")
             try:
-                async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
                     response = await client.post(
                         f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
@@ -645,7 +325,7 @@ class HubClient:
         
         # Obtenir un nouveau token
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/auth/token",
                     data={
@@ -712,7 +392,7 @@ class HubClient:
             return self._jwks
         
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
                 )
@@ -737,7 +417,7 @@ class HubClient:
             return self._public_key
         
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/auth/public-key"
                 )
@@ -753,76 +433,6 @@ class HubClient:
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur récupération clé publique: {e}")
-            return None
-    
-    async def call_service(
-        self, 
-        service_slug: str, 
-        endpoint: str, 
-        method: str = "GET", 
-        _retry_on_401: bool = True,
-        **kwargs
-    ) -> Optional[dict]:
-        """
-        Appelle un autre service via M2M.
-        
-        Gère automatiquement :
-        - Authentification M2M
-        - Retry si 401 (avec resync du secret)
-        
-        Args:
-            service_slug: Slug du service cible
-            endpoint: Endpoint à appeler (ex: "/api/users")
-            method: Méthode HTTP
-            _retry_on_401: Réessayer automatiquement si 401 (défaut: True)
-            **kwargs: Arguments supplémentaires pour httpx
-        
-        Returns:
-            Réponse JSON ou None si erreur
-        """
-        token = await self.get_m2m_token()
-        if not token:
-            logger.error(f"❌ Impossible d'obtenir un token M2M pour appeler {service_slug}")
-            return None
-        
-        # Construire l'URL du service cible en remplaçant le port Hub par le slug du service
-        url = f"{self.settings.hub_api_url.replace(f':{self.settings.HUB_API_PORT}', f':{service_slug}')}{endpoint}"
-        logger.debug(f"📡 Appel service: {method} {url}")
-        
-        try:
-            async with httpx.AsyncClient(timeout=30.0, verify=self.settings.hub_ssl_verify) as client:
-                headers = kwargs.pop("headers", {})
-                headers["Authorization"] = f"Bearer {token}"
-                
-                response = await client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    **kwargs
-                )
-                
-                if response.status_code == 200:
-                    logger.debug(f"✅ Réponse OK de {service_slug}")
-                    return response.json()
-                
-                elif response.status_code == 401 and _retry_on_401:
-                    # Token rejeté → resync et retry
-                    logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
-                    if await self._auto_resync():
-                        logger.info(f"🔄 Retry après resync...")
-                        return await self.call_service(
-                            service_slug, endpoint, method, 
-                            _retry_on_401=False,  # Éviter boucle infinie
-                            **kwargs
-                        )
-                    logger.error(f"❌ Resync échoué, abandon de l'appel")
-                    return None
-                else:
-                    logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
-                    return None
-                    
-        except httpx.RequestError as e:
-            logger.error(f"❌ Erreur appel service {service_slug}: {e}")
             return None
 
     async def discover_services(self, force_refresh: bool = False) -> Dict[str, DiscoveredService]:
@@ -854,7 +464,7 @@ class HubClient:
             return self._discovered_services
         
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=self.settings.hub_ssl_verify) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self.settings.hub_api_url}/api/apps/discover",
                     headers={
@@ -989,7 +599,7 @@ class HubClient:
         logger.debug(f"📡 Appel service découvert: {method} {url} (X-Slug: {service_slug})")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0, verify=self.settings.hub_ssl_verify) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 headers = kwargs.pop("headers", {})
                 headers["Authorization"] = f"Bearer {token}"
                 headers["X-Slug"] = service_slug  # Identification du service cible

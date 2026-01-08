@@ -124,24 +124,10 @@ class Settings(BaseSettings):
     API_PORT: int = 9045
     FRONTEND_PORT: int = 4250
     
-    # Ports HTTPS (optionnels - si définis, seront utilisés en priorité)
-    API_HTTPS_PORT: Optional[int] = None  # Port HTTPS de l'API backend
-    FRONTEND_HTTPS_PORT: Optional[int] = None  # Port HTTPS du frontend
-    
     # Hub - Auto-détecté si non spécifié
     HUB_HOST: Optional[str] = None
     HUB_API_PORT: int = 8000
     HUB_FRONTEND_PORT: int = 80
-    
-    # === HTTPS / SSL (toujours activé) ===
-    HUB_HTTPS_PORT: int = 443
-    
-    # Chemins fixes des certificats SSL (fournis par le Hub)
-    # Le certificat CA est téléchargé dans un volume Docker accessible en écriture
-    HUB_CA_CERT_PATH: str = "/app/certs/hub/hub-ca.crt"
-    # Les certificats serveur sont montés en lecture seule depuis ./certs/server/{APP_SLUG}/
-    APP_SSL_CERT_PATH: str = "/app/certs/server/app.crt"
-    APP_SSL_KEY_PATH: str = "/app/certs/server/app.key"
     
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
@@ -158,15 +144,6 @@ class Settings(BaseSettings):
     
     # Environnement
     DEBUG: bool = False
-    
-    # Validateurs pour gérer les chaînes vides comme None
-    @field_validator('API_HTTPS_PORT', 'FRONTEND_HTTPS_PORT', mode='before')
-    @classmethod
-    def empty_str_to_none_int(cls, v):
-        """Convertit les chaînes vides en None pour les ports optionnels."""
-        if v == '' or v is None:
-            return None
-        return int(v)
     
     @field_validator('APP_HOST', 'HUB_HOST', mode='before')
     @classmethod
@@ -193,44 +170,13 @@ class Settings(BaseSettings):
     
     @property
     def hub_api_url(self) -> str:
-        """URL complète de l'API Hub (toujours HTTPS)."""
-        port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
-        return f"https://{self.hub_host}{port}"
+        """URL complète de l'API Hub (HTTP)."""
+        return f"http://{self.hub_host}:{self.HUB_API_PORT}"
     
     @property
     def hub_frontend_url(self) -> str:
-        """URL complète du frontend Hub (toujours HTTPS)."""
-        port = f":{self.HUB_HTTPS_PORT}" if self.HUB_HTTPS_PORT != 443 else ""
-        return f"https://{self.hub_host}{port}"
-    
-    @property
-    def hub_ssl_verify(self) -> str:
-        """
-        Certificat CA pour vérifier le Hub en HTTPS.
-        
-        Retourne:
-        - Chemin du CA si le certificat est présent
-        
-        Raises:
-            RuntimeError: Si le certificat CA n'est pas disponible.
-                         La communication non certifiée n'est PAS autorisée.
-        
-        Note: Le certificat est fourni dynamiquement par le Hub.
-        Utiliser wait_for_hub_certificate() au démarrage.
-        """
-        ca_path = Path(self.HUB_CA_CERT_PATH)
-        if ca_path.exists():
-            return str(ca_path)
-        # Sans CA = REFUSER la communication (sécurité obligatoire)
-        raise RuntimeError(
-            "❌ Communication HTTPS impossible : certificat CA du Hub non disponible. "
-            "La communication non certifiée par le Hub n'est pas autorisée. "
-            f"Vérifiez que {self.HUB_CA_CERT_PATH} existe."
-        )
-    
-    def is_hub_certificate_available(self) -> bool:
-        """Vérifie si le certificat CA du Hub est disponible."""
-        return Path(self.HUB_CA_CERT_PATH).exists()
+        """URL complète du frontend Hub (HTTP)."""
+        return f"http://{self.hub_host}:{self.HUB_FRONTEND_PORT}"
     
     @property
     def app_host(self) -> str:
@@ -256,27 +202,13 @@ class Settings(BaseSettings):
     
     @property
     def api_url(self) -> str:
-        """URL de l'API de cette application (HTTPS si configuré, sinon HTTP)."""
-        if self.API_HTTPS_PORT:
-            return f"https://{self.app_host}:{self.API_HTTPS_PORT}"
+        """URL de l'API de cette application (HTTP)."""
         return f"http://{self.app_host}:{self.API_PORT}"
     
     @property
     def frontend_url(self) -> str:
-        """URL du frontend de cette application (HTTPS si configuré, sinon HTTP)."""
-        if self.FRONTEND_HTTPS_PORT:
-            return f"https://{self.app_host}:{self.FRONTEND_HTTPS_PORT}"
+        """URL du frontend de cette application (HTTP)."""
         return f"http://{self.app_host}:{self.FRONTEND_PORT}"
-    
-    @property
-    def is_api_https_enabled(self) -> bool:
-        """Indique si l'API utilise HTTPS."""
-        return self.API_HTTPS_PORT is not None
-    
-    @property
-    def is_frontend_https_enabled(self) -> bool:
-        """Indique si le frontend utilise HTTPS."""
-        return self.FRONTEND_HTTPS_PORT is not None
     
     @property
     def database_url(self) -> str:

@@ -1,11 +1,10 @@
 """
-Tests M2M (Machine-to-Machine) et HTTPS.
+Tests M2M (Machine-to-Machine).
 
 Ces tests vérifient :
 - L'authentification via tokens M2M (service accounts)
 - L'accès aux endpoints protégés avec un token M2M
 - La découverte de services partagés
-- La communication HTTPS avec le Hub
 """
 import pytest
 from httpx import AsyncClient
@@ -62,54 +61,6 @@ class TestM2MServiceDiscovery:
         
         assert token is not None
         assert token == "mock_m2m_token"
-
-
-class TestHTTPSConfiguration:
-    """Tests de la configuration HTTPS."""
-    
-    def test_hub_https_url_construction(self, settings):
-        """Vérifie la construction des URLs HTTPS du Hub."""
-        original_port = settings.HUB_HTTPS_PORT
-        
-        try:
-            settings.HUB_HTTPS_PORT = 443
-            
-            # Vérifier l'URL du Hub API (toujours HTTPS)
-            hub_api_url = settings.hub_api_url
-            assert hub_api_url.startswith("https://")
-            # Port 443 ne doit pas apparaître dans l'URL
-            assert ":443" not in hub_api_url or hub_api_url.count(":") == 1
-        finally:
-            settings.HUB_HTTPS_PORT = original_port
-    
-    def test_app_https_url_construction(self, settings):
-        """Vérifie la construction des URLs HTTPS de l'application."""
-        original_api_https = settings.API_HTTPS_PORT
-        original_frontend_https = settings.FRONTEND_HTTPS_PORT
-        
-        try:
-            settings.API_HTTPS_PORT = 9046
-            settings.FRONTEND_HTTPS_PORT = 4251
-            
-            # Vérifier l'URL de l'API
-            api_url = settings.api_url
-            assert api_url.startswith("https://")
-            assert ":9046" in api_url
-            
-            # Vérifier l'URL du frontend
-            frontend_url = settings.frontend_url
-            assert frontend_url.startswith("https://")
-            assert ":4251" in frontend_url
-        finally:
-            settings.API_HTTPS_PORT = original_api_https
-            settings.FRONTEND_HTTPS_PORT = original_frontend_https
-    
-    def test_ssl_verify_property(self, settings):
-        """Vérifie la propriété hub_ssl_verify."""
-        # En mode HTTPS (toujours activé) avec CA configuré, utilise le chemin du CA
-        if settings.is_hub_certificate_available():
-            ssl_verify = settings.hub_ssl_verify
-            assert ssl_verify == settings.HUB_CA_CERT_PATH
 
 
 class TestM2MEndpoints:

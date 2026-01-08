@@ -375,8 +375,7 @@ async def test_m2m_call(
         return {"success": False, "error": "Impossible d'obtenir un token M2M"}
     
     try:
-        # Utiliser hub_ssl_verify pour la vérification SSL (certificat CA du Hub)
-        async with httpx.AsyncClient(timeout=10.0, verify=settings.hub_ssl_verify) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 target_url,
                 headers={"Authorization": f"Bearer {token}"}

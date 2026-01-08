@@ -8,16 +8,12 @@ LABEL maintainer="HUBapp Template"
 
 WORKDIR /app
 
-# Dépendances système pour psycopg2, ca-certificates et healthcheck
+# Dépendances système pour psycopg2 et healthcheck
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
-    ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Créer le répertoire pour le certificat CA Hub
-RUN mkdir -p /app/certs
 
 # Copier les requirements et installer
 COPY backend/requirements.txt .
@@ -32,17 +28,11 @@ COPY backend/ .
 # Copier le CHANGELOG pour les endpoints de documentation
 COPY CHANGELOG.md /app/CHANGELOG.md
 
-# Note: Le certificat CA du Hub (hub-ca.crt) est fourni dynamiquement par le Hub
-# et monté via docker-compose.yml dans /app/certs/hub-ca.crt
-# L'entrypoint l'installe au niveau système au démarrage si HTTPS est activé
-
 # Rendre l'entrypoint exécutable
 RUN chmod +x /app/entrypoint.sh
 
-# Ports exposés (internes au container)
-# 8000 = HTTP, 8443 = HTTPS (si certificats disponibles)
+# Port exposé (HTTP)
 EXPOSE 8000
-EXPOSE 8443
 
 # Utiliser l'entrypoint pour installer le certificat CA avant de lancer l'app
 ENTRYPOINT ["/app/entrypoint.sh"]
