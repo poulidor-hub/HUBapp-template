@@ -39,9 +39,14 @@ const config = {
   
   // URLs construites dynamiquement (adapte automatiquement HTTP/HTTPS)
   get apiUrl() {
-    // L'API utilise le port HTTPS si on est en HTTPS
-    const port = isHttps() ? env.API_HTTPS_PORT : env.API_PORT
-    return `${getProtocol()}//${getHost()}:${port}`
+    if (isHttps()) {
+      // En HTTPS, l'API passe par le proxy nginx sur le même port que le frontend
+      // Cela évite les problèmes CORS avec les certificats auto-signés
+      const frontendPort = window.location.port || '443'
+      return `${getProtocol()}//${getHost()}:${frontendPort}`
+    }
+    // En HTTP, utiliser le port API direct
+    return `${getProtocol()}//${getHost()}:${env.API_PORT}`
   },
   
   get hubApiUrl() {
