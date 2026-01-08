@@ -28,26 +28,38 @@ download_certs() {
     HUB_URL="http://${HUB_HOST}:${HUB_API_PORT}/api/pki/app-cert/${APP_SLUG}"
     
     echo "📥 Téléchargement des certificats depuis le Hub..."
+    echo "   URL: ${HUB_URL}?file=cert&ip=${APP_HOST}"
     
     # Créer le répertoire SSL si nécessaire
     mkdir -p /etc/nginx/ssl
     
-    # Télécharger le certificat
-    if wget -q -O "$SSL_CERT" "${HUB_URL}?file=cert&ip=${APP_HOST}" 2>/dev/null; then
+    # Télécharger le certificat avec plus de détails sur les erreurs
+    CERT_RESPONSE=$(wget -q -O "$SSL_CERT" "${HUB_URL}?file=cert&ip=${APP_HOST}" 2>&1)
+    WGET_EXIT=$?
+    
+    if [ $WGET_EXIT -eq 0 ]; then
         if grep -q "BEGIN CERTIFICATE" "$SSL_CERT" 2>/dev/null; then
             echo "✅ Certificat téléchargé: $SSL_CERT"
         else
-            echo "❌ Certificat invalide"
+            echo "❌ Certificat invalide (pas de BEGIN CERTIFICATE)"
+            echo "   Contenu reçu:"
+            head -c 500 "$SSL_CERT" 2>/dev/null
             rm -f "$SSL_CERT"
             return 1
         fi
     else
-        echo "❌ Impossible de télécharger le certificat"
+        echo "❌ Impossible de télécharger le certificat (wget exit: $WGET_EXIT)"
+        echo "   Réponse: $CERT_RESPONSE"
+        # Tenter avec wget verbeux pour voir l'erreur
+        wget -O- "${HUB_URL}?file=cert&ip=${APP_HOST}" 2>&1 | head -20
         return 1
     fi
     
     # Télécharger la clé privée
-    if wget -q -O "$SSL_KEY" "${HUB_URL}?file=key&ip=${APP_HOST}" 2>/dev/null; then
+    KEY_RESPONSE=$(wget -q -O "$SSL_KEY" "${HUB_URL}?file=key&ip=${APP_HOST}" 2>&1)
+    WGET_EXIT=$?
+    
+    if [ $WGET_EXIT -eq 0 ]; then
         if grep -q "PRIVATE KEY" "$SSL_KEY" 2>/dev/null; then
             echo "✅ Clé privée téléchargée: $SSL_KEY"
             chmod 600 "$SSL_KEY"
@@ -57,7 +69,7 @@ download_certs() {
             return 1
         fi
     else
-        echo "❌ Impossible de télécharger la clé privée"
+        echo "❌ Impossible de télécharger la clé privée (wget exit: $WGET_EXIT)"
         return 1
     fi
     
