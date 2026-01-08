@@ -87,12 +87,19 @@ class TokenPayload:
 class HubAuth:
     """
     Gestion de l'authentification via le Hub.
-    Valide les tokens JWT avec la clé publique JWKS.
+    
+    Stratégie de validation JWT :
+    1. JWKS (standard OIDC) - Méthode recommandée avec rotation automatique des clés
+    2. Clé PEM statique - Fallback si JWKS indisponible
     
     Fonctionnalités de résilience :
     - Cache JWKS avec TTL de 1h (rotation automatique des clés)
-    - Fallback automatique sur clé PEM si JWKS indisponible
+    - Fallback automatique sur clé PEM si JWKS indisponible (init + runtime)
     - Pas besoin de redéployer lors de la rotation des clés
+    
+    Configuration SSL/TLS :
+    - VERIFY_SSL: Active/désactive la vérification SSL (défaut: True)
+    - HUB_CA_CERT_PATH: Chemin vers le certificat CA pour les certificats auto-signés
     """
     
     def __init__(self):
@@ -103,26 +110,25 @@ class HubAuth:
         self._ssl_context: Optional[ssl.SSLContext] = None
         self._jwks_available: bool = True  # Flag pour le fallback intelligent
     
-    def _create_ssl_context(self) -> ssl.SSLContext:
+    def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
         """
-        Crée un contexte SSL avec le certificat CA du Hub.
+        Crée un contexte SSL pour les connexions JWKS.
         
         Returns:
-            SSLContext configuré
+            SSLContext configuré ou None si SSL désactivé
         """
+        if not self.settings.VERIFY_SSL:
+            logger.warning("⚠️ Vérification SSL désactivée (VERIFY_SSL=False)")
+            return None
+        
         ssl_context = ssl.create_default_context()
         
-        # Charger le certificat CA si disponible
-        ca_path = Path(self.settings.HUB_CA_CERT_PATH)
-        if ca_path.exists():
-            ssl_context.load_verify_locations(str(ca_path))
-            logger.debug(f"✅ Certificat CA chargé pour JWKS: {ca_path}")
-        else:
-            # Essayer le certificat système installé par update-ca-certificates
-            system_cert = Path("/usr/local/share/ca-certificates/hub-ca.crt")
-            if system_cert.exists():
-                ssl_context.load_verify_locations(str(system_cert))
-                logger.debug(f"✅ Certificat CA système chargé pour JWKS: {system_cert}")
+        # Certificat CA personnalisé (pour certificats auto-signés)
+        if self.settings.HUB_CA_CERT_PATH:
+            ca_path = Path(self.settings.HUB_CA_CERT_PATH)
+            if ca_path.exists():
+                ssl_context.load_verify_locations(str(ca_path))
+                logger.info(f"✅ Certificat CA chargé: {ca_path}")
             else:
                 logger.warning(f"⚠️ Certificat CA non trouvé: {ca_path}")
         
@@ -130,43 +136,40 @@ class HubAuth:
     
     async def initialize(self):
         """
-        Initialise le client JWKS avec cache intelligent.
+        Initialise l'authentification en récupérant les clés du Hub.
         
         Le cache JWKS a un TTL de 1h, permettant la rotation automatique
         des clés sans redéploiement de l'application.
+        
+        Tente d'abord JWKS (standard OIDC), puis fallback sur PEM.
         """
+        self._ssl_context = self._create_ssl_context()
+        
+        # Tentative 1: JWKS (méthode recommandée - standard OIDC)
         try:
             jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
-            
-            # Créer le contexte SSL si HTTPS activé
-            self._ssl_context = self._create_ssl_context()
-            
-            if self._ssl_context:
-                # Créer un PyJWKClient avec contexte SSL personnalisé
-                # lifespan = durée du cache JWKS (rotation automatique des clés)
-                self._jwk_client = PyJWKClient(
-                    jwks_url,
-                    ssl_context=self._ssl_context,
-                    timeout=10,  # Timeout de 10 secondes
-                    lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h - rotation auto des clés
-                )
-                logger.info(f"✅ Client JWKS initialisé (HTTPS, cache {JWKS_CACHE_TTL_SECONDS}s): {jwks_url}")
-            else:
-                # Mode HTTP standard
-                self._jwk_client = PyJWKClient(
-                    jwks_url,
-                    timeout=10,
-                    lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h - rotation auto des clés
-                )
-                logger.info(f"✅ Client JWKS initialisé (cache {JWKS_CACHE_TTL_SECONDS}s): {jwks_url}")
-            
+            self._jwk_client = PyJWKClient(
+                jwks_url,
+                ssl_context=self._ssl_context,
+                cache_keys=True,
+                lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h
+            )
+            # Test de connexion pour valider que JWKS est accessible
+            self._jwk_client.get_signing_keys()
             self._jwks_available = True
-                
+            logger.info(f"✅ Authentification Hub initialisée (JWKS, cache {JWKS_CACHE_TTL_SECONDS}s)")
+            return
         except Exception as e:
-            logger.warning(f"⚠️ Impossible d'initialiser JWKS, fallback sur clé PEM: {e}")
+            logger.warning(f"⚠️ JWKS indisponible, fallback sur clé PEM: {e}")
+            self._jwk_client = None
             self._jwks_available = False
-            # Fallback sur la clé PEM
-            await self._refresh_pem_key()
+        
+        # Tentative 2: Clé PEM statique (fallback)
+        await self._refresh_pem_key()
+        if self._public_key:
+            logger.info("✅ Authentification Hub initialisée (clé PEM)")
+        else:
+            logger.error("❌ Impossible d'initialiser l'authentification Hub")
     
     async def _refresh_pem_key(self) -> bool:
         """
