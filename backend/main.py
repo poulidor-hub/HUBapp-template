@@ -33,6 +33,7 @@ from schemas import (
 )
 from routes.docs import router as docs_router
 from routes.backup import router as backup_router
+from routes.tests import router as tests_router
 
 # Configuration logging
 logging.basicConfig(
@@ -120,6 +121,7 @@ app.add_middleware(
 # Inclusion des routeurs
 app.include_router(docs_router)
 app.include_router(backup_router)
+app.include_router(tests_router)
 
 
 # ============================================================

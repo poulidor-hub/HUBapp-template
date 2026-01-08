@@ -20,6 +20,8 @@
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+
 Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 ## 🔗 Accès à la documentation interactive
@@ -42,9 +44,11 @@ L'API propose une documentation Swagger/OpenAPI interactive :
 6. [Préférences Utilisateur](#préférences-utilisateur)
 7. [Découverte des Services](#découverte-des-services)
 8. [Machine-to-Machine (M2M)](#machine-to-machine-m2m)
-9. [Codes d'erreur](#codes-derreur)
+9. [Tests des Services](#tests-des-services)
+10. [Codes d'erreur](#codes-derreur)
 
 ---
+
 
 ## 🔐 Authentification
 
@@ -797,6 +801,155 @@ curl -H "Authorization: Bearer $TOKEN" \
 # Appeler /api/items sur le service inventaire-app
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   "http://localhost:9045/api/m2m/call/inventaire-app?endpoint=/api/items&method=GET"
+```
+
+---
+
+## 🧪 Tests des Services
+
+Endpoints pour tester l'ensemble des services de l'application par rapport au Hub.
+
+### Test complet de tous les services
+
+```http
+GET /api/tests/services
+```
+
+**Authentification requise** : Oui (tout utilisateur authentifié)
+
+Exécute tous les tests et retourne un rapport détaillé :
+- Connexion Hub
+- Récupération X-Slug (role + user)
+- Service M2M
+- Flux SSE
+- Système de backup
+
+**Réponse** :
+```json
+{
+  "timestamp": "2025-01-08T10:30:00.000000",
+  "app_slug": "mon-app",
+  "app_version": "1.0.0",
+  "overall_success": true,
+  "total_duration_ms": 1234.56,
+  "tests": [
+    {
+      "name": "Hub Connection",
+      "success": true,
+      "duration_ms": 45.2,
+      "message": "Connexion au Hub opérationnelle",
+      "details": {
+        "hub_url": "http://hub:9000",
+        "hub_accessible": true,
+        "app_registered": true,
+        "credentials_valid": true
+      }
+    },
+    {
+      "name": "X-Slug Recovery",
+      "success": true,
+      "duration_ms": 1.2,
+      "message": "Récupération X-Slug (role + user) fonctionnelle",
+      "details": {
+        "username": "john.doe",
+        "app_slug": "mon-app",
+        "app_role": "admin",
+        "role_level": 4
+      }
+    }
+    // ... autres tests
+  ],
+  "summary": {
+    "total_tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "success_rate": "100.0%"
+  }
+}
+```
+
+### Tests individuels
+
+#### Test de connexion au Hub
+
+```http
+GET /api/tests/hub-connection
+```
+
+Vérifie :
+- Le Hub est accessible
+- L'application est enregistrée
+- Les credentials M2M sont valides
+
+#### Test de récupération X-Slug
+
+```http
+GET /api/tests/slug-recovery
+```
+
+Vérifie :
+- Le token contient l'identifiant utilisateur
+- Le rôle pour cette application est défini
+- Les informations globales sont présentes
+
+#### Test du service M2M
+
+```http
+GET /api/tests/m2m
+```
+
+Vérifie :
+- L'obtention d'un token M2M
+- La découverte de services partagés
+- La configuration des credentials
+
+#### Test du flux SSE
+
+```http
+GET /api/tests/sse
+```
+
+Vérifie :
+- L'endpoint SSE du Hub est accessible
+- Le Content-Type est correct (`text/event-stream`)
+
+#### Test du système de backup
+
+```http
+GET /api/tests/backup
+```
+
+Vérifie :
+- L'application est enregistrée auprès du Hub
+- L'endpoint backup du Hub est disponible
+- Des données locales sont présentes
+
+### Démonstration SSE
+
+```http
+GET /api/tests/sse/demo
+```
+
+Retourne un flux SSE de démonstration avec des événements de test.
+Utile pour vérifier la configuration SSE du client et du proxy.
+
+**Headers de réponse** :
+```http
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+**Exemple d'événements** :
+```
+data: {"type": "test_start", "message": "Démarrage des tests SSE"}
+
+data: {"type": "test_progress", "message": "Test en cours...", "progress": 33}
+
+data: {"type": "test_complete", "message": "Tests SSE terminés avec succès"}
+
+data: {"type": "stream_end"}
 ```
 
 ---
