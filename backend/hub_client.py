@@ -189,10 +189,14 @@ class HubClient:
                     "frontend_port": self.settings.FRONTEND_PORT,
                     "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
                 }
-                # Ajouter custom_host si l'app est sur un serveur distant (APP_HOST défini)
+                # Toujours envoyer custom_host avec l'IP de l'application
+                # Permet au Hub d'utiliser l'IP correcte définie dans le .env de l'app
+                # (APP_HOST si défini, sinon HUB_HOST qui est l'IP du serveur Hub)
+                payload["custom_host"] = self.settings.app_host
                 if self.settings.is_remote_app:
-                    payload["custom_host"] = self.settings.APP_HOST
-                    logger.info(f"🌐 Application distante : enregistrement avec custom_host={self.settings.APP_HOST}")
+                    logger.info(f"🌐 Application DISTANTE : enregistrement avec custom_host={self.settings.app_host}")
+                else:
+                    logger.info(f"📍 Application LOCALE : enregistrement avec custom_host={self.settings.app_host}")
                 
                 response = await client.post(
                     f"{self.settings.hub_api_url}/api/apps/register",
