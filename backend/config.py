@@ -142,10 +142,6 @@ class Settings(BaseSettings):
     # Storage / Uploads
     UPLOADS_DIR: str = "/app/uploads"
     
-    # SSL/TLS
-    VERIFY_SSL: bool = True  # Mettre à False en dev avec certificats auto-signés
-    HUB_CA_CERT_PATH: Optional[str] = None  # Chemin vers le certificat CA du Hub
-    
     # Environnement
     DEBUG: bool = False
     
