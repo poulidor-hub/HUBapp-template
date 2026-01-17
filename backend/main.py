@@ -168,6 +168,9 @@ async def health_check_detailed():
     if hub_client._discovered_services_fetched_at:
         services_cache_age = (now - hub_client._discovered_services_fetched_at).total_seconds()
     
+    # Statut du cache JWKS
+    jwks_cache_status = hub_auth.get_jwks_cache_status()
+    
     return {
         "status": "healthy" if hub_registered else "degraded",
         "app": {
@@ -190,11 +193,44 @@ async def health_check_detailed():
                 for s in discovered_services[:10]  # Limiter à 10 pour le health check
             ]
         },
+        "jwks_cache": jwks_cache_status,
         "config": {
             "is_shared": settings.IS_SHARED,
             "debug": settings.DEBUG,
         }
     }
+
+
+@app.get("/api/health/hub/jwks", tags=["Public"])
+async def health_hub_jwks():
+    """
+    Statut du cache JWKS (mémoire + disque).
+    
+    Permet de diagnostiquer l'état du système d'authentification :
+    - Cache mémoire : clés JWKS en RAM (TTL 30 min)
+    - Cache persistant : clés sauvegardées sur disque (max 7 jours)
+    - Fallback PEM : clé publique statique
+    
+    Returns:
+        dict avec le statut détaillé du cache JWKS
+    """
+    return hub_auth.get_jwks_cache_status()
+
+
+@app.post("/api/health/hub/jwks/refresh", tags=["Public"])
+async def health_hub_jwks_refresh():
+    """
+    Force le rafraîchissement du cache JWKS.
+    
+    Utile pour :
+    - Forcer la récupération des clés après rotation
+    - Tester la connectivité avec le Hub
+    - Rétablir le cache après une indisponibilité du Hub
+    
+    Returns:
+        dict avec le résultat du rafraîchissement
+    """
+    return await hub_auth.refresh_jwks_cache()
 
 
 @app.get("/api/version", tags=["Public"])

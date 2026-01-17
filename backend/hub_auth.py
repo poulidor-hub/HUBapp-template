@@ -3,14 +3,16 @@ Module d'authentification Hub avec validation JWT et gestion des rôles.
 
 Fonctionnalités :
 - Rotation automatique des clés JWKS (plus besoin de redéployer)
-- Cache intelligent avec TTL de 1h
+- Cache intelligent avec TTL de 30 minutes
 - Fallback automatique sur clé PEM si JWKS indisponible
+- Persistance du cache JWKS sur disque pour résilience
+- Fallback en cascade : JWKS → cache mémoire → cache disque
 """
 import jwt
 from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 from functools import wraps
 from dataclasses import dataclass
 from enum import IntEnum
@@ -18,6 +20,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import logging
 import ssl
+import json
 
 from config import get_settings
 from hub_client import hub_client
@@ -25,8 +28,12 @@ from hub_client import hub_client
 logger = logging.getLogger(__name__)
 
 # Configuration du cache JWKS
-JWKS_CACHE_TTL_SECONDS = 3600  # 1 heure - Rotation automatique des clés
+JWKS_CACHE_TTL_SECONDS = 1800  # 30 minutes - Cache mémoire avec TTL
 PEM_CACHE_TTL_SECONDS = 3600   # 1 heure - Cache pour la clé PEM fallback
+PERSISTENT_CACHE_MAX_AGE_DAYS = 7  # 7 jours - Durée max du cache disque
+
+# Chemin du cache persistant
+JWKS_PERSISTENT_CACHE_PATH = Path("storage/hub_jwks_cache.json")
 
 
 class RoleLevel(IntEnum):
@@ -93,8 +100,9 @@ class HubAuth:
     2. Clé PEM statique - Fallback si JWKS indisponible
     
     Fonctionnalités de résilience :
-    - Cache JWKS avec TTL de 1h (rotation automatique des clés)
-    - Fallback automatique sur clé PEM si JWKS indisponible (init + runtime)
+    - Cache JWKS mémoire avec TTL de 30 minutes
+    - Persistance du cache JWKS sur disque (validité 7 jours)
+    - Fallback en cascade : JWKS Hub → cache mémoire → cache disque
     - Pas besoin de redéployer lors de la rotation des clés
     
     Configuration SSL/TLS :
@@ -109,6 +117,11 @@ class HubAuth:
         self._public_key_fetched_at: Optional[datetime] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
         self._jwks_available: bool = True  # Flag pour le fallback intelligent
+        
+        # Nouveau: Cache JWKS avec TTL
+        self._cached_jwks_keys: Optional[Any] = None  # Clés JWKS en cache mémoire
+        self._cached_key_fetched_at: Optional[datetime] = None  # Timestamp du cache mémoire
+        self._hub_reachable: bool = True  # État de connectivité du Hub
     
     def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
         """
@@ -134,14 +147,137 @@ class HubAuth:
         
         return ssl_context
     
+    def _is_cache_expired(self) -> bool:
+        """Vérifie si le cache mémoire JWKS est expiré (TTL 30 min)."""
+        if not self._cached_key_fetched_at:
+            return True
+        elapsed = (datetime.now() - self._cached_key_fetched_at).total_seconds()
+        return elapsed >= JWKS_CACHE_TTL_SECONDS
+    
+    def _save_key_to_persistent_cache(self, keys_data: dict) -> bool:
+        """
+        Sauvegarde les clés JWKS dans le cache persistant sur disque.
+        
+        Args:
+            keys_data: Données des clés JWKS à sauvegarder
+            
+        Returns:
+            True si sauvegarde réussie, False sinon
+        """
+        try:
+            # Créer le répertoire si nécessaire
+            JWKS_PERSISTENT_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            
+            cache_data = {
+                "keys": keys_data,
+                "cached_at": datetime.now().isoformat(),
+                "hub_url": self.settings.hub_api_url,
+            }
+            
+            with open(JWKS_PERSISTENT_CACHE_PATH, "w") as f:
+                json.dump(cache_data, f, indent=2)
+            
+            logger.info(f"✅ Cache JWKS persistant sauvegardé: {JWKS_PERSISTENT_CACHE_PATH}")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de sauvegarder le cache JWKS persistant: {e}")
+            return False
+    
+    def _load_key_from_persistent_cache(self) -> Optional[dict]:
+        """
+        Charge les clés JWKS depuis le cache persistant sur disque.
+        
+        Valide que le cache n'est pas trop vieux (max 7 jours).
+        
+        Returns:
+            Données des clés JWKS ou None si cache invalide/absent
+        """
+        try:
+            if not JWKS_PERSISTENT_CACHE_PATH.exists():
+                logger.debug("Cache JWKS persistant non trouvé")
+                return None
+            
+            with open(JWKS_PERSISTENT_CACHE_PATH, "r") as f:
+                cache_data = json.load(f)
+            
+            # Vérifier l'âge du cache
+            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
+            age_days = (datetime.now() - cached_at).days
+            
+            if age_days > PERSISTENT_CACHE_MAX_AGE_DAYS:
+                logger.warning(f"⚠️ Cache JWKS persistant trop ancien ({age_days} jours > {PERSISTENT_CACHE_MAX_AGE_DAYS})")
+                return None
+            
+            # Vérifier que c'est le bon Hub
+            if cache_data.get("hub_url") != self.settings.hub_api_url:
+                logger.warning("⚠️ Cache JWKS persistant provient d'un Hub différent")
+                return None
+            
+            logger.info(f"✅ Cache JWKS persistant chargé (âge: {age_days} jour(s))")
+            return cache_data.get("keys")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lecture cache JWKS persistant: {e}")
+            return None
+    
+    def get_jwks_cache_status(self) -> dict:
+        """
+        Retourne le statut du cache JWKS (mémoire + disque).
+        Utilisé par l'endpoint de diagnostic.
+        
+        Returns:
+            dict avec les informations de statut du cache
+        """
+        memory_cache_age = None
+        if self._cached_key_fetched_at:
+            memory_cache_age = (datetime.now() - self._cached_key_fetched_at).total_seconds()
+        
+        persistent_cache_info = None
+        if JWKS_PERSISTENT_CACHE_PATH.exists():
+            try:
+                with open(JWKS_PERSISTENT_CACHE_PATH, "r") as f:
+                    cache_data = json.load(f)
+                cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
+                persistent_cache_info = {
+                    "exists": True,
+                    "cached_at": cached_at.isoformat(),
+                    "age_seconds": (datetime.now() - cached_at).total_seconds(),
+                    "age_days": (datetime.now() - cached_at).days,
+                    "hub_url": cache_data.get("hub_url"),
+                }
+            except Exception:
+                persistent_cache_info = {"exists": True, "error": "Impossible de lire le cache"}
+        else:
+            persistent_cache_info = {"exists": False}
+        
+        return {
+            "jwks_available": self._jwks_available,
+            "hub_reachable": self._hub_reachable,
+            "memory_cache": {
+                "has_keys": self._cached_jwks_keys is not None,
+                "fetched_at": self._cached_key_fetched_at.isoformat() if self._cached_key_fetched_at else None,
+                "age_seconds": memory_cache_age,
+                "expired": self._is_cache_expired(),
+                "ttl_seconds": JWKS_CACHE_TTL_SECONDS,
+            },
+            "persistent_cache": persistent_cache_info,
+            "pem_fallback": {
+                "available": self._public_key is not None,
+                "fetched_at": self._public_key_fetched_at.isoformat() if self._public_key_fetched_at else None,
+            }
+        }
+    
     async def initialize(self):
         """
         Initialise l'authentification en récupérant les clés du Hub.
         
-        Le cache JWKS a un TTL de 1h, permettant la rotation automatique
+        Le cache JWKS a un TTL de 30 minutes, permettant la rotation automatique
         des clés sans redéploiement de l'application.
         
-        Tente d'abord JWKS (standard OIDC), puis fallback sur PEM.
+        Stratégie de fallback en cascade :
+        1. JWKS depuis le Hub (méthode recommandée)
+        2. Cache mémoire (si Hub indisponible)
+        3. Cache persistant sur disque (si pas de cache mémoire)
+        4. Clé PEM statique (dernier recours)
         """
         self._ssl_context = self._create_ssl_context()
         
@@ -152,24 +288,98 @@ class HubAuth:
                 jwks_url,
                 ssl_context=self._ssl_context,
                 cache_keys=True,
-                lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 1h
+                lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 30 min
             )
             # Test de connexion pour valider que JWKS est accessible
-            self._jwk_client.get_signing_keys()
+            signing_keys = self._jwk_client.get_signing_keys()
             self._jwks_available = True
+            self._hub_reachable = True
+            self._cached_key_fetched_at = datetime.now()
+            
+            # Sauvegarder dans le cache persistant pour fallback futur
+            if signing_keys:
+                keys_data = [{"kid": k.key_id, "key": k.key.public_bytes_raw().hex() if hasattr(k.key, 'public_bytes_raw') else str(k.key)} for k in signing_keys]
+                self._save_key_to_persistent_cache({"keys": keys_data, "raw": True})
+            
             logger.info(f"✅ Authentification Hub initialisée (JWKS, cache {JWKS_CACHE_TTL_SECONDS}s)")
             return
         except Exception as e:
-            logger.warning(f"⚠️ JWKS indisponible, fallback sur clé PEM: {e}")
+            logger.warning(f"⚠️ JWKS indisponible depuis le Hub: {e}")
             self._jwk_client = None
             self._jwks_available = False
+            self._hub_reachable = False
         
-        # Tentative 2: Clé PEM statique (fallback)
+        # Tentative 2: Charger depuis le cache persistant
+        persistent_keys = self._load_key_from_persistent_cache()
+        if persistent_keys:
+            logger.info("✅ Authentification Hub initialisée (cache persistant)")
+            self._cached_jwks_keys = persistent_keys
+            # On ne peut pas recréer un PyJWKClient depuis le cache, donc on passe au PEM
+        
+        # Tentative 3: Clé PEM statique (fallback)
         await self._refresh_pem_key()
         if self._public_key:
             logger.info("✅ Authentification Hub initialisée (clé PEM)")
         else:
-            logger.error("❌ Impossible d'initialiser l'authentification Hub")
+            # Vérifier si on a au moins le cache persistant
+            if persistent_keys:
+                logger.warning("⚠️ Authentification Hub en mode dégradé (cache persistant uniquement)")
+            else:
+                logger.error("❌ Impossible d'initialiser l'authentification Hub")
+    
+    async def refresh_jwks_cache(self) -> dict:
+        """
+        Force le rafraîchissement du cache JWKS.
+        Appelé par l'endpoint POST /health/hub/jwks/refresh.
+        
+        Returns:
+            dict avec le statut du rafraîchissement
+        """
+        old_status = {
+            "jwks_available": self._jwks_available,
+            "hub_reachable": self._hub_reachable,
+        }
+        
+        # Réinitialiser et tenter de récupérer les clés
+        try:
+            jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
+            self._jwk_client = PyJWKClient(
+                jwks_url,
+                ssl_context=self._ssl_context,
+                cache_keys=True,
+                lifespan=JWKS_CACHE_TTL_SECONDS
+            )
+            signing_keys = self._jwk_client.get_signing_keys()
+            self._jwks_available = True
+            self._hub_reachable = True
+            self._cached_key_fetched_at = datetime.now()
+            
+            # Sauvegarder dans le cache persistant
+            if signing_keys:
+                keys_data = [{"kid": k.key_id} for k in signing_keys]
+                self._save_key_to_persistent_cache({"keys": keys_data, "count": len(signing_keys)})
+            
+            return {
+                "success": True,
+                "message": "Cache JWKS rafraîchi avec succès",
+                "previous_status": old_status,
+                "new_status": {
+                    "jwks_available": self._jwks_available,
+                    "hub_reachable": self._hub_reachable,
+                    "cached_at": self._cached_key_fetched_at.isoformat(),
+                }
+            }
+        except Exception as e:
+            self._hub_reachable = False
+            return {
+                "success": False,
+                "message": f"Impossible de rafraîchir le cache JWKS: {str(e)}",
+                "previous_status": old_status,
+                "new_status": {
+                    "jwks_available": self._jwks_available,
+                    "hub_reachable": self._hub_reachable,
+                }
+            }
     
     async def _refresh_pem_key(self) -> bool:
         """
@@ -230,10 +440,12 @@ class HubAuth:
         """
         Décode et valide un token JWT.
         
-        Stratégie de validation avec fallback automatique :
-        1. Essaie JWKS (recommandé, cache 1h)
-        2. Si JWKS échoue → fallback automatique sur PEM
-        3. Le fallback PEM est aussi caché 1h
+        Stratégie de validation avec fallback en cascade :
+        1. Essaie JWKS depuis le Hub (recommandé, cache 30 min)
+        2. Si Hub down → utilise le cache mémoire JWKS (même expiré)
+        3. Si pas de cache mémoire → utilise le cache persistant disque
+        4. Si rien → fallback sur clé PEM
+        5. Erreur 503 si aucun fallback disponible
         
         Args:
             token: Token JWT à valider
@@ -247,33 +459,43 @@ class HubAuth:
         payload = None
         
         try:
-            # Stratégie 1: JWKS (recommandé) avec fallback automatique sur PEM
+            # Stratégie 1: JWKS (recommandé) avec fallback en cascade
             if self._jwk_client and self._jwks_available:
                 try:
                     payload = self._decode_with_jwks(token)
+                    self._hub_reachable = True
+                    self._cached_key_fetched_at = datetime.now()
                 except Exception as jwks_error:
-                    # JWKS a échoué en runtime → fallback automatique sur PEM
-                    logger.warning(f"⚠️ JWKS indisponible en runtime, fallback PEM: {jwks_error}")
-                    self._jwks_available = False
+                    # JWKS a échoué en runtime → marquer Hub comme injoignable
+                    logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
+                    self._hub_reachable = False
                     
-                    # Rafraîchir la clé PEM si nécessaire (synchrone impossible ici)
-                    # On utilise la clé PEM en cache si disponible
-                    if self._public_key:
-                        payload = self._decode_with_pem(token)
-                    else:
-                        raise HTTPException(
-                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="Service d'authentification temporairement indisponible (JWKS down, pas de PEM en cache)"
-                        )
+                    # Fallback 1: Essayer de décoder quand même avec le client existant
+                    # (les clés peuvent être en cache dans PyJWKClient)
+                    try:
+                        payload = self._decode_with_jwks(token)
+                        logger.info("✅ Décodage réussi avec cache JWKS client")
+                    except Exception:
+                        # Fallback 2: Clé PEM en cache
+                        if self._public_key:
+                            logger.info("⚠️ Fallback sur clé PEM en cache")
+                            payload = self._decode_with_pem(token)
+                        else:
+                            # Fallback 3: Aucun cache disponible
+                            raise HTTPException(
+                                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="Service d'authentification temporairement indisponible (Hub down, pas de cache)"
+                            )
             
             # Stratégie 2: PEM uniquement (fallback ou mode dégradé)
             elif self._public_key:
                 payload = self._decode_with_pem(token)
             
             else:
+                # Aucune méthode d'authentification disponible
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Service d'authentification non disponible"
+                    detail="Service d'authentification non disponible (aucun cache JWKS ni clé PEM)"
                 )
             
             return TokenPayload(

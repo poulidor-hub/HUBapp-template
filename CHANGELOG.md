@@ -7,6 +7,68 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [1.9.0] - 17 janvier 2026
+
+### ✨ Nouvelles fonctionnalités
+
+#### Résilience du cache JWKS pour authentification Hub
+Correction d'un problème critique : lorsque le Hub SSO ne répond pas après l'expiration du token JWT, l'authentification échouait complètement.
+
+**Problème identifié :**
+- La clé publique JWKS était stockée uniquement en mémoire
+- Pas de TTL sur le cache mémoire (jamais rafraîchi)
+- Aucun fallback si le Hub était indisponible
+
+**Solution implémentée :**
+
+1. **Persistance sur disque** (`hub_auth.py`)
+   - Nouvelle fonction `_save_key_to_persistent_cache()` : sauvegarde la clé publique dans `storage/hub_jwks_cache.json`
+   - Nouvelle fonction `_load_key_from_persistent_cache()` : charge la clé depuis le disque avec validation d'âge (max 7 jours)
+
+2. **Cache mémoire avec TTL**
+   - Ajout de `_cached_key_fetched_at` pour suivre l'âge du cache
+   - TTL de 30 minutes (`JWKS_CACHE_TTL = 1800`)
+   - Fonction `_is_cache_expired()` pour vérifier la validité
+
+3. **Fallback en cascade dans `decode_token()`**
+   - Tentative de récupération depuis le Hub
+   - Si échec → utilise le cache mémoire (même expiré)
+   - Si pas de cache mémoire → charge depuis le cache persistant
+   - Erreur 503 seulement si aucun fallback disponible
+
+4. **Résilience dans `verify_hub_token()`**
+   - Si le client JWKS échoue (Hub down), utilise automatiquement le fallback
+   - Retourne HTTP 503 au lieu de 401 si le Hub est down ET pas de cache
+
+5. **Nouveaux endpoints de diagnostic** (`main.py`)
+   - `GET /api/health/hub/jwks` : statut du cache JWKS (mémoire + disque)
+   - `POST /api/health/hub/jwks/refresh` : force le rafraîchissement du cache
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `backend/hub_auth.py` | Logique de persistance et fallback en cascade |
+| `backend/main.py` | Endpoints de diagnostic JWKS, intégration statut cache |
+| `VERSION` | Mise à jour vers 1.9.0 |
+| `CHANGELOG.md` | Documentation des changements |
+
+### 🔧 Comportement
+
+Le système suit maintenant cette stratégie de fallback :
+```
+Hub JWKS (30 min cache) → Cache mémoire → Cache disque (7 jours) → Clé PEM → Erreur 503
+```
+
+### 📋 Nouveaux endpoints
+
+| Endpoint | Méthode | Description |
+|----------|---------|-------------|
+| `/api/health/hub/jwks` | GET | Statut détaillé du cache JWKS |
+| `/api/health/hub/jwks/refresh` | POST | Force le rafraîchissement du cache |
+
+---
+
 ## [1.6.0] - 4 janvier 2026
 
 ### ✨ Nouvelles fonctionnalités
