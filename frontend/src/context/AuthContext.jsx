@@ -1,8 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useConfig } from './ConfigContext'
 import config from '../config'
 
 const AuthContext = createContext(null)
+
+// Helper: En HTTPS, utiliser le proxy /hub/ pour éviter Mixed Content
+function getHubApiUrl(configHubApiUrl) {
+  if (window.location.protocol === 'https:') {
+    return `${window.location.origin}/hub`
+  }
+  return configHubApiUrl
+}
 
 // Décoder le token JWT (sans validation - la validation se fait côté serveur)
 function decodeToken(token) {
@@ -26,6 +34,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => 
     localStorage.getItem(config.storageKeys.accessToken)
+  )
+
+  // URL du Hub avec support du proxy HTTPS
+  const hubApiUrl = useMemo(() => 
+    getHubApiUrl(appConfig.hubApiUrl), 
+    [appConfig.hubApiUrl]
   )
 
   // Décoder et vérifier le token au chargement
@@ -107,7 +121,7 @@ export function AuthProvider({ children }) {
 
     refreshingRef.current = true
     try {
-      const response = await fetch(`${appConfig.hubApiUrl}/api/auth/token/refresh`, {
+      const response = await fetch(`${hubApiUrl}/api/auth/token/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken })
@@ -135,18 +149,18 @@ export function AuthProvider({ children }) {
     } finally {
       refreshingRef.current = false
     }
-  }, [appConfig.hubApiUrl, logout])
+  }, [hubApiUrl, logout])
 
   // Écouter les événements SSE du Hub pour les changements de permissions
   useEffect(() => {
-    if (!user || !appConfig.hubApiUrl) return
+    if (!user || !hubApiUrl) return
     
     let eventSource = null
     let reconnectTimeout = null
     
     const connectSSE = () => {
       try {
-        const sseUrl = `${appConfig.hubApiUrl}/api/events/stream`
+        const sseUrl = `${hubApiUrl}/api/events/stream`
         console.log('🔌 Connexion SSE au Hub:', sseUrl)
         eventSource = new EventSource(sseUrl)
         
@@ -216,7 +230,7 @@ export function AuthProvider({ children }) {
         console.log('🔌 SSE déconnecté')
       }
     }
-  }, [user, appConfig.hubApiUrl, refreshAccessToken, logout])
+  }, [user, hubApiUrl, refreshAccessToken, logout])
 
   // Fetch authentifié avec gestion automatique du refresh
   const authFetch = useCallback(async (url, options = {}) => {

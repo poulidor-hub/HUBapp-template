@@ -33,13 +33,20 @@ RUN npm run build
 # Stage 2: Serveur nginx
 FROM nginx:alpine
 
+# Installer openssl pour le support HTTPS
+RUN apk add --no-cache openssl
+
 # Version de l'application
 ARG APP_VERSION=0.0.0
 LABEL version="${APP_VERSION}"
 LABEL maintainer="HUBapp Template"
 
-# Copier la configuration nginx HTTP
+# Créer le dossier SSL
+RUN mkdir -p /etc/nginx/ssl
+
+# Copier les configurations nginx (HTTP et HTTPS)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx-ssl.conf /etc/nginx/nginx-ssl.conf.template
 
 # Copier l'entrypoint
 COPY frontend/docker-entrypoint.sh /docker-entrypoint.sh
@@ -47,6 +54,9 @@ RUN chmod +x /docker-entrypoint.sh
 
 # Copier les fichiers buildés depuis le stage builder
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Exposer les ports HTTP et HTTPS
+EXPOSE 80 443
 
 # Port exposé (HTTP)
 EXPOSE 80

@@ -87,15 +87,22 @@ services:
     container_name: ${APP_SLUG:-mon-app}-frontend
     environment:
       - APP_SLUG=${APP_SLUG:-mon-app}
+      - FRONTEND_PORT=${FRONTEND_PORT:-4250}
       - HUB_HOST=${HUB_HOST}
       - HUB_API_PORT=${HUB_API_PORT:-8000}
       - APP_HOST=${APP_HOST:-}
     ports:
       - "${FRONTEND_PORT:-4250}:80"
+      - "${FRONTEND_HTTPS_PORT:-4251}:443"
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - api
     networks:
       - app-network
+    # Utiliser le nom 'backend' pour le proxy nginx (voir nginx-ssl.conf)
+    links:
+      - api:backend
     restart: unless-stopped
 
 # === VOLUMES ===

@@ -32,10 +32,12 @@ export function ConfigProvider({ children }) {
 
       const data = await response.json()
       
-      // Utiliser les URLs du Hub fournies par le backend (qui connaît HUB_HOST)
-      // Ces URLs sont correctes même si l'app et le Hub sont sur des serveurs différents
-      // L'API locale (apiUrl) reste basée sur le navigateur car l'app est sur le même host
-      const hubApiUrl = data.hub_api_url || config.hubApiUrl
+      // IMPORTANT: En HTTPS, utiliser le proxy /hub/ pour éviter Mixed Content
+      // Le proxy nginx redirige /hub/* vers le Hub HTTP interne
+      const isHttps = window.location.protocol === 'https:'
+      const hubApiUrl = isHttps 
+        ? `${window.location.origin}/hub`  // Proxy nginx
+        : (data.hub_api_url || config.hubApiUrl)
       const hubFrontendUrl = data.hub_frontend_url || config.hubFrontendUrl
       
       setAppConfig({

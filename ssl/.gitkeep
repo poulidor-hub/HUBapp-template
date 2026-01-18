@@ -1,0 +1,6 @@
+# Ce dossier contient les certificats SSL pour HTTPS
+# Les certificats sont générés par: ./scripts/generate-ssl.sh
+# Fichiers générés (non versionnés):
+#   - server.crt : Certificat public
+#   - server.key : Clé privée
+#   - openssl.cnf : Configuration OpenSSL
