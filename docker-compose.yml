@@ -88,6 +88,7 @@ services:
     environment:
       - APP_SLUG=${APP_SLUG:-mon-app}
       - FRONTEND_PORT=${FRONTEND_PORT:-4250}
+      - HTTPS_ENABLED=${HTTPS_ENABLED:-false}
       - HUB_HOST=${HUB_HOST}
       - HUB_API_PORT=${HUB_API_PORT:-8000}
       - APP_HOST=${APP_HOST:-}
