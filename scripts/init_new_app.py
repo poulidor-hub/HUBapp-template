@@ -254,6 +254,7 @@ APP_DESCRIPTION={config['APP_DESCRIPTION']}
 # === PORTS ===
 API_PORT={config['API_PORT']}
 FRONTEND_PORT={config['FRONTEND_PORT']}
+# Note: Le port HTTPS est automatiquement calculé : FRONTEND_PORT + 1
 
 # === HOST DE CETTE APPLICATION ===
 # Laisser vide si l'app est sur le même serveur que le Hub
