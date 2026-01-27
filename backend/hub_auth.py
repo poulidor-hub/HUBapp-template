@@ -104,11 +104,19 @@ class HubAuth:
     - Persistance du cache JWKS sur disque (validité 7 jours)
     - Fallback en cascade : JWKS Hub → cache mémoire → cache disque
     - Pas besoin de redéployer lors de la rotation des clés
+    - Reconnexion automatique au Hub après indisponibilité
     
     Configuration SSL/TLS :
     - VERIFY_SSL: Active/désactive la vérification SSL (défaut: True)
     - HUB_CA_CERT_PATH: Chemin vers le certificat CA pour les certificats auto-signés
     """
+    
+    # Délai minimum entre deux tentatives de reconnexion (en secondes)
+    RECONNECT_COOLDOWN_SECONDS = 10
+    # Nombre max de tentatives de reconnexion avant abandon temporaire
+    MAX_RECONNECT_ATTEMPTS = 5
+    # Délai après échec de toutes les tentatives (en secondes)
+    RECONNECT_BACKOFF_SECONDS = 60
     
     def __init__(self):
         self.settings = get_settings()
@@ -122,6 +130,12 @@ class HubAuth:
         self._cached_jwks_keys: Optional[Any] = None  # Clés JWKS en cache mémoire
         self._cached_key_fetched_at: Optional[datetime] = None  # Timestamp du cache mémoire
         self._hub_reachable: bool = True  # État de connectivité du Hub
+        
+        # Reconnexion automatique
+        self._reconnect_in_progress: bool = False
+        self._last_reconnect_attempt: Optional[datetime] = None
+        self._reconnect_attempt_count: int = 0
+        self._reconnect_blocked_until: Optional[datetime] = None
     
     def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
         """
@@ -470,6 +484,9 @@ class HubAuth:
                     logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
                     self._hub_reachable = False
                     
+                    # Planifier une reconnexion en arrière-plan
+                    self.schedule_reconnect()
+                    
                     # Fallback 1: Essayer de décoder quand même avec le client existant
                     # (les clés peuvent être en cache dans PyJWKClient)
                     try:
@@ -481,7 +498,8 @@ class HubAuth:
                             logger.info("⚠️ Fallback sur clé PEM en cache")
                             payload = self._decode_with_pem(token)
                         else:
-                            # Fallback 3: Aucun cache disponible
+                            # Fallback 3: Aucun cache disponible → planifier reconnexion et erreur
+                            self.schedule_reconnect()
                             raise HTTPException(
                                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail="Service d'authentification temporairement indisponible (Hub down, pas de cache)"
@@ -490,9 +508,14 @@ class HubAuth:
             # Stratégie 2: PEM uniquement (fallback ou mode dégradé)
             elif self._public_key:
                 payload = self._decode_with_pem(token)
+                # En mode PEM, tenter de restaurer JWKS en arrière-plan
+                if not self._jwks_available:
+                    self.schedule_reconnect()
             
             else:
                 # Aucune méthode d'authentification disponible
+                # Planifier une reconnexion
+                self.schedule_reconnect()
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Service d'authentification non disponible (aucun cache JWKS ni clé PEM)"
@@ -550,6 +573,91 @@ class HubAuth:
             logger.debug(f"JWKS toujours indisponible: {e}")
         
         return False
+    
+    def _can_attempt_reconnect(self) -> bool:
+        """
+        Vérifie si une tentative de reconnexion est autorisée.
+        
+        Returns:
+            True si reconnexion autorisée, False sinon
+        """
+        now = datetime.now()
+        
+        # Vérifier si on est en période de blocage (après MAX_RECONNECT_ATTEMPTS échecs)
+        if self._reconnect_blocked_until and now < self._reconnect_blocked_until:
+            return False
+        
+        # Réinitialiser le compteur si le blocage est terminé
+        if self._reconnect_blocked_until and now >= self._reconnect_blocked_until:
+            self._reconnect_blocked_until = None
+            self._reconnect_attempt_count = 0
+        
+        # Vérifier le cooldown entre tentatives
+        if self._last_reconnect_attempt:
+            elapsed = (now - self._last_reconnect_attempt).total_seconds()
+            if elapsed < self.RECONNECT_COOLDOWN_SECONDS:
+                return False
+        
+        return True
+    
+    async def _trigger_background_reconnect(self) -> None:
+        """
+        Lance une tentative de reconnexion en arrière-plan.
+        Non-bloquante pour ne pas ralentir les requêtes.
+        """
+        if self._reconnect_in_progress:
+            return
+        
+        if not self._can_attempt_reconnect():
+            return
+        
+        self._reconnect_in_progress = True
+        self._last_reconnect_attempt = datetime.now()
+        self._reconnect_attempt_count += 1
+        
+        logger.info(f"🔄 Tentative de reconnexion au Hub ({self._reconnect_attempt_count}/{self.MAX_RECONNECT_ATTEMPTS})...")
+        
+        try:
+            # Tenter de réinitialiser l'authentification
+            await self.initialize()
+            
+            if self._jwks_available and self._hub_reachable:
+                logger.info("✅ Reconnexion au Hub réussie!")
+                self._reconnect_attempt_count = 0
+                self._reconnect_blocked_until = None
+            else:
+                logger.warning(f"⚠️ Reconnexion échouée (tentative {self._reconnect_attempt_count})")
+                
+                # Si on a atteint le max de tentatives, activer le backoff
+                if self._reconnect_attempt_count >= self.MAX_RECONNECT_ATTEMPTS:
+                    self._reconnect_blocked_until = datetime.now() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
+                    logger.warning(f"⏳ Trop de tentatives échouées, pause de {self.RECONNECT_BACKOFF_SECONDS}s")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la tentative de reconnexion: {e}")
+            
+            if self._reconnect_attempt_count >= self.MAX_RECONNECT_ATTEMPTS:
+                self._reconnect_blocked_until = datetime.now() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
+        finally:
+            self._reconnect_in_progress = False
+    
+    def schedule_reconnect(self) -> None:
+        """
+        Planifie une reconnexion en arrière-plan.
+        À appeler quand le Hub est détecté comme indisponible.
+        """
+        if self._hub_reachable:
+            return
+        
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._trigger_background_reconnect())
+            else:
+                # En dehors d'une boucle asyncio, ignorer
+                pass
+        except RuntimeError:
+            # Pas de boucle d'événements active, ignorer
+            pass
 
 
 # Instance singleton

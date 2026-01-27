@@ -254,7 +254,7 @@ APP_DESCRIPTION={config['APP_DESCRIPTION']}
 # === PORTS ===
 API_PORT={config['API_PORT']}
 FRONTEND_PORT={config['FRONTEND_PORT']}
-# Note: Le port HTTPS est automatiquement calculé : FRONTEND_PORT + 1
+FRONTEND_HTTPS_PORT={int(config['FRONTEND_PORT']) + 1}
 
 # === HOST DE CETTE APPLICATION ===
 # Laisser vide si l'app est sur le même serveur que le Hub
@@ -321,6 +321,7 @@ def update_docker_compose(root: Path, config: dict) -> bool:
         ('${APP_SLUG:-mon-app}', f'${{APP_SLUG:-{config["APP_SLUG"]}}}'),
         ('${API_PORT:-9045}', f'${{API_PORT:-{config["API_PORT"]}}}'),
         ('${FRONTEND_PORT:-4250}', f'${{FRONTEND_PORT:-{config["FRONTEND_PORT"]}}}'),
+        ('${FRONTEND_HTTPS_PORT:-4251}', f'${{FRONTEND_HTTPS_PORT:-{int(config["FRONTEND_PORT"]) + 1}}}'),
         ('${HUB_API_PORT:-8000}', f'${{HUB_API_PORT:-{config["HUB_API_PORT"]}}}'),
         ('${HUB_FRONTEND_PORT:-80}', f'${{HUB_FRONTEND_PORT:-{config["HUB_FRONTEND_PORT"]}}}'),
     ]

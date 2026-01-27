@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 from typing import Optional
 from datetime import datetime
 import logging
+import asyncio
 
 from config import get_settings, APP_VERSION
 from database import get_db, init_db, close_db
@@ -44,6 +45,48 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+# Tâche de reconnexion Hub en arrière-plan
+_hub_reconnect_task: asyncio.Task = None
+
+
+async def hub_reconnection_loop():
+    """
+    Boucle de reconnexion automatique au Hub.
+    Tourne en arrière-plan et tente de se reconnecter périodiquement
+    si l'application n'est pas enregistrée ou si l'auth Hub est indisponible.
+    """
+    RECONNECT_INTERVAL = 15  # secondes entre les tentatives
+    
+    while True:
+        try:
+            await asyncio.sleep(RECONNECT_INTERVAL)
+            
+            # Vérifier si on doit tenter une reconnexion
+            needs_reconnect = False
+            
+            # Cas 1: Application non enregistrée
+            if not hub_client.is_registered:
+                logger.info("🔄 Hub non enregistré, tentative de reconnexion...")
+                registered = await hub_client.register()
+                if registered:
+                    logger.info("✅ Enregistrement Hub réussi!")
+                    # Réinitialiser l'authentification après enregistrement
+                    await hub_auth.initialize()
+                needs_reconnect = not registered
+            
+            # Cas 2: JWKS indisponible (Hub a peut-être redémarré)
+            if not hub_auth._jwks_available or not hub_auth._hub_reachable:
+                logger.info("🔄 JWKS/Hub indisponible, tentative de restauration...")
+                await hub_auth.initialize()
+                if hub_auth._jwks_available:
+                    logger.info("✅ Connexion JWKS restaurée!")
+            
+        except asyncio.CancelledError:
+            logger.info("🛑 Arrêt de la boucle de reconnexion Hub")
+            break
+        except Exception as e:
+            logger.debug(f"Erreur dans la boucle de reconnexion: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -52,6 +95,8 @@ async def lifespan(app: FastAPI):
     - Démarrage: enregistrement Hub + init DB + découverte services
     - Arrêt: fermeture connexions
     """
+    global _hub_reconnect_task
+    
     startup_time = datetime.utcnow()
     logger.info(f"🚀 Démarrage de l'application '{settings.APP_SLUG}'...")
     
@@ -88,6 +133,12 @@ async def lifespan(app: FastAPI):
     app.state.is_registered = registered
     app.state.discovered_services_count = discovered_count
     
+    # 6. Démarrer la tâche de reconnexion automatique en arrière-plan
+    # (uniquement si l'enregistrement a échoué ou si JWKS n'est pas disponible)
+    if not registered or not hub_auth._jwks_available:
+        _hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
+        logger.info("🔄 Tâche de reconnexion Hub démarrée en arrière-plan")
+    
     startup_duration = (datetime.utcnow() - startup_time).total_seconds()
     logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
     
@@ -95,6 +146,15 @@ async def lifespan(app: FastAPI):
     
     # Arrêt
     logger.info("🛑 Arrêt de l'application...")
+    
+    # Arrêter la tâche de reconnexion si elle tourne
+    if _hub_reconnect_task and not _hub_reconnect_task.done():
+        _hub_reconnect_task.cancel()
+        try:
+            await _hub_reconnect_task
+        except asyncio.CancelledError:
+            pass
+    
     await close_db()
 
 
