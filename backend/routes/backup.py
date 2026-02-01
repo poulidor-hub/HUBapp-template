@@ -2,6 +2,9 @@
 Routes pour le système de backup/restore de l'application.
 Permet de créer des snapshots complets et de les restaurer.
 
+SYSTÈME GÉNÉRIQUE : Découvre et sauvegarde automatiquement TOUTES les tables
+de la base de données, sans configuration manuelle.
+
 Endpoints:
 - GET  /api/admin/backup/estimate   : Estimer taille et durée du backup
 - POST /api/admin/backup            : Créer un backup complet
@@ -16,22 +19,21 @@ import zipfile
 import io
 import uuid
 import hashlib
-from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
+from datetime import datetime, date
+from typing import Any, Dict, List
+from decimal import Decimal
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import text
 import logging
 
 from config import get_settings, APP_VERSION
 from database import get_db
 from hub_auth import require_role, TokenPayload
 from hub_client import hub_client
-from models import Item, UserPreference, UploadedFile, TestData
 from schemas import (
-    BackupEstimate, BackupMetadata, BackupResponse,
-    RestoreRequest, RestoreResponse,
+    BackupMetadata,
     SyncToHubRequest, SyncFromHubRequest,
     MessageResponse
 )
@@ -43,10 +45,14 @@ settings = get_settings()
 router = APIRouter(prefix="/api/admin", tags=["Backup/Restore"])
 
 # Constantes pour l'estimation
-BYTES_PER_ITEM_AVG = 500  # Taille moyenne d'un item en JSON
-BYTES_PER_PREF_AVG = 300  # Taille moyenne d'une préférence en JSON
-BYTES_PER_TESTDATA_AVG = 400  # Taille moyenne d'une donnée de test en JSON
+BYTES_PER_ROW_AVG = 400  # Taille moyenne d'une ligne en JSON
 BYTES_PER_SECOND_ESTIMATE = 10 * 1024 * 1024  # 10 MB/s estimation
+
+# Tables système à exclure du backup (internes PostgreSQL/SQLAlchemy)
+EXCLUDED_TABLES = {
+    "alembic_version",  # Migrations Alembic
+    "spatial_ref_sys",  # PostGIS
+}
 
 
 def _human_readable_size(size: int) -> str:
@@ -77,11 +83,226 @@ def _compute_checksum(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _serialize_value(value: Any) -> Any:
+    """
+    Sérialise une valeur pour JSON.
+    Gère les types non-JSON natifs (datetime, date, Decimal, bytes, etc.)
+    """
+    if value is None:
+        return None
+    elif isinstance(value, datetime):
+        return {"__type__": "datetime", "value": value.isoformat()}
+    elif isinstance(value, date):
+        return {"__type__": "date", "value": value.isoformat()}
+    elif isinstance(value, Decimal):
+        return {"__type__": "decimal", "value": str(value)}
+    elif isinstance(value, bytes):
+        return {"__type__": "bytes", "value": base64.b64encode(value).decode('ascii')}
+    elif isinstance(value, (list, tuple)):
+        return [_serialize_value(v) for v in value]
+    elif isinstance(value, dict):
+        return {k: _serialize_value(v) for k, v in value.items()}
+    else:
+        return value
+
+
+def _deserialize_value(value: Any) -> Any:
+    """
+    Désérialise une valeur depuis JSON.
+    Reconstruit les types non-JSON natifs.
+    """
+    if value is None:
+        return None
+    elif isinstance(value, dict):
+        if "__type__" in value:
+            type_name = value["__type__"]
+            raw_value = value["value"]
+            if type_name == "datetime":
+                return datetime.fromisoformat(raw_value)
+            elif type_name == "date":
+                return date.fromisoformat(raw_value)
+            elif type_name == "decimal":
+                return Decimal(raw_value)
+            elif type_name == "bytes":
+                return base64.b64decode(raw_value)
+        return {k: _deserialize_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_deserialize_value(v) for v in value]
+    else:
+        return value
+
+
+async def _get_all_tables(db: AsyncSession) -> List[str]:
+    """
+    Découvre dynamiquement toutes les tables de la base de données.
+    Exclut les tables système.
+    """
+    # Utiliser une requête SQL pour lister les tables
+    result = await db.execute(text("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+    """))
+    
+    tables = [row[0] for row in result.fetchall()]
+    # Exclure les tables système
+    return [t for t in tables if t not in EXCLUDED_TABLES]
+
+
+async def _get_table_row_count(db: AsyncSession, table_name: str) -> int:
+    """Compte le nombre de lignes dans une table."""
+    result = await db.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
+    return result.scalar() or 0
+
+
+async def _get_table_columns(db: AsyncSession, table_name: str) -> List[Dict[str, str]]:
+    """Récupère les informations sur les colonnes d'une table."""
+    result = await db.execute(text("""
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :table_name
+        ORDER BY ordinal_position
+    """), {"table_name": table_name})
+    
+    return [
+        {
+            "name": row[0],
+            "type": row[1],
+            "nullable": row[2] == "YES",
+            "default": row[3]
+        }
+        for row in result.fetchall()
+    ]
+
+
+async def _get_primary_key_columns(db: AsyncSession, table_name: str) -> List[str]:
+    """Récupère les colonnes de la clé primaire d'une table."""
+    # Utiliser une sous-requête pour éviter le conflit entre :param et ::cast
+    result = await db.execute(text("""
+        SELECT a.attname
+        FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = (SELECT oid FROM pg_class WHERE relname = :table_name AND relnamespace = 'public'::regnamespace)
+          AND i.indisprimary
+        ORDER BY array_position(i.indkey, a.attnum)
+    """), {"table_name": table_name})
+    
+    return [row[0] for row in result.fetchall()]
+
+
+async def _export_table_data(db: AsyncSession, table_name: str) -> List[Dict[str, Any]]:
+    """
+    Exporte toutes les données d'une table sous forme de liste de dictionnaires.
+    Sérialise automatiquement les types complexes.
+    """
+    # Récupérer les noms des colonnes
+    columns_info = await _get_table_columns(db, table_name)
+    column_names = [c["name"] for c in columns_info]
+    
+    # Récupérer toutes les lignes
+    result = await db.execute(text(f'SELECT * FROM "{table_name}"'))
+    rows = result.fetchall()
+    
+    # Convertir en liste de dictionnaires
+    data = []
+    for row in rows:
+        row_dict = {}
+        for i, col_name in enumerate(column_names):
+            row_dict[col_name] = _serialize_value(row[i])
+        data.append(row_dict)
+    
+    return data
+
+
+async def _import_table_data(
+    db: AsyncSession, 
+    table_name: str, 
+    data: List[Dict[str, Any]],
+    clear_existing: bool = False
+) -> Dict[str, int]:
+    """
+    Importe des données dans une table.
+    
+    Returns:
+        Dict avec 'imported', 'updated', 'skipped', 'errors'
+    """
+    stats = {"imported": 0, "updated": 0, "skipped": 0, "errors": 0}
+    
+    if not data:
+        return stats
+    
+    # Récupérer les colonnes de la clé primaire
+    pk_columns = await _get_primary_key_columns(db, table_name)
+    
+    # Récupérer les colonnes existantes dans la table
+    columns_info = await _get_table_columns(db, table_name)
+    existing_columns = {c["name"] for c in columns_info}
+    
+    # Supprimer les données existantes si demandé
+    if clear_existing:
+        await db.execute(text(f'DELETE FROM "{table_name}"'))
+    
+    for row_data in data:
+        try:
+            # Désérialiser les valeurs
+            deserialized = {k: _deserialize_value(v) for k, v in row_data.items()}
+            
+            # Filtrer les colonnes qui existent dans la table
+            filtered_data = {k: v for k, v in deserialized.items() if k in existing_columns}
+            
+            if not filtered_data:
+                stats["skipped"] += 1
+                continue
+            
+            # Construire la requête INSERT avec ON CONFLICT (upsert)
+            columns = list(filtered_data.keys())
+            placeholders = [f":{col}" for col in columns]
+            
+            if pk_columns and not clear_existing:
+                # Upsert : INSERT ... ON CONFLICT DO UPDATE
+                pk_condition = " AND ".join([f'"{col}" = :{col}' for col in pk_columns])
+                update_cols = [c for c in columns if c not in pk_columns]
+                
+                if update_cols:
+                    update_set = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in update_cols])
+                    query = f"""
+                        INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
+                        VALUES ({", ".join(placeholders)})
+                        ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
+                        DO UPDATE SET {update_set}
+                    """
+                else:
+                    # Pas de colonnes à mettre à jour, juste ignorer les conflits
+                    query = f"""
+                        INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
+                        VALUES ({", ".join(placeholders)})
+                        ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
+                        DO NOTHING
+                    """
+            else:
+                # Simple INSERT
+                query = f"""
+                    INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
+                    VALUES ({", ".join(placeholders)})
+                """
+            
+            await db.execute(text(query), filtered_data)
+            stats["imported"] += 1
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur import ligne dans {table_name}: {e}")
+            stats["errors"] += 1
+    
+    return stats
+
+
 # ============================================================
 # ESTIMATION DU BACKUP
 # ============================================================
 
-@router.get("/backup/estimate", response_model=BackupEstimate)
+@router.get("/backup/estimate")
 async def estimate_backup(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
@@ -89,29 +310,41 @@ async def estimate_backup(
     """
     Estime la taille et la durée d'un backup complet.
     
+    Découvre AUTOMATIQUEMENT toutes les tables de la base de données
+    et compte les enregistrements de chaque table.
+    
     Retourne:
-    - Nombre d'enregistrements par type
+    - Liste de toutes les tables avec leur nombre d'enregistrements
     - Taille estimée en bytes et format lisible
     - Durée estimée
     - Répartition des fichiers par catégorie et type MIME
     - Avertissement si le backup est volumineux
     """
-    # Compter les enregistrements
-    items_count = await db.scalar(select(func.count(Item.id)))
-    prefs_count = await db.scalar(select(func.count(UserPreference.id)))
-    files_count = await db.scalar(select(func.count(UploadedFile.id)))
-    test_data_count = await db.scalar(select(func.count(TestData.id)))
+    # Découvrir toutes les tables
+    tables = await _get_all_tables(db)
+    
+    # Compter les enregistrements par table
+    tables_stats = {}
+    total_rows = 0
+    for table_name in tables:
+        count = await _get_table_row_count(db, table_name)
+        tables_stats[table_name] = count
+        total_rows += count
     
     # Calculer taille DB estimée
-    db_size = (
-        (items_count or 0) * BYTES_PER_ITEM_AVG + 
-        (prefs_count or 0) * BYTES_PER_PREF_AVG +
-        (test_data_count or 0) * BYTES_PER_TESTDATA_AVG
-    )
+    db_size = total_rows * BYTES_PER_ROW_AVG
     
-    # Taille réelle des fichiers
-    files_result = await db.execute(select(func.sum(UploadedFile.size)))
-    files_size = files_result.scalar() or 0
+    # Taille réelle des fichiers uploadés (si la table existe)
+    files_size = 0
+    files_count = 0
+    if "uploaded_files" in tables:
+        try:
+            result = await db.execute(text("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM uploaded_files"))
+            row = result.fetchone()
+            files_size = row[0] or 0
+            files_count = row[1] or 0
+        except:
+            pass
     
     # Stats du storage
     storage_stats = await storage_manager.get_storage_stats()
@@ -129,28 +362,28 @@ async def estimate_backup(
     if total_size > 1024 * 1024 * 1024:  # > 1 GB
         warning = "⚠️ Backup très volumineux (> 1 GB). Considérez un backup incrémental."
     
-    return BackupEstimate(
-        total_items=items_count or 0,
-        total_preferences=prefs_count or 0,
-        total_files=files_count or 0,
-        total_test_data=test_data_count or 0,
-        database_size_bytes=db_size,
-        files_size_bytes=files_size,
-        total_size_bytes=total_size,
-        total_size_human=_human_readable_size(total_size),
-        estimated_duration_seconds=duration,
-        estimated_duration_human=_human_readable_duration(duration),
-        files_by_category=storage_stats.get("by_category", {}),
-        files_by_mime_type=storage_stats.get("by_mime_type", {}),
-        warning=warning
-    )
+    return {
+        "tables": tables_stats,
+        "total_tables": len(tables),
+        "total_rows": total_rows,
+        "total_files": files_count,
+        "database_size_bytes": db_size,
+        "files_size_bytes": files_size,
+        "total_size_bytes": total_size,
+        "total_size_human": _human_readable_size(total_size),
+        "estimated_duration_seconds": duration,
+        "estimated_duration_human": _human_readable_duration(duration),
+        "files_by_category": storage_stats.get("by_category", {}),
+        "files_by_mime_type": storage_stats.get("by_mime_type", {}),
+        "warning": warning
+    }
 
 
 # ============================================================
 # CRÉATION DU BACKUP
 # ============================================================
 
-@router.post("/backup", response_model=BackupResponse)
+@router.post("/backup")
 async def create_backup(
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
@@ -158,10 +391,14 @@ async def create_backup(
     """
     Crée un backup complet de l'application.
     
+    ⚡ SYSTÈME GÉNÉRIQUE ⚡
+    
+    Découvre AUTOMATIQUEMENT toutes les tables de la base de données
+    et exporte toutes les données sans configuration préalable.
+    
     Le backup inclut:
-    - Tous les items (avec leurs métadonnées)
-    - Toutes les préférences utilisateur
-    - Tous les fichiers uploadés (encodés en base64 dans le ZIP)
+    - Toutes les tables de la base de données (découvertes automatiquement)
+    - Tous les fichiers uploadés (encodés dans le ZIP)
     - Métadonnées du backup (version, date, checksums)
     
     Le backup est stocké temporairement et peut être téléchargé via /backup/download.
@@ -169,53 +406,30 @@ async def create_backup(
     backup_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
     
-    logger.info(f"📦 Création du backup {backup_id} par {user.sub}")
+    logger.info(f"📦 Création du backup générique {backup_id} par {user.sub}")
     
     try:
-        # 1. Récupérer tous les items
-        items_result = await db.execute(select(Item))
-        items = items_result.scalars().all()
-        items_data = [
-            {
-                "id": item.id,
-                "title": item.title,
-                "description": item.description,
-                "owner": item.owner,
-                "is_public": item.is_public,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
-                "updated_at": item.updated_at.isoformat() if item.updated_at else None
-            }
-            for item in items
-        ]
+        # 1. Découvrir toutes les tables de la base de données
+        tables = await _get_all_tables(db)
+        logger.info(f"📊 Tables découvertes: {tables}")
         
-        # 2. Récupérer toutes les préférences
-        prefs_result = await db.execute(select(UserPreference))
-        prefs = prefs_result.scalars().all()
-        prefs_data = [
-            {
-                "id": pref.id,
-                "username": pref.username,
-                "theme": pref.theme,
-                "language": pref.language,
-                "items_per_page": pref.items_per_page,
-                "email_notifications": pref.email_notifications,
-                "created_at": pref.created_at.isoformat() if pref.created_at else None,
-                "updated_at": pref.updated_at.isoformat() if pref.updated_at else None
-            }
-            for pref in prefs
-        ]
+        # 2. Exporter chaque table
+        data_export = {}
+        table_stats = {}
         
-        # 3. Récupérer tous les fichiers uploadés (métadonnées)
-        files_result = await db.execute(select(UploadedFile))
-        uploaded_files = files_result.scalars().all()
-        files_data = [f.to_backup_dict() for f in uploaded_files]
+        for table_name in tables:
+            try:
+                table_data = await _export_table_data(db, table_name)
+                data_export[table_name] = table_data
+                table_stats[table_name] = len(table_data)
+                if len(table_data) > 0:
+                    logger.debug(f"  ✓ {table_name}: {len(table_data)} enregistrements")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Erreur export {table_name}: {e}")
+                data_export[table_name] = []
+                table_stats[table_name] = 0
         
-        # 4. Récupérer toutes les données de test
-        test_data_result = await db.execute(select(TestData))
-        test_data_entries = test_data_result.scalars().all()
-        test_data_list = [td.to_backup_dict() for td in test_data_entries]
-        
-        # 5. Construire le JSON principal
+        # 3. Construire le JSON principal
         backup_data = {
             "metadata": {
                 "backup_id": backup_id,
@@ -223,40 +437,41 @@ async def create_backup(
                 "app_version": APP_VERSION,
                 "created_at": created_at,
                 "created_by": user.sub,
-                "format_version": "1.1"  # Version mise à jour pour test_data
+                "format_version": "3.0",  # Version 3.0 = format générique
+                "tables": list(tables),
+                "table_stats": table_stats
             },
-            "data": {
-                "items": items_data,
-                "user_preferences": prefs_data,
-                "uploaded_files": files_data,
-                "test_data": test_data_list
-            }
+            "data": data_export
         }
         
-        # 5. Créer le fichier ZIP en mémoire
+        # 4. Créer le fichier ZIP en mémoire
         zip_buffer = io.BytesIO()
+        files_added = 0
+        
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             # Ajouter le JSON principal
             data_json = json.dumps(backup_data, indent=2, ensure_ascii=False)
             zf.writestr("data.json", data_json)
             
-            # Ajouter les fichiers binaires
-            files_added = 0
-            for file_meta in uploaded_files:
-                try:
-                    content = await storage_manager.read_file(file_meta.relative_path)
-                    if content:
-                        zf.writestr(f"files/{file_meta.relative_path}", content)
-                        files_added += 1
-                except Exception as e:
-                    logger.warning(f"⚠️ Impossible de lire {file_meta.relative_path}: {e}")
+            # Ajouter les fichiers binaires (si la table uploaded_files existe)
+            if "uploaded_files" in data_export:
+                for file_meta in data_export["uploaded_files"]:
+                    relative_path = file_meta.get("relative_path")
+                    if relative_path:
+                        try:
+                            content = await storage_manager.read_file(relative_path)
+                            if content:
+                                zf.writestr(f"files/{relative_path}", content)
+                                files_added += 1
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de lire {relative_path}: {e}")
         
         zip_buffer.seek(0)
         zip_data = zip_buffer.getvalue()
         total_size = len(zip_data)
         checksum = _compute_checksum(zip_data)
         
-        # 6. Stocker le backup temporairement (dans le storage)
+        # 5. Stocker le backup temporairement
         backup_filename = f"backup_{backup_id}.zip"
         await storage_manager.save_bytes(
             data=zip_data,
@@ -265,30 +480,34 @@ async def create_backup(
             category="backups"
         )
         
-        logger.info(f"✅ Backup {backup_id} créé: {len(items_data)} items, {len(prefs_data)} prefs, {len(test_data_list)} test_data, {files_added} fichiers ({_human_readable_size(total_size)})")
+        # Log détaillé
+        total_rows = sum(table_stats.values())
+        non_empty_tables = [t for t, c in table_stats.items() if c > 0]
+        logger.info(f"✅ Backup générique {backup_id} créé: {len(tables)} tables, "
+                    f"{total_rows} enregistrements total, {files_added} fichiers ({_human_readable_size(total_size)})")
+        logger.info(f"   Tables avec données: {non_empty_tables}")
         
-        metadata = BackupMetadata(
-            backup_id=backup_id,
-            app_slug=settings.APP_SLUG,
-            app_version=APP_VERSION,
-            created_at=created_at,
-            created_by=user.sub,
-            total_items=len(items_data),
-            total_preferences=len(prefs_data),
-            total_files=files_added,
-            total_test_data=len(test_data_list),
-            total_size_bytes=total_size,
-            total_size_human=_human_readable_size(total_size),
-            includes_files=True,
-            checksum=checksum
-        )
-        
-        return BackupResponse(
-            success=True,
-            message=f"Backup créé avec succès",
-            metadata=metadata,
-            download_url=f"/api/admin/backup/download?backup_id={backup_id}"
-        )
+        return {
+            "success": True,
+            "message": f"Backup créé avec succès",
+            "metadata": {
+                "backup_id": backup_id,
+                "app_slug": settings.APP_SLUG,
+                "app_version": APP_VERSION,
+                "created_at": created_at,
+                "created_by": user.sub,
+                "format_version": "3.0",
+                "total_tables": len(tables),
+                "total_rows": total_rows,
+                "total_files": files_added,
+                "total_size_bytes": total_size,
+                "total_size_human": _human_readable_size(total_size),
+                "includes_files": files_added > 0,
+                "checksum": checksum,
+                "table_stats": table_stats
+            },
+            "download_url": f"/api/admin/backup/download?backup_id={backup_id}"
+        }
         
     except Exception as e:
         logger.error(f"❌ Erreur création backup: {e}")
@@ -334,47 +553,35 @@ async def download_backup(
 # RESTAURATION DEPUIS UN FICHIER
 # ============================================================
 
-@router.post("/restore", response_model=RestoreResponse)
+@router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),
     clear_existing: str = Form("false"),
-    restore_items: str = Form("true"),
-    restore_preferences: str = Form("true"),
-    restore_files: str = Form("true"),
-    restore_test_data: str = Form("true"),
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
 ):
     """
     Restaure l'application depuis un fichier de backup uploadé.
     
+    ⚡ SYSTÈME GÉNÉRIQUE ⚡
+    
+    Restaure AUTOMATIQUEMENT toutes les tables contenues dans le backup,
+    sans nécessiter de configuration préalable.
+    
     Paramètres:
     - file: Fichier ZIP de backup
     - clear_existing: Supprimer toutes les données existantes avant restauration
-    - restore_items: Restaurer les items
-    - restore_preferences: Restaurer les préférences utilisateur
-    - restore_files: Restaurer les fichiers uploadés
     
     ⚠️ ATTENTION: clear_existing=true supprime TOUTES les données existantes!
     """
-    # Convertir les strings en booléens
     clear_existing_bool = clear_existing.lower() in ("true", "1", "yes", "on")
-    restore_items_bool = restore_items.lower() in ("true", "1", "yes", "on")
-    restore_preferences_bool = restore_preferences.lower() in ("true", "1", "yes", "on")
-    restore_files_bool = restore_files.lower() in ("true", "1", "yes", "on")
-    restore_test_data_bool = restore_test_data.lower() in ("true", "1", "yes", "on")
     
     errors = []
     warnings = []
-    items_restored = 0
-    prefs_restored = 0
+    tables_restored = {}
     files_restored = 0
-    test_data_restored = 0
-    items_skipped = 0
-    files_skipped = 0
-    test_data_skipped = 0
     
-    logger.info(f"🔄 Restauration démarrée par {user.sub} (clear_existing={clear_existing_bool})")
+    logger.info(f"🔄 Restauration générique démarrée par {user.sub} (clear_existing={clear_existing_bool})")
     
     try:
         # 1. Lire le fichier ZIP
@@ -391,176 +598,124 @@ async def restore_backup(
             
             metadata = backup_data.get("metadata", {})
             data = backup_data.get("data", {})
+            format_version = metadata.get("format_version", "1.0")
             
-            logger.info(f"📂 Backup {metadata.get('backup_id', 'inconnu')} - App: {metadata.get('app_slug')}, Version: {metadata.get('app_version')}")
+            logger.info(f"📂 Backup {metadata.get('backup_id', 'inconnu')} - "
+                       f"App: {metadata.get('app_slug')}, Version: {metadata.get('app_version')}, "
+                       f"Format: {format_version}")
             
             # 3. Vérifier la compatibilité
             if metadata.get("app_slug") != settings.APP_SLUG:
                 warnings.append(f"Le backup provient d'une application différente ({metadata.get('app_slug')})")
             
-            # 4. Clear existing si demandé
+            # 4. Découvrir les tables dans le backup
+            backup_tables = list(data.keys())
+            logger.info(f"📊 Tables dans le backup: {backup_tables}")
+            
+            # 5. Découvrir les tables existantes dans la base
+            existing_tables = await _get_all_tables(db)
+            logger.info(f"📊 Tables existantes dans la base: {existing_tables}")
+            
+            # 6. Clear existing si demandé
             if clear_existing_bool:
                 logger.warning("🗑️ Suppression des données existantes...")
-                if restore_items_bool:
-                    await db.execute(delete(Item))
-                if restore_preferences_bool:
-                    await db.execute(delete(UserPreference))
-                if restore_files_bool:
-                    await db.execute(delete(UploadedFile))
-                if restore_test_data_bool:
-                    await db.execute(delete(TestData))
+                # Désactiver les contraintes FK temporairement
+                await db.execute(text("SET CONSTRAINTS ALL DEFERRED"))
+                
+                for table_name in existing_tables:
+                    if table_name in backup_tables:
+                        try:
+                            await db.execute(text(f'DELETE FROM "{table_name}"'))
+                            logger.debug(f"  🗑️ Table {table_name} vidée")
+                        except Exception as e:
+                            warnings.append(f"Impossible de vider {table_name}: {str(e)}")
+                
                 await db.commit()
             
-            # 5. Restaurer les items
-            if restore_items_bool:
-                for item_data in data.get("items", []):
-                    try:
-                        # Vérifier si existe déjà
-                        existing = await db.execute(
-                            select(Item).where(Item.id == item_data.get("id"))
-                        )
-                        if existing.scalar() and not clear_existing_bool:
-                            items_skipped += 1
-                            continue
-                        
-                        item = Item(
-                            title=item_data["title"],
-                            description=item_data.get("description"),
-                            owner=item_data["owner"],
-                            is_public=item_data.get("is_public", False),
-                            created_at=datetime.fromisoformat(item_data["created_at"]) if item_data.get("created_at") else None,
-                            updated_at=datetime.fromisoformat(item_data["updated_at"]) if item_data.get("updated_at") else None
-                        )
-                        db.add(item)
-                        items_restored += 1
-                    except Exception as e:
-                        errors.append(f"Item {item_data.get('id')}: {str(e)}")
+            # 7. Restaurer chaque table
+            for table_name, table_data in data.items():
+                if table_name not in existing_tables:
+                    warnings.append(f"Table '{table_name}' du backup n'existe pas dans la base actuelle")
+                    continue
+                
+                if not table_data:
+                    tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0}
+                    continue
+                
+                try:
+                    result = await _import_table_data(db, table_name, table_data, clear_existing_bool)
+                    tables_restored[table_name] = result
+                    
+                    total = result["imported"] + result["updated"]
+                    if total > 0:
+                        logger.info(f"  ✓ {table_name}: {result['imported']} importés, "
+                                   f"{result['updated']} mis à jour, {result['skipped']} ignorés")
+                except Exception as e:
+                    errors.append(f"Table {table_name}: {str(e)}")
+                    tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0, "error": str(e)}
             
-            # 6. Restaurer les préférences
-            if restore_preferences_bool:
-                for pref_data in data.get("user_preferences", []):
-                    try:
-                        existing = await db.execute(
-                            select(UserPreference).where(UserPreference.username == pref_data.get("username"))
-                        )
-                        if existing.scalar() and not clear_existing_bool:
-                            continue
-                        
-                        pref = UserPreference(
-                            username=pref_data["username"],
-                            theme=pref_data.get("theme", "system"),
-                            language=pref_data.get("language", "fr"),
-                            items_per_page=pref_data.get("items_per_page", 20),
-                            email_notifications=pref_data.get("email_notifications", True),
-                            created_at=datetime.fromisoformat(pref_data["created_at"]) if pref_data.get("created_at") else None,
-                            updated_at=datetime.fromisoformat(pref_data["updated_at"]) if pref_data.get("updated_at") else None
-                        )
-                        db.add(pref)
-                        prefs_restored += 1
-                    except Exception as e:
-                        errors.append(f"Preference {pref_data.get('username')}: {str(e)}")
-            
-            # 7. Restaurer les fichiers
-            if restore_files_bool:
-                for file_data in data.get("uploaded_files", []):
-                    try:
-                        relative_path = file_data.get("relative_path")
-                        zip_path = f"files/{relative_path}"
-                        
-                        # Vérifier si le fichier existe dans le ZIP
-                        if zip_path not in zf.namelist():
-                            warnings.append(f"Fichier manquant dans le backup: {relative_path}")
-                            files_skipped += 1
-                            continue
-                        
-                        # Lire et sauvegarder le fichier
-                        file_content = zf.read(zip_path)
-                        
-                        # Reconstruire le chemin
-                        parts = relative_path.split("/")
-                        if len(parts) >= 2:
-                            owner = parts[0]
-                            category = parts[1]
-                            filename = "/".join(parts[2:]) if len(parts) > 2 else parts[-1]
-                        else:
-                            owner = file_data.get("owner", "_restored")
-                            category = file_data.get("category", "general")
-                            filename = file_data.get("filename", relative_path)
-                        
-                        await storage_manager.save_bytes(
-                            data=file_content,
-                            filename=filename,
-                            owner=owner,
-                            category=category
-                        )
-                        
-                        # Enregistrer en BDD
-                        uploaded_file = UploadedFile(
-                            filename=file_data["filename"],
-                            original_filename=file_data.get("original_filename", file_data["filename"]),
-                            relative_path=relative_path,
-                            size=file_data["size"],
-                            mime_type=file_data["mime_type"],
-                            hash=file_data["hash"],
-                            category=file_data.get("category", "general"),
-                            description=file_data.get("description"),
-                            owner=file_data["owner"],
-                            entity_type=file_data.get("entity_type"),
-                            entity_id=file_data.get("entity_id")
-                        )
-                        db.add(uploaded_file)
-                        files_restored += 1
-                        
-                    except Exception as e:
-                        errors.append(f"Fichier {file_data.get('filename')}: {str(e)}")
-            
-            # 8. Restaurer les données de test
-            if restore_test_data_bool:
-                for td_data in data.get("test_data", []):
-                    try:
-                        # Vérifier si existe déjà
-                        existing = await db.execute(
-                            select(TestData).where(TestData.id == td_data.get("id"))
-                        )
-                        if existing.scalar() and not clear_existing_bool:
-                            test_data_skipped += 1
-                            continue
-                        
-                        test_data_entry = TestData(
-                            name=td_data["name"],
-                            value=td_data.get("value"),
-                            category=td_data.get("category", "general"),
-                            last_modified_by=td_data.get("last_modified_by", user.sub),
-                            created_at=datetime.fromisoformat(td_data["created_at"]) if td_data.get("created_at") else None,
-                            updated_at=datetime.fromisoformat(td_data["updated_at"]) if td_data.get("updated_at") else None
-                        )
-                        db.add(test_data_entry)
-                        test_data_restored += 1
-                    except Exception as e:
-                        errors.append(f"TestData {td_data.get('id')}: {str(e)}")
+            # 8. Restaurer les fichiers binaires
+            file_entries = [f for f in zf.namelist() if f.startswith("files/") and not f.endswith("/")]
+            for file_path in file_entries:
+                try:
+                    relative_path = file_path[6:]  # Remove "files/" prefix
+                    file_content = zf.read(file_path)
+                    
+                    # Extraire owner/category du chemin
+                    parts = relative_path.split("/")
+                    if len(parts) >= 2:
+                        owner = parts[0]
+                        category = parts[1]
+                        filename = "/".join(parts[2:]) if len(parts) > 2 else parts[-1]
+                    else:
+                        owner = "_restored"
+                        category = "general"
+                        filename = relative_path
+                    
+                    await storage_manager.save_bytes(
+                        data=file_content,
+                        filename=filename,
+                        owner=owner,
+                        category=category
+                    )
+                    files_restored += 1
+                except Exception as e:
+                    errors.append(f"Fichier {file_path}: {str(e)}")
             
             await db.commit()
         
-        logger.info(f"✅ Restauration terminée: {items_restored} items, {prefs_restored} prefs, {test_data_restored} test_data, {files_restored} fichiers")
+        # Calculer les totaux
+        total_imported = sum(t.get("imported", 0) for t in tables_restored.values())
+        total_updated = sum(t.get("updated", 0) for t in tables_restored.values())
+        total_skipped = sum(t.get("skipped", 0) for t in tables_restored.values())
         
-        return RestoreResponse(
-            success=len(errors) == 0,
-            message="Restauration terminée" + (" avec des erreurs" if errors else " avec succès"),
-            items_restored=items_restored,
-            preferences_restored=prefs_restored,
-            files_restored=files_restored,
-            items_skipped=items_skipped,
-            files_skipped=files_skipped,
-            errors=errors,
-            warnings=warnings
-        )
+        logger.info(f"✅ Restauration terminée: {len(tables_restored)} tables, "
+                   f"{total_imported} importés, {total_updated} mis à jour, {files_restored} fichiers")
+        
+        return {
+            "success": len(errors) == 0,
+            "message": "Restauration terminée" + (" avec des erreurs" if errors else " avec succès"),
+            "format_version": format_version,
+            "tables_restored": tables_restored,
+            "total_tables": len(tables_restored),
+            "total_imported": total_imported,
+            "total_updated": total_updated,
+            "total_skipped": total_skipped,
+            "files_restored": files_restored,
+            "errors": errors,
+            "warnings": warnings,
+            # Compatibilité avec l'ancien format
+            "items_restored": tables_restored.get("items", {}).get("imported", 0),
+            "preferences_restored": tables_restored.get("user_preferences", {}).get("imported", 0),
+            "items_skipped": tables_restored.get("items", {}).get("skipped", 0),
+            "files_skipped": 0
+        }
         
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Le fichier uploadé n'est pas un ZIP valide")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Le fichier data.json est corrompu")
     except HTTPException:
-        # Re-raise HTTPException sans les transformer
         raise
     except Exception as e:
         logger.error(f"❌ Erreur restauration: {e}")
@@ -572,7 +727,7 @@ async def restore_backup(
 # SYNCHRONISATION AVEC LE HUB
 # ============================================================
 
-@router.post("/sync-to-hub", response_model=MessageResponse)
+@router.post("/sync-to-hub")
 async def sync_to_hub(
     request: SyncToHubRequest = None,
     db: AsyncSession = Depends(get_db),
@@ -581,8 +736,10 @@ async def sync_to_hub(
     """
     Pousse le backup complet vers le Hub central.
     
+    ⚡ SYSTÈME GÉNÉRIQUE ⚡
+    
     Le Hub se charge de:
-    - Stocker le backup
+    - Stocker le backup avec toutes les tables découvertes
     - Gérer les versions
     - Permettre la restauration depuis n'importe quelle instance
     
@@ -594,15 +751,17 @@ async def sync_to_hub(
             detail="Application non enregistrée auprès du Hub. Vérifiez la connexion."
         )
     
-    logger.info(f"☁️ Synchronisation vers le Hub initiée par {user.sub}")
+    logger.info(f"☁️ Synchronisation générique vers le Hub initiée par {user.sub}")
     
     try:
-        # 1. Créer un backup
+        # 1. Créer un backup générique
         backup_response = await create_backup(db=db, user=user)
-        if not backup_response.success:
+        
+        if not backup_response.get("success"):
             raise HTTPException(status_code=500, detail="Échec de la création du backup")
         
-        backup_id = backup_response.metadata.backup_id
+        metadata = backup_response.get("metadata", {})
+        backup_id = metadata.get("backup_id")
         
         # 2. Lire le fichier backup
         backup_path = f"_system/backups/backup_{backup_id}.zip"
@@ -611,29 +770,39 @@ async def sync_to_hub(
         if not backup_content:
             raise HTTPException(status_code=500, detail="Backup créé mais fichier introuvable")
         
-        # 3. Encoder en base64 pour envoi
-        backup_b64 = base64.b64encode(backup_content).decode("utf-8")
-        
-        # 4. Envoyer au Hub via M2M
-        # Le Hub doit exposer un endpoint /api/apps/{slug}/backup
+        # 3. Envoyer au Hub via M2M en multipart/form-data
+        # Le Hub attend un fichier ZIP + des champs de métadonnées
         result = await hub_client.call_hub_endpoint(
             endpoint=f"/api/apps/{settings.APP_SLUG}/backup",
             method="POST",
+            files={
+                "file": (f"backup_{backup_id}.zip", backup_content, "application/zip")
+            },
             data={
                 "backup_id": backup_id,
-                "backup_data": backup_b64,
-                "metadata": backup_response.metadata.model_dump(),
-                "description": request.description if request else None,
-                "tags": request.tags if request else []
-            }
+                "app_version": metadata.get("app_version", APP_VERSION),
+                "format_version": metadata.get("format_version", "3.0"),
+                "total_tables": str(metadata.get("total_tables", 0)),
+                "total_rows": str(metadata.get("total_rows", 0)),
+                "total_files": str(metadata.get("total_files", 0)),
+                "checksum": metadata.get("checksum", ""),
+                "description": request.description if request else ""
+            },
+            timeout=120.0
         )
         
-        if result and result.get("success"):
-            logger.info(f"✅ Backup {backup_id} synchronisé avec le Hub")
-            return MessageResponse(
-                message="Backup synchronisé avec le Hub",
-                detail=f"Backup ID: {backup_id}, Taille: {backup_response.metadata.total_size_human}"
-            )
+        if result and result.get("success", True) and not result.get("error"):
+            logger.info(f"✅ Backup générique {backup_id} synchronisé avec le Hub "
+                       f"({metadata.get('total_tables', 0)} tables, {metadata.get('total_rows', 0)} enregistrements)")
+            return {
+                "success": True,
+                "message": "Backup synchronisé avec le Hub",
+                "detail": f"Backup ID: {backup_id}, Tables: {metadata.get('total_tables', 0)}, "
+                         f"Enregistrements: {metadata.get('total_rows', 0)}, "
+                         f"Taille: {metadata.get('total_size_human', '?')}",
+                "backup_id": backup_id,
+                "metadata": metadata
+            }
         else:
             error_msg = result.get("error", "Erreur inconnue") if result else "Pas de réponse du Hub"
             raise HTTPException(status_code=502, detail=f"Erreur Hub: {error_msg}")
@@ -645,14 +814,21 @@ async def sync_to_hub(
         raise HTTPException(status_code=500, detail=f"Erreur de synchronisation: {str(e)}")
 
 
-@router.post("/sync-from-hub", response_model=RestoreResponse)
+@router.post("/sync-from-hub")
 async def sync_from_hub(
     request: SyncFromHubRequest = None,
     db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(require_role("admin"))
 ):
     """
-    Récupère et restaure le dernier backup depuis le Hub central.
+    Demande au Hub de restaurer le dernier backup vers cette application.
+    
+    ⚡ SYSTÈME GÉNÉRIQUE ⚡
+    
+    Le Hub :
+    1. Récupère le backup demandé (ou le dernier)
+    2. Envoie le fichier ZIP à cette application via POST /api/admin/restore
+    3. L'application restaure toutes les tables automatiquement
     
     Paramètres:
     - backup_id: ID spécifique du backup (optionnel, sinon le plus récent)
@@ -669,51 +845,78 @@ async def sync_from_hub(
     backup_id = request.backup_id if request else None
     clear_existing = request.clear_existing if request else False
     
-    logger.info(f"☁️ Récupération du backup depuis le Hub par {user.sub} (backup_id={backup_id})")
+    logger.info(f"☁️ Demande de restauration générique depuis le Hub par {user.sub} (backup_id={backup_id})")
     
     try:
-        # 1. Récupérer le backup depuis le Hub
-        endpoint = f"/api/apps/{settings.APP_SLUG}/backup"
-        if backup_id:
-            endpoint += f"/{backup_id}"
-        else:
-            endpoint += "/latest"
+        # 1. Si pas de backup_id, récupérer les infos du dernier backup
+        if not backup_id:
+            latest_endpoint = f"/api/apps/{settings.APP_SLUG}/backup/latest"
+            latest_result = await hub_client.call_hub_endpoint(
+                endpoint=latest_endpoint,
+                method="GET"
+            )
+            
+            if not latest_result:
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Aucun backup trouvé sur le Hub pour cette application"
+                )
+            
+            # Le Hub retourne les métadonnées du backup
+            backup_id = latest_result.get("backup_id")
+            if not backup_id:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Le Hub n'a pas retourné d'identifiant de backup"
+                )
+            
+            logger.info(f"📋 Dernier backup trouvé: {backup_id}")
+        
+        # 2. Demander au Hub de déclencher la restauration vers cette app
+        # Le Hub va appeler POST /api/admin/restore sur cette application
+        restore_endpoint = f"/api/apps/{settings.APP_SLUG}/backup/{backup_id}/restore"
         
         result = await hub_client.call_hub_endpoint(
-            endpoint=endpoint,
-            method="GET"
+            endpoint=restore_endpoint,
+            method="POST",
+            data={
+                "clear_existing": clear_existing
+            },
+            timeout=300.0  # Timeout plus long pour la restauration
         )
         
-        if not result or not result.get("success"):
-            error_msg = result.get("error", "Backup non trouvé") if result else "Pas de réponse du Hub"
-            raise HTTPException(status_code=404, detail=f"Erreur Hub: {error_msg}")
+        if not result:
+            raise HTTPException(
+                status_code=502,
+                detail="Pas de réponse du Hub lors de la restauration"
+            )
         
-        # 2. Décoder le backup
-        backup_b64 = result.get("backup_data")
-        if not backup_b64:
-            raise HTTPException(status_code=502, detail="Données de backup manquantes dans la réponse du Hub")
+        if result.get("error") or result.get("success") is False:
+            error_msg = result.get("error", result.get("message", "Erreur inconnue"))
+            raise HTTPException(status_code=502, detail=f"Erreur Hub: {error_msg}")
         
-        backup_content = base64.b64decode(backup_b64)
+        # 3. Retourner le résultat de la restauration (format générique)
+        logger.info(f"✅ Restauration générique depuis le Hub terminée: "
+                   f"{result.get('total_tables', 0)} tables, {result.get('total_imported', 0)} importés")
         
-        # 3. Créer un fichier temporaire pour la restauration
-        temp_file = UploadFile(
-            filename="hub_backup.zip",
-            file=io.BytesIO(backup_content)
-        )
-        
-        # 4. Utiliser la fonction de restauration existante
-        restore_result = await restore_backup(
-            file=temp_file,
-            clear_existing=clear_existing,
-            restore_items=True,
-            restore_preferences=True,
-            restore_files=True,
-            db=db,
-            user=user
-        )
-        
-        logger.info(f"✅ Restauration depuis le Hub terminée")
-        return restore_result
+        return {
+            "success": result.get("success", True),
+            "message": result.get("message", "Restauration terminée depuis le Hub"),
+            "format_version": result.get("format_version", "3.0"),
+            "tables_restored": result.get("tables_restored", {}),
+            "total_tables": result.get("total_tables", 0),
+            "total_imported": result.get("total_imported", 0),
+            "total_updated": result.get("total_updated", 0),
+            "total_skipped": result.get("total_skipped", 0),
+            "files_restored": result.get("files_restored", 0),
+            "errors": result.get("errors", []),
+            "warnings": result.get("warnings", []),
+            # Compatibilité avec l'ancien format
+            "items_restored": result.get("items_restored", 0),
+            "preferences_restored": result.get("preferences_restored", 0),
+            "items_skipped": result.get("items_skipped", 0),
+            "files_skipped": result.get("files_skipped", 0)
+        }
         
     except HTTPException:
         raise
