@@ -8,7 +8,7 @@ Ces tests vérifient :
 import pytest
 from httpx import AsyncClient
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class TestAllServicesEndpoint:

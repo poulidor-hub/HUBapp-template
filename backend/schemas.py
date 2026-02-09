@@ -3,7 +3,7 @@ Schémas Pydantic pour la validation des données.
 """
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ============ Items ============
@@ -98,6 +98,8 @@ class PaginatedResponse(BaseModel):
     items: list
     total: int
     page: int
+    per_page: int = 20
+    pages: int = 1
 
 
 # ============ Services Discovery ============
@@ -129,8 +131,8 @@ class ServiceDiscoveryResponse(BaseModel):
     count: int = Field(..., description="Nombre de services découverts")
     services: list[DiscoveredServiceResponse] = Field(..., description="Liste des services")
     cached_at: Optional[str] = Field(None, description="Date de mise en cache")
-    per_page: int
-    pages: int
+    per_page: Optional[int] = Field(None, description="Nombre par page (si paginé)")
+    pages: Optional[int] = Field(None, description="Nombre total de pages (si paginé)")
 
 
 # ============ Uploaded Files ============

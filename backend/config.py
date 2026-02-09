@@ -57,13 +57,12 @@ def get_docker_host_ip() -> Optional[str]:
     # Dans Docker avec network mode bridge, cela retourne l'IP du conteneur
     # Mais avec host network, cela retourne l'IP de l'hôte
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        # Ne retourner que si ce n'est pas une IP Docker interne
-        if not ip.startswith("172."):
-            return ip
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            # Ne retourner que si ce n'est pas une IP Docker interne
+            if not ip.startswith("172."):
+                return ip
     except Exception:
         pass
     
@@ -99,11 +98,9 @@ def get_local_ip() -> str:
     
     # Détection classique via connexion UDP
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
     except Exception:
         return "127.0.0.1"
 

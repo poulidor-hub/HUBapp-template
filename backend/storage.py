@@ -8,8 +8,8 @@ import aiofiles.os
 import hashlib
 import mimetypes
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, BinaryIO
+from datetime import datetime, timezone
+from typing import Optional
 from fastapi import UploadFile
 import logging
 
@@ -167,17 +167,17 @@ class StorageManager:
         Returns:
             Contenu binaire ou None si non trouvé
         """
-        file_path = self.base_path / relative_path
+        file_path = (self.base_path / relative_path).resolve()
+        
+        # Vérifier que le chemin est bien dans base_path (sécurité) AVANT de vérifier l'existence
+        try:
+            file_path.relative_to(self.base_path.resolve())
+        except ValueError:
+            logger.error(f"🚨 Tentative d'accès hors du storage: {relative_path}")
+            return None
         
         if not file_path.exists():
             logger.warning(f"⚠️ Fichier non trouvé: {relative_path}")
-            return None
-        
-        # Vérifier que le chemin est bien dans base_path (sécurité)
-        try:
-            file_path.relative_to(self.base_path)
-        except ValueError:
-            logger.error(f"🚨 Tentative d'accès hors du storage: {relative_path}")
             return None
         
         async with aiofiles.open(file_path, "rb") as f:

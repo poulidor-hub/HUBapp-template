@@ -10,7 +10,7 @@ import tempfile
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import des modèles et schemas
 import sys

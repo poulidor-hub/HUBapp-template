@@ -16,7 +16,7 @@ import fcntl
 import os
 from typing import Optional, List, Dict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from config import get_settings
@@ -105,9 +105,11 @@ class HubClient:
         """Sauvegarde les credentials dans un fichier partagé entre workers."""
         if self._credentials:
             try:
-                with open(CREDENTIALS_FILE, 'w') as f:
+                # Écrire avec permissions restrictives (lecture/écriture propriétaire uniquement)
+                fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w') as f:
                     f.write(f"{self._credentials.client_id}\n{self._credentials.client_secret}")
-                logger.debug(f"💾 Credentials sauvegardés dans {CREDENTIALS_FILE}")
+                logger.debug(f"💾 Credentials sauvegardés dans {CREDENTIALS_FILE} (mode 0600)")
             except Exception as e:
                 logger.warning(f"⚠️ Impossible de sauvegarder les credentials: {e}")
     
@@ -662,6 +664,80 @@ class HubClient:
         """
         services = await self.discover_services(force_refresh=force_refresh)
         return list(services.values())
+
+    async def call_hub_endpoint(
+        self,
+        endpoint: str,
+        method: str = "GET",
+        _retry_on_401: bool = True,
+        timeout: float = 30.0,
+        **kwargs
+    ) -> Optional[dict]:
+        """
+        Appelle directement un endpoint de l'API Hub avec authentification M2M.
+        
+        Contrairement à call_discovered_service qui route via un slug de service,
+        cette méthode appelle directement le Hub lui-même.
+        
+        Args:
+            endpoint: Endpoint à appeler (ex: "/api/apps/mon-app/backup")
+            method: Méthode HTTP (GET, POST, PUT, DELETE)
+            _retry_on_401: Réessayer automatiquement si 401 (défaut: True)
+            timeout: Timeout en secondes (défaut: 30)
+            **kwargs: Arguments supplémentaires pour httpx (json, data, files, params, etc.)
+        
+        Returns:
+            Réponse JSON ou None si erreur
+        """
+        # Obtenir le token M2M
+        token = await self.get_m2m_token()
+        if not token:
+            logger.error(f"❌ Impossible d'obtenir un token M2M pour appeler le Hub")
+            return None
+        
+        url = f"{self.settings.hub_api_url.rstrip('/')}{endpoint}"
+        logger.debug(f"📡 Appel Hub: {method} {url}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                headers = kwargs.pop("headers", {})
+                headers["Authorization"] = f"Bearer {token}"
+                headers["X-Slug"] = self.settings.APP_SLUG
+                
+                response = await client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    **kwargs
+                )
+                
+                if response.status_code == 200:
+                    # Essayer de parser en JSON, sinon retourner le contenu brut
+                    try:
+                        return response.json()
+                    except Exception:
+                        return {"success": True, "content": response.text[:500]}
+                
+                elif response.status_code == 401 and _retry_on_401:
+                    logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
+                    if await self._auto_resync():
+                        return await self.call_hub_endpoint(
+                            endpoint, method,
+                            _retry_on_401=False,
+                            timeout=timeout,
+                            **kwargs
+                        )
+                    logger.error(f"❌ Resync échoué, abandon de l'appel Hub")
+                    return None
+                
+                else:
+                    error_text = response.text[:200] if response.text else "(pas de contenu)"
+                    logger.error(f"❌ Erreur appel Hub: {response.status_code} - {error_text}")
+                    return {"error": error_text, "status_code": response.status_code}
+                    
+        except httpx.RequestError as e:
+            logger.error(f"❌ Erreur réseau appel Hub: {e}")
+            return None
 
 
 # Instance singleton

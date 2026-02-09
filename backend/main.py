@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import asyncio
 

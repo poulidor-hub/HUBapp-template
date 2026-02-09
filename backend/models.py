@@ -3,7 +3,7 @@ Modèles SQLAlchemy pour l'application.
 Exemple de modèle Item pour démonstration.
 """
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import Base
 

@@ -19,7 +19,7 @@ import zipfile
 import io
 import uuid
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Any, Dict, List
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -630,7 +630,9 @@ async def restore_backup(
                         except Exception as e:
                             warnings.append(f"Impossible de vider {table_name}: {str(e)}")
                 
-                await db.commit()
+                # PAS de commit ici — on garde tout dans la même transaction
+                # pour pouvoir rollback si l'import échoue
+                await db.flush()
             
             # 7. Restaurer chaque table
             for table_name, table_data in data.items():

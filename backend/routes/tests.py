@@ -11,7 +11,7 @@ Endpoints:
 """
 import asyncio
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse

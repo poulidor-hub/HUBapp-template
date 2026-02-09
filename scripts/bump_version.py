@@ -93,7 +93,11 @@ def update_package_json(version: str) -> bool:
 
 
 def update_main_py(version: str) -> bool:
-    """Met à jour la version dans backend/main.py (FastAPI app)."""
+    """Met à jour la version dans backend/main.py (FastAPI app).
+    
+    Note: Si la version est définie via APP_VERSION (lu depuis le fichier VERSION),
+    ce fichier n'a pas besoin d'être modifié — la synchronisation est automatique.
+    """
     main_path = ROOT_DIR / "backend" / "main.py"
     if not main_path.exists():
         print(f"⚠️  main.py non trouvé, ignoré")
@@ -101,11 +105,15 @@ def update_main_py(version: str) -> bool:
     
     content = main_path.read_text(encoding='utf-8')
     
-    # Pattern pour trouver version="X.Y.Z" dans FastAPI
+    # Pattern pour trouver version="X.Y.Z" en dur dans FastAPI
     pattern = r'(version\s*=\s*["\'])[\d]+\.[\d]+\.[\d]+(["\'])'
     new_content = re.sub(pattern, rf'\g<1>{version}\g<2>', content)
     
     if content == new_content:
+        # Vérifier si la version est définie via APP_VERSION (variable)
+        if "version=APP_VERSION" in content or "version = APP_VERSION" in content:
+            print(f"✅ backend/main.py: version via APP_VERSION (fichier VERSION)")
+            return True
         print(f"⚠️  backend/main.py: pattern de version non trouvé")
         return False
     
@@ -208,6 +216,8 @@ def check_version_consistency() -> bool:
             else:
                 print(f"❌ backend/main.py: {main_version} (attendu: {version})")
                 all_ok = False
+        elif "version=APP_VERSION" in content or "version = APP_VERSION" in content:
+            print(f"✅ backend/main.py: version via APP_VERSION (fichier VERSION)")
     
     # Check changelog
     if not check_changelog(version):
