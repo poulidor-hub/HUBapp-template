@@ -55,27 +55,9 @@ EXCLUDED_TABLES = {
 }
 
 
-def _human_readable_size(size: int) -> str:
-    """Convertit une taille en bytes en format lisible."""
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} PB"
-
-
-def _human_readable_duration(seconds: float) -> str:
-    """Convertit des secondes en format lisible."""
-    if seconds < 60:
-        return f"{seconds:.0f} sec"
-    elif seconds < 3600:
-        minutes = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{minutes} min {secs} sec"
-    else:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {minutes} min"
+# Fonctions utilitaires importées depuis utils.py
+from utils import human_readable_size as _human_readable_size
+from utils import human_readable_duration as _human_readable_duration
 
 
 def _compute_checksum(data: bytes) -> str:
@@ -404,7 +386,7 @@ async def create_backup(
     Le backup est stocké temporairement et peut être téléchargé via /backup/download.
     """
     backup_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now(timezone.utc).isoformat()
     
     logger.info(f"📦 Création du backup générique {backup_id} par {user.sub}")
     

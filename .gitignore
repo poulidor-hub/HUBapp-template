@@ -88,3 +88,13 @@ logs/
 *.key
 secrets/
 *.crt
+
+# SSL certificats générés
+ssl/server.*
+
+# Backups générés
+*.zip
+
+# Docker volumes locaux
+postgres_data/
+uploads/

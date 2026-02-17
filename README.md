@@ -9,7 +9,7 @@ Template d'application avec authentification Hub pour le développement rapide d
 - ✅ **Gestion des rôles** : viewer < user < manager < admin
 - ✅ **Communication M2M** (Machine-to-Machine) inter-services
 - ✅ **Base de données PostgreSQL** avec SQLAlchemy async
-- ✅ **Frontend** vanilla JS pour tester l'authentification
+- ✅ **Frontend** React pour tester l'authentification
 - ✅ **Docker Compose** prêt à l'emploi
 - ✅ **Tests automatisés** avec pytest
 
@@ -28,9 +28,14 @@ HUBapp_TEMPLATE/
 │   ├── requirements.txt  # Dépendances Python
 │   └── tests/            # Tests pytest
 ├── frontend/
-│   ├── index.html        # Interface de test
-│   ├── config.js         # Configuration frontend
-│   └── auth.js           # Module d'authentification
+│   ├── index.html        # Point d'entrée HTML
+│   ├── package.json      # Dépendances npm
+│   ├── vite.config.js    # Configuration Vite
+│   └── src/              # Code source React
+│       ├── App.jsx       # Composant principal
+│       ├── config.js     # Configuration frontend
+│       ├── components/   # Composants React
+│       └── context/      # Contextes (Auth, Config)
 ├── docker-compose.yml    # Orchestration Docker
 ├── Dockerfile.backend    # Image API
 ├── Dockerfile.frontend   # Image Frontend (nginx)
@@ -52,44 +57,27 @@ nano .env
 
 ### 2. Lancement avec Docker
 
-**Méthode recommandée** (détection automatique du Hub) :
+**Méthode recommandée** (utiliser le script d'initialisation) :
 
 ```bash
-# Linux/macOS
-./start.sh
+# Initialiser le projet (configurer slug, ports, etc.)
+python scripts/init_new_app.py
 
-# Windows (PowerShell)
-.\start.ps1
+# Ou avec nettoyage du contenu de démo
+python scripts/init_new_app.py --clean
 ```
 
-Le script détecte automatiquement si le réseau Hub existe et configure l'application en conséquence.
-
-**Commandes disponibles** :
-
-| Commande | Description |
-|----------|-------------|
-| `./start.sh` ou `./start.sh up` | Démarrer l'application |
-| `./start.sh down` | Arrêter l'application |
-| `./start.sh restart` | Redémarrer l'application |
-| `./start.sh logs` | Afficher les logs (suivis) |
-| `./start.sh build` | Reconstruire les images |
-| `./start.sh status` | Afficher l'état des services |
-
-**Méthode alternative** (docker-compose direct) :
+Puis lancer l'application :
 
 ```bash
-# Si le Hub est démarré
 docker-compose up -d
-
-# Si le Hub n'est pas démarré, définir les variables
-HUB_NETWORK_EXTERNAL=false docker-compose up -d
 ```
 
 ### 3. Accès
 
-- **Frontend** : http://localhost:4178
-- **API Docs** : http://localhost:18087/api/docs
-- **Health** : http://localhost:18087/api/health
+- **Frontend** : http://localhost:4250
+- **API Docs** : http://localhost:9045/api/docs
+- **Health** : http://localhost:9045/api/health
 
 ## 🔐 Endpoints par rôle
 

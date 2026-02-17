@@ -58,7 +58,4 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Exposer les ports HTTP et HTTPS
 EXPOSE 80 443
 
-# Port exposé (HTTP)
-EXPOSE 80
-
 ENTRYPOINT ["/docker-entrypoint.sh"]

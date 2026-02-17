@@ -12,9 +12,15 @@ Fonctionnalités :
 """
 import httpx
 import asyncio
-import fcntl
 import os
 from typing import Optional, List, Dict
+
+# fcntl n'est pas disponible sur Windows — fallback sans file locking
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
@@ -59,7 +65,7 @@ class DiscoveredService:
 
 @dataclass
 class HubCredentials:
-    """Credentials M2M stockés en mémoire (JAMAIS sur disque)."""
+    """Credentials M2M. Sauvegardés dans un fichier local (mode 0600) pour partage entre workers."""
     client_id: str
     client_secret: str
     access_token: Optional[str] = None
@@ -146,26 +152,27 @@ class HubClient:
         # Utiliser un lock fichier pour éviter les enregistrements concurrents
         lock_file = None
         try:
-            lock_file = open(REGISTER_LOCK_FILE, 'w')
-            # Non-blocking lock - si on ne peut pas l'obtenir, un autre worker est en train de s'enregistrer
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except (IOError, OSError):
-                # Un autre worker a le lock, attendre qu'il finisse
-                logger.info("⏳ Enregistrement en cours par un autre worker, attente...")
-                await asyncio.sleep(2)  # Attendre un peu
-                # Réessayer de charger les credentials
+            if HAS_FCNTL:
+                lock_file = open(REGISTER_LOCK_FILE, 'w')
+                # Non-blocking lock - si on ne peut pas l'obtenir, un autre worker est en train de s'enregistrer
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except (IOError, OSError):
+                    # Un autre worker a le lock, attendre qu'il finisse
+                    logger.info("⏳ Enregistrement en cours par un autre worker, attente...")
+                    await asyncio.sleep(2)  # Attendre un peu
+                    # Réessayer de charger les credentials
+                    if self._load_credentials_from_file():
+                        return True
+                    # Sinon, attendre le lock
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                    # Revérifier si les credentials sont disponibles
+                    if self._load_credentials_from_file():
+                        return True
+                
+                # On a le lock, vérifier une dernière fois si les credentials existent
                 if self._load_credentials_from_file():
                     return True
-                # Sinon, attendre le lock
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-                # Revérifier si les credentials sont disponibles
-                if self._load_credentials_from_file():
-                    return True
-            
-            # On a le lock, vérifier une dernière fois si les credentials existent
-            if self._load_credentials_from_file():
-                return True
             
             # Faire l'enregistrement
             return await self._do_register()
@@ -173,7 +180,8 @@ class HubClient:
         finally:
             if lock_file:
                 try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    if HAS_FCNTL:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                     lock_file.close()
                 except:
                     pass
@@ -257,7 +265,7 @@ class HubClient:
                             client_id=data["client_id"],
                             client_secret=data["client_secret"]
                         )
-                        self._last_resync_attempt = datetime.utcnow()
+                        self._last_resync_attempt = datetime.now(timezone.utc)
                         self._resync_count += 1
                         # Sauvegarder pour les autres workers
                         self._save_credentials_to_file()
@@ -283,7 +291,7 @@ class HubClient:
         """
         # Protection contre les boucles de resync
         if self._last_resync_attempt:
-            elapsed = (datetime.utcnow() - self._last_resync_attempt).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._last_resync_attempt).total_seconds()
             if elapsed < 30:
                 logger.warning(f"⚠️ Resync ignoré (dernier il y a {elapsed:.0f}s, cooldown 30s)")
                 return False
@@ -323,7 +331,7 @@ class HubClient:
         # Vérifier si le token actuel est encore valide (marge de 2 min)
         if (self._credentials.access_token and 
             self._credentials.token_expires_at and 
-            datetime.utcnow() < self._credentials.token_expires_at - timedelta(minutes=2)):
+            datetime.now(timezone.utc) < self._credentials.token_expires_at - timedelta(minutes=2)):
             logger.debug(f"✅ Token M2M en cache valide")
             return self._credentials.access_token
         
@@ -351,9 +359,9 @@ class HubClient:
                             expires_str = data["expires_at"].replace("Z", "+00:00")
                             self._credentials.token_expires_at = datetime.fromisoformat(expires_str).replace(tzinfo=None)
                         except (ValueError, TypeError):
-                            self._credentials.token_expires_at = datetime.utcnow() + timedelta(minutes=28)
+                            self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
                     else:
-                        self._credentials.token_expires_at = datetime.utcnow() + timedelta(minutes=28)
+                        self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
                     
                     logger.info(f"✅ Token M2M obtenu (expire: {self._credentials.token_expires_at})")
                     return self._credentials.access_token
@@ -456,7 +464,7 @@ class HubClient:
         """
         # Vérifier le cache
         if not force_refresh and self._discovered_services_fetched_at:
-            elapsed = (datetime.utcnow() - self._discovered_services_fetched_at).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._discovered_services_fetched_at).total_seconds()
             if elapsed < DISCOVERED_SERVICES_CACHE_TTL:
                 logger.debug(f"✅ Services découverts en cache ({len(self._discovered_services)} services)")
                 return self._discovered_services
@@ -508,7 +516,7 @@ class HubClient:
                                 status=svc.get("status", "online" if svc.get("is_healthy", True) else "offline")
                             )
                     
-                    self._discovered_services_fetched_at = datetime.utcnow()
+                    self._discovered_services_fetched_at = datetime.now(timezone.utc)
                     logger.info(f"✅ {len(self._discovered_services)} service(s) partagé(s) découvert(s)")
                     for slug, svc in self._discovered_services.items():
                         logger.debug(f"   - {slug}: {svc.api_url} (v{svc.version or '?'}, {svc.status})")

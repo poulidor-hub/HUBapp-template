@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import logging
 import asyncio
 
+import os
 from config import get_settings, APP_VERSION
 from database import get_db, init_db, close_db
 from hub_client import hub_client
@@ -97,7 +98,7 @@ async def lifespan(app: FastAPI):
     """
     global _hub_reconnect_task
     
-    startup_time = datetime.utcnow()
+    startup_time = datetime.now(timezone.utc)
     logger.info(f"🚀 Démarrage de l'application '{settings.APP_SLUG}'...")
     
     # 1. Auto-enregistrement auprès du Hub
@@ -139,7 +140,7 @@ async def lifespan(app: FastAPI):
         _hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
         logger.info("🔄 Tâche de reconnexion Hub démarrée en arrière-plan")
     
-    startup_duration = (datetime.utcnow() - startup_time).total_seconds()
+    startup_duration = (datetime.now(timezone.utc) - startup_time).total_seconds()
     logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
     
     yield  # L'application tourne
@@ -169,10 +170,17 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# CORS - Autoriser le frontend
+# CORS - Configurer les origines autorisées
+# En prod, définir CORS_ORIGINS dans .env (ex: "http://localhost:4250,https://monapp.fr")
+cors_origins = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
+    f"http://localhost:{settings.FRONTEND_PORT}",
+    f"http://{settings.app_host}:{settings.FRONTEND_PORT}",
+    f"https://localhost:{settings.FRONTEND_PORT + 1}",
+    f"https://{settings.app_host}:{settings.FRONTEND_PORT + 1}",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En prod, restreindre aux URLs connues
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -197,7 +205,7 @@ async def health_check():
     return {
         "status": "healthy",
         "app": settings.APP_SLUG,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "hub_connected": hub_registered,
     }
 
@@ -208,7 +216,7 @@ async def health_check_detailed():
     Health check détaillé avec informations sur les dépendances.
     Utile pour le monitoring avancé et le debugging.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     startup_time = getattr(app.state, 'startup_time', None)
     uptime_seconds = (now - startup_time).total_seconds() if startup_time else None
     
@@ -455,38 +463,6 @@ async def m2m_status():
         "token_preview": f"{token[:20]}...{token[-10:]}" if token else None,
         "error": token_error
     }
-
-
-@app.post("/api/m2m/test-call", tags=["M2M"])
-async def test_m2m_call(
-    target_url: str,
-    user: TokenPayload = Depends(require_role("admin"))
-):
-    """
-    Test d'appel M2M vers un autre service.
-    Requiert admin car c'est un outil de debug.
-    """
-    import httpx
-    
-    token = await hub_client.get_m2m_token()
-    if not token:
-        return {"success": False, "error": "Impossible d'obtenir un token M2M"}
-    
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                target_url,
-                headers={"Authorization": f"Bearer {token}"}
-            )
-            # Succès uniquement si code 2xx
-            is_success = 200 <= response.status_code < 300
-            return {
-                "success": is_success,
-                "status_code": response.status_code,
-                "response": response.json() if response.headers.get("content-type", "").startswith("application/json") else response.text[:500]
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 
 @app.get("/api/apps/discover", response_model=ServiceDiscoveryResponse, tags=["Services"])

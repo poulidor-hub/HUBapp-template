@@ -14,6 +14,7 @@ from fastapi import UploadFile
 import logging
 
 from config import get_settings
+from utils import human_readable_size
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -117,7 +118,7 @@ class StorageManager:
             "mime_type": self.get_mime_type(filename),
             "category": category,
             "owner": owner,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
     
     async def save_bytes(
@@ -291,20 +292,11 @@ class StorageManager:
         return {
             "total_files": total_files,
             "total_size": total_size,
-            "total_size_human": self._human_readable_size(total_size),
+            "total_size_human": human_readable_size(total_size),
             "by_owner": by_owner,
             "by_category": by_category,
             "by_mime_type": by_mime_type
         }
-    
-    @staticmethod
-    def _human_readable_size(size: int) -> str:
-        """Convertit une taille en bytes en format lisible."""
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{size:.1f} PB"
 
 
 # Instance globale

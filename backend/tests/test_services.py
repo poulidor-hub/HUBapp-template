@@ -29,12 +29,12 @@ class TestAllServicesEndpoint:
             mock_hub_client.credentials = MagicMock(
                 client_id="test-client-id",
                 access_token="test-token",
-                token_expires_at=datetime.utcnow() + timedelta(hours=1)
+                token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
             )
             mock_hub_client.ensure_valid_credentials = AsyncMock(return_value=True)
             mock_hub_client.get_m2m_token = AsyncMock(return_value="test-m2m-token")
             mock_hub_client.list_discovered_services = AsyncMock(return_value=[])
-            mock_hub_client._discovered_services_fetched_at = datetime.utcnow()
+            mock_hub_client._discovered_services_fetched_at = datetime.now(timezone.utc)
             mock_hub_client._resync_count = 0
             
             response = await authenticated_client.get("/api/tests/services")
@@ -138,7 +138,7 @@ class TestM2MServiceEndpoint:
             mock_hub_client.credentials = MagicMock(
                 client_id="test-client-id",
                 access_token="test-token",
-                token_expires_at=datetime.utcnow() + timedelta(hours=1)
+                token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
             )
             mock_hub_client._resync_count = 0
             

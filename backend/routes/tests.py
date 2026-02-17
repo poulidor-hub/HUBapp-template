@@ -63,7 +63,7 @@ async def _test_hub_connection() -> ServiceTestResult:
     Teste la connexion au Hub.
     Vérifie que le Hub est accessible et que l'app est enregistrée.
     """
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         # Test 1: Le Hub est-il accessible ?
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -78,7 +78,7 @@ async def _test_hub_connection() -> ServiceTestResult:
         if is_registered:
             credentials_valid = await hub_client.ensure_valid_credentials()
         
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         
         success = hub_accessible and is_registered and credentials_valid
         
@@ -96,7 +96,7 @@ async def _test_hub_connection() -> ServiceTestResult:
             }
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return ServiceTestResult(
             name="Hub Connection",
             success=False,
@@ -111,7 +111,7 @@ async def _test_slug_recovery(user: TokenPayload) -> ServiceTestResult:
     Teste la récupération du X-Slug (role + user).
     Vérifie que le token contient les informations correctes.
     """
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         # Récupérer le rôle de l'utilisateur pour cette app
         app_role = user.get_app_role(settings.APP_SLUG)
@@ -122,7 +122,7 @@ async def _test_slug_recovery(user: TokenPayload) -> ServiceTestResult:
         has_user_info = bool(user.sub)
         has_role_info = app_role is not None or is_service
         
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         
         success = has_user_info and has_role_info
         
@@ -143,7 +143,7 @@ async def _test_slug_recovery(user: TokenPayload) -> ServiceTestResult:
             }
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return ServiceTestResult(
             name="X-Slug Recovery",
             success=False,
@@ -158,7 +158,7 @@ async def _test_m2m_service() -> ServiceTestResult:
     Teste le service M2M (Machine-to-Machine).
     Vérifie l'obtention d'un token M2M et la découverte de services.
     """
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         # Test 1: Obtenir un token M2M
         token = await hub_client.get_m2m_token()
@@ -183,7 +183,7 @@ async def _test_m2m_service() -> ServiceTestResult:
                 "token_expires_at": hub_client.credentials.token_expires_at.isoformat() if hub_client.credentials.token_expires_at else None
             }
         
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         
         success = has_token and discovery_success
         
@@ -206,7 +206,7 @@ async def _test_m2m_service() -> ServiceTestResult:
             }
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return ServiceTestResult(
             name="M2M Service",
             success=False,
@@ -221,7 +221,7 @@ async def _test_sse_connection() -> ServiceTestResult:
     Teste le flux SSE (Server-Sent Events) du Hub.
     Vérifie que l'endpoint SSE du Hub est accessible.
     """
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         sse_url = f"{settings.hub_api_url}/api/events/stream"
         
@@ -254,7 +254,7 @@ async def _test_sse_connection() -> ServiceTestResult:
             except Exception as e:
                 logger.debug(f"SSE connection test: {e}")
         
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         
         success = sse_accessible
         
@@ -271,7 +271,7 @@ async def _test_sse_connection() -> ServiceTestResult:
             }
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return ServiceTestResult(
             name="SSE Stream",
             success=False,
@@ -286,7 +286,7 @@ async def _test_backup_system(db: AsyncSession) -> ServiceTestResult:
     Teste le système de backup.
     Vérifie que le Hub expose les endpoints de backup.
     """
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         # Test 1: Vérifier que l'app est enregistrée (requis pour backup)
         is_registered = hub_client.is_registered
@@ -330,7 +330,7 @@ async def _test_backup_system(db: AsyncSession) -> ServiceTestResult:
         
         has_data_to_backup = items_count > 0 or prefs_count > 0 or testdata_count > 0
         
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         
         # Le succès dépend de l'enregistrement et de la disponibilité locale
         success = is_registered and (backup_endpoint_available or has_data_to_backup)
@@ -361,7 +361,7 @@ async def _test_backup_system(db: AsyncSession) -> ServiceTestResult:
             }
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return ServiceTestResult(
             name="Backup System",
             success=False,
@@ -393,7 +393,7 @@ async def test_all_services(
     Returns:
         Résultat détaillé de tous les tests avec timing et détails
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     tests_results = []
     
     # Exécuter tous les tests en parallèle où possible
@@ -407,7 +407,7 @@ async def test_all_services(
     
     tests_results = [hub_test, slug_test, m2m_test, sse_test, backup_test]
     
-    total_duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+    total_duration = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
     
     # Calculer le résumé
     passed = sum(1 for t in tests_results if t.success)
@@ -415,7 +415,7 @@ async def test_all_services(
     overall_success = failed == 0
     
     return AllServicesTestResult(
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         app_slug=settings.APP_SLUG,
         app_version=APP_VERSION,
         overall_success=overall_success,

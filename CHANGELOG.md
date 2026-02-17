@@ -7,6 +7,51 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.1.0] - 17 février 2026
+
+### 🐛 Corrections critiques
+
+- **Fix** : Badge de version dupliqué ~20 fois dans `docs/API.md` — réécriture de `update_api_docs()` dans `bump_version.py` pour supprimer tous les doublons et ne garder qu'un seul badge
+- **Fix** : Version `v1.7.0` codée en dur dans `init_new_app.py` pour le changelog généré
+- **Fix** : `appSlug` jamais mis à jour dans `frontend/src/config.js`, `conftest.py`, et `test_m2m.py` lors de l'initialisation
+
+### 🔒 Sécurité
+
+- **Suppression** : Endpoint SSRF `/api/m2m/test-call` qui acceptait une URL arbitraire — vulnérabilité SSRF
+- **Fix** : CORS `allow_origins=["*"]` remplacé par des origines calculées dynamiquement depuis les ports configurés. Support de la variable `CORS_ORIGINS` pour personnalisation
+- **Fix** : Docstring `HubCredentials` corrigée (disait "JAMAIS sur disque" alors que les credentials sont sauvegardés sur disque)
+
+### ✨ Nouvelles fonctionnalités
+
+- **Nouveau** : Option `--clean` dans `init_new_app.py` qui supprime automatiquement tout le contenu de démonstration (modèles Item/TestData, endpoints de rôle, composants frontend, tests de démo)
+- **Nouveau** : Module `backend/utils.py` avec fonctions utilitaires partagées (`human_readable_size`, `human_readable_duration`)
+- **Nouveau** : Script d'init mis à jour (10 → 13 étapes) : met à jour `frontend/src/config.js`, les fixtures de test, et nettoie les fichiers obsolètes
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `scripts/bump_version.py` | Réécriture de `update_api_docs()` pour éviter la duplication de badges |
+| `scripts/init_new_app.py` | +3 étapes (config.js, fixtures test, cleanup), option `--clean`, suppression frontend/config.js obsolète |
+| `backend/main.py` | Suppression SSRF, CORS paramétrable, `datetime.utcnow()` → `datetime.now(timezone.utc)` |
+| `backend/hub_client.py` | `fcntl` rendu optionnel (fallback Windows), docstring corrigée, suppression `datetime.utcnow()` |
+| `backend/models.py` | `datetime.utcnow` → `lambda: datetime.now(timezone.utc)` dans les defaults |
+| `backend/storage.py` | Import `human_readable_size` depuis `utils.py` |
+| `backend/routes/backup.py` | Import fonctions utilitaires depuis `utils.py` |
+| `backend/utils.py` | Nouveau module utilitaire partagé |
+| `Dockerfile.frontend` | Suppression du `EXPOSE 80` dupliqué |
+| `README.md` | Suppression références à `start.sh`, `start.ps1`, `auth.js` inexistants, correction des ports |
+| `docs/API.md` | Nettoyage des ~20 badges dupliqués |
+| `.gitignore` | Ajout `ssl/server.*`, `*.zip`, `postgres_data/`, `uploads/` |
+
+### 🗑️ Suppressions
+
+- `frontend/config.js` : vestige de la version vanilla JS, jamais importé par le code React (supprimé automatiquement par l'init)
+- Endpoint `/api/m2m/test-call` : vulnérabilité SSRF
+- Fonctions `_human_readable_size` et `_human_readable_duration` dupliquées dans `storage.py` et `backup.py` (extraites dans `utils.py`)
+
+---
+
 ## [1.9.0] - 17 janvier 2026
 
 ### ✨ Nouvelles fonctionnalités

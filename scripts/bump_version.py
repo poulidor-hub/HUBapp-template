@@ -123,7 +123,12 @@ def update_main_py(version: str) -> bool:
 
 
 def update_api_docs(version: str) -> bool:
-    """Met à jour la version dans docs/API.md."""
+    """Met à jour la version dans docs/API.md.
+    
+    Gère le badge de version en haut du fichier :
+    - Si un ou plusieurs badges existent, les remplace par un seul avec la nouvelle version
+    - Si aucun badge n'existe, en ajoute un après le titre
+    """
     api_path = ROOT_DIR / "docs" / "API.md"
     if not api_path.exists():
         print(f"⚠️  docs/API.md non trouvé, ignoré")
@@ -131,38 +136,42 @@ def update_api_docs(version: str) -> bool:
     
     content = api_path.read_text(encoding='utf-8')
     
-    # Pattern pour le badge de version ou le header
-    # Cherche "Version: X.Y.Z" ou "**Version**: X.Y.Z" ou badge markdown
+    # Supprimer TOUS les badges de version existants (y compris les doublons)
+    # et les lignes vides autour
+    badge_pattern = r'\n*!\[Version\]\(https://img\.shields\.io/badge/version-[\d]+\.[\d]+\.[\d]+-blue\)\s*'
+    content_cleaned = re.sub(badge_pattern, '\n', content)
+    
+    # Mettre à jour les patterns textuels "Version: X.Y.Z" ou "**Version**: X.Y.Z"
     patterns = [
         (r'(\*\*Version\*\*\s*:\s*)[\d]+\.[\d]+\.[\d]+', rf'\g<1>{version}'),
         (r'(Version\s*:\s*)[\d]+\.[\d]+\.[\d]+', rf'\g<1>{version}'),
-        (r'(version-)([\d]+\.[\d]+\.[\d]+)(-)', rf'\g<1>{version}\g<3>'),
     ]
     
-    updated = False
     for pattern, replacement in patterns:
-        new_content = re.sub(pattern, replacement, content)
-        if new_content != content:
-            content = new_content
-            updated = True
+        content_cleaned = re.sub(pattern, replacement, content_cleaned)
     
-    if updated:
-        api_path.write_text(content, encoding='utf-8')
-        print(f"✅ docs/API.md: version={version}")
-    else:
-        # Ajouter le badge de version en haut du fichier si absent
-        lines = content.split('\n')
-        if lines and lines[0].startswith('# '):
-            # Insérer après le titre
-            badge = f"\n![Version](https://img.shields.io/badge/version-{version}-blue)"
-            lines.insert(1, badge)
-            api_path.write_text('\n'.join(lines), encoding='utf-8')
-            print(f"✅ docs/API.md: badge ajouté (version={version})")
-            updated = True
-        else:
-            print(f"⚠️  docs/API.md: impossible d'ajouter le badge de version")
+    # Réinsérer UN SEUL badge après le titre
+    lines = content_cleaned.split('\n')
+    badge_line = f"![Version](https://img.shields.io/badge/version-{version}-blue)"
     
-    return updated
+    if lines and lines[0].startswith('# '):
+        # Insérer après le titre avec une ligne vide
+        lines.insert(1, '')
+        lines.insert(2, badge_line)
+        # Nettoyer les lignes vides multiples consécutives
+        result_lines = []
+        prev_empty = False
+        for line in lines:
+            is_empty = line.strip() == ''
+            if is_empty and prev_empty:
+                continue
+            result_lines.append(line)
+            prev_empty = is_empty
+        content_cleaned = '\n'.join(result_lines)
+    
+    api_path.write_text(content_cleaned, encoding='utf-8')
+    print(f"✅ docs/API.md: version={version}")
+    return True
 
 
 def check_changelog(version: str) -> bool:

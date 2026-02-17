@@ -11,7 +11,8 @@ Ce script transforme le template en une nouvelle application avec :
 - Fichier .env généré automatiquement
 
 Usage:
-    python scripts/init_new_app.py
+    python scripts/init_new_app.py              # Initialisation standard
+    python scripts/init_new_app.py --clean      # + suppression du contenu de démo
 
 Compatible Linux / Windows / macOS
 """
@@ -402,6 +403,669 @@ def update_frontend_package_json(root: Path, config: dict) -> bool:
         return False
 
 
+def update_frontend_config_js(root: Path, config: dict) -> bool:
+    """Met à jour frontend/src/config.js avec le nouveau appSlug."""
+    filepath = root / 'frontend' / 'src' / 'config.js'
+    
+    replacements = [
+        ("APP_SLUG: import.meta.env.VITE_APP_SLUG || 'mon-app'",
+         f"APP_SLUG: import.meta.env.VITE_APP_SLUG || '{config['APP_SLUG']}'"),
+    ]
+    
+    return update_file(filepath, replacements, "Config frontend (src) mise à jour")
+
+
+def update_test_fixtures(root: Path, config: dict) -> bool:
+    """Met à jour les fixtures de test avec le nouveau appSlug."""
+    success = True
+    
+    # conftest.py
+    conftest_path = root / 'backend' / 'tests' / 'conftest.py'
+    if conftest_path.exists():
+        try:
+            content = conftest_path.read_text(encoding='utf-8')
+            content = content.replace(
+                '{"mon-app": app_role}',
+                '{' + f'"{config["APP_SLUG"]}": app_role' + '}'
+            )
+            content = content.replace(
+                '{"mon-app": "service"}',
+                '{' + f'"{config["APP_SLUG"]}": "service"' + '}'
+            )
+            conftest_path.write_text(content, encoding='utf-8')
+            print(f"  {Colors.GREEN}✓ conftest.py mis à jour{Colors.ENDC}")
+        except Exception as e:
+            print(f"  {Colors.RED}✗ Erreur conftest.py: {e}{Colors.ENDC}")
+            success = False
+    
+    # test_m2m.py
+    test_m2m_path = root / 'backend' / 'tests' / 'test_m2m.py'
+    if test_m2m_path.exists():
+        try:
+            content = test_m2m_path.read_text(encoding='utf-8')
+            content = content.replace('"mon-app"', f'"{config["APP_SLUG"]}"')
+            test_m2m_path.write_text(content, encoding='utf-8')
+            print(f"  {Colors.GREEN}✓ test_m2m.py mis à jour{Colors.ENDC}")
+        except Exception as e:
+            print(f"  {Colors.RED}✗ Erreur test_m2m.py: {e}{Colors.ENDC}")
+            success = False
+    
+    return success
+
+
+def cleanup_obsolete_files(root: Path) -> bool:
+    """Supprime les fichiers obsolètes du template."""
+    success = True
+    
+    # frontend/config.js - vestige de la version vanilla JS, jamais importé
+    obsolete_config = root / 'frontend' / 'config.js'
+    if obsolete_config.exists():
+        try:
+            obsolete_config.unlink()
+            print(f"  {Colors.GREEN}✓ Supprimé frontend/config.js (vestige inutilisé){Colors.ENDC}")
+        except Exception as e:
+            print(f"  {Colors.RED}✗ Erreur suppression frontend/config.js: {e}{Colors.ENDC}")
+            success = False
+    
+    # Supprimer les __pycache__
+    import shutil
+    for pycache in root.rglob('__pycache__'):
+        try:
+            shutil.rmtree(pycache)
+        except Exception:
+            pass
+    
+    return success
+
+
+# ============================================================
+# NETTOYAGE DU CONTENU DE DÉMO (--clean)
+# ============================================================
+
+def clean_demo_content(root: Path, config: dict) -> bool:
+    """
+    Supprime tout le contenu de démonstration du template.
+    Appelé quand le flag --clean est utilisé.
+    
+    Supprime :
+    - Modèles de démo (Item, TestData) dans models.py
+    - Schémas de démo dans schemas.py
+    - Endpoints de démo dans main.py (~400 lignes)
+    - Composants frontend de démo
+    - Tests de démo (test_auth.py, test_items.py)
+    - Endpoint SSRF /api/m2m/test-call
+    """
+    print(f"\n{Colors.BOLD}🧹 Nettoyage du contenu de démonstration...{Colors.ENDC}\n")
+    
+    success = True
+    
+    # 1. Nettoyer models.py
+    print(f"  {Colors.CYAN}Nettoyage backend/models.py...{Colors.ENDC}")
+    success &= _clean_models(root)
+    
+    # 2. Nettoyer schemas.py
+    print(f"  {Colors.CYAN}Nettoyage backend/schemas.py...{Colors.ENDC}")
+    success &= _clean_schemas(root)
+    
+    # 3. Nettoyer main.py
+    print(f"  {Colors.CYAN}Nettoyage backend/main.py...{Colors.ENDC}")
+    success &= _clean_main(root, config)
+    
+    # 4. Supprimer composants frontend de démo
+    print(f"  {Colors.CYAN}Nettoyage composants frontend...{Colors.ENDC}")
+    success &= _clean_frontend_components(root)
+    
+    # 5. Nettoyer App.jsx
+    print(f"  {Colors.CYAN}Réécriture App.jsx (squelette minimal)...{Colors.ENDC}")
+    success &= _clean_app_jsx(root)
+    
+    # 6. Supprimer tests de démo
+    print(f"  {Colors.CYAN}Nettoyage tests de démo...{Colors.ENDC}")
+    success &= _clean_demo_tests(root)
+    
+    if success:
+        print(f"\n  {Colors.GREEN}✅ Contenu de démo supprimé avec succès !{Colors.ENDC}")
+    else:
+        print(f"\n  {Colors.YELLOW}⚠ Nettoyage terminé avec des avertissements{Colors.ENDC}")
+    
+    return success
+
+
+def _clean_models(root: Path) -> bool:
+    """Supprime les modèles Item et TestData, ne garde que UserPreference et UploadedFile."""
+    filepath = root / 'backend' / 'models.py'
+    
+    content = '''"""
+Modèles SQLAlchemy pour l\'application.
+"""
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger
+from datetime import datetime, timezone
+
+from database import Base
+
+
+class UserPreference(Base):
+    """
+    Préférences utilisateur stockées localement.
+    Le Hub ne gère pas les préférences, c\'est à l\'application de le faire.
+    """
+    __tablename__ = "user_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    
+    # Préférences UI
+    theme = Column(String(20), default="system")  # light, dark, system
+    language = Column(String(5), default="fr")
+    items_per_page = Column(Integer, default=20)
+    
+    # Préférences notifications
+    email_notifications = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    def __repr__(self):
+        return f"<UserPreference(username=\'{self.username}\')>"
+
+
+class UploadedFile(Base):
+    """
+    Fichier uploadé dans l\'application.
+    Permet de tracker les fichiers pour le système de backup/restore.
+    """
+    __tablename__ = "uploaded_files"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Identifiants et chemins
+    filename = Column(String(255), nullable=False)
+    original_filename = Column(String(255), nullable=False)
+    relative_path = Column(String(500), nullable=False, unique=True, index=True)
+    
+    # Métadonnées fichier
+    size = Column(BigInteger, nullable=False)  # Taille en bytes
+    mime_type = Column(String(100), nullable=False)
+    hash = Column(String(64), nullable=False)  # SHA-256
+    
+    # Classification
+    category = Column(String(100), default="general", index=True)
+    description = Column(Text, nullable=True)
+    
+    # Propriétaire
+    owner = Column(String(100), nullable=False, index=True)
+    
+    # Référence optionnelle à une entité
+    entity_type = Column(String(50), nullable=True, index=True)
+    entity_id = Column(Integer, nullable=True, index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    def __repr__(self):
+        return f"<UploadedFile(id={self.id}, filename=\'{self.filename}\', owner=\'{self.owner}\')>"
+    
+    def to_backup_dict(self) -> dict:
+        """Convertit en dict pour le backup (sans le contenu binaire)."""
+        return {
+            "id": self.id,
+            "filename": self.filename,
+            "original_filename": self.original_filename,
+            "relative_path": self.relative_path,
+            "size": self.size,
+            "mime_type": self.mime_type,
+            "hash": self.hash,
+            "category": self.category,
+            "description": self.description,
+            "owner": self.owner,
+            "entity_type": self.entity_type,
+            "entity_id": self.entity_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+'''
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ models.py nettoyé (Item, TestData supprimés){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur models.py: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_schemas(root: Path) -> bool:
+    """Supprime les schémas Item et TestData."""
+    filepath = root / 'backend' / 'schemas.py'
+    
+    content = '''"""
+Schémas Pydantic pour la validation des données.
+"""
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime, timezone
+
+
+# ============ User Preferences ============
+
+class UserPreferenceBase(BaseModel):
+    """Base pour les préférences utilisateur."""
+    theme: str = Field("system", pattern="^(light|dark|system)$")
+    language: str = Field("fr", min_length=2, max_length=5)
+    items_per_page: int = Field(20, ge=5, le=100)
+    email_notifications: bool = True
+
+
+class UserPreferenceUpdate(BaseModel):
+    """Mise à jour des préférences."""
+    theme: Optional[str] = Field(None, pattern="^(light|dark|system)$")
+    language: Optional[str] = Field(None, min_length=2, max_length=5)
+    items_per_page: Optional[int] = Field(None, ge=5, le=100)
+    email_notifications: Optional[bool] = None
+
+
+class UserPreferenceResponse(UserPreferenceBase):
+    """Réponse avec les préférences."""
+    username: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# ============ Auth / User ============
+
+class UserInfo(BaseModel):
+    """Informations utilisateur depuis le token."""
+    username: str
+    roles: list[str]
+    app_role: Optional[str]
+    is_service_account: bool
+
+
+class TokenInfo(BaseModel):
+    """Informations sur le token."""
+    valid: bool
+    username: Optional[str] = None
+    app_role: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+# ============ Generic ============
+
+class MessageResponse(BaseModel):
+    """Réponse simple avec message."""
+    message: str
+    detail: Optional[str] = None
+
+
+class PaginatedResponse(BaseModel):
+    """Réponse paginée générique."""
+    items: list
+    total: int
+    page: int
+    per_page: int = 20
+    pages: int = 1
+
+
+# ============ Services Discovery ============
+
+class DiscoveredServiceResponse(BaseModel):
+    """Service découvert via le Hub."""
+    slug: str = Field(..., description="Identifiant unique du service")
+    name: str = Field(..., description="Nom du service")
+    description: Optional[str] = Field(None, description="Description du service")
+    api_url: str = Field(..., description="URL de l\'API du service")
+    frontend_url: Optional[str] = Field(None, description="URL du frontend du service")
+    version: Optional[str] = Field(None, description="Version du service")
+    status: Optional[str] = Field(None, description="Statut du service")
+    is_healthy: bool = Field(True, description="Le service est-il en bonne santé")
+
+
+class DiscoveredServiceDetailResponse(DiscoveredServiceResponse):
+    """Service découvert avec informations techniques (admin only)."""
+    ip: Optional[str] = Field(None, description="Adresse IP du service")
+    api_port: Optional[int] = Field(None, description="Port de l\'API")
+    frontend_port: Optional[int] = Field(None, description="Port du frontend")
+    registered_at: Optional[str] = Field(None, description="Date d\'enregistrement")
+    last_seen: Optional[str] = Field(None, description="Dernière activité")
+    is_shared: bool = Field(True, description="Service en mode partagé")
+
+
+class ServiceDiscoveryResponse(BaseModel):
+    """Réponse de découverte des services."""
+    count: int = Field(..., description="Nombre de services découverts")
+    services: list[DiscoveredServiceResponse] = Field(..., description="Liste des services")
+    cached_at: Optional[str] = Field(None, description="Date de mise en cache")
+    per_page: Optional[int] = Field(None, description="Nombre par page")
+    pages: Optional[int] = Field(None, description="Nombre total de pages")
+
+
+# ============ Uploaded Files ============
+
+class UploadedFileBase(BaseModel):
+    """Base pour les fichiers uploadés."""
+    filename: str = Field(..., max_length=255, description="Nom du fichier")
+    category: str = Field("general", max_length=100, description="Catégorie de classement")
+    description: Optional[str] = Field(None, description="Description du fichier")
+
+
+class UploadedFileCreate(UploadedFileBase):
+    """Création d\'un fichier uploadé."""
+    entity_type: Optional[str] = Field(None, max_length=50)
+    entity_id: Optional[int] = Field(None)
+
+
+class UploadedFileResponse(UploadedFileBase):
+    """Réponse avec un fichier uploadé."""
+    id: int
+    original_filename: str
+    relative_path: str
+    size: int
+    mime_type: str
+    hash: str
+    owner: str
+    entity_type: Optional[str] = None
+    entity_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# ============ Backup / Restore ============
+
+class BackupEstimate(BaseModel):
+    """Estimation de la taille et durée d\'un backup."""
+    total_preferences: int = Field(..., description="Nombre de préférences utilisateur")
+    total_files: int = Field(..., description="Nombre de fichiers uploadés")
+    
+    database_size_bytes: int = Field(..., description="Taille estimée des données DB")
+    files_size_bytes: int = Field(..., description="Taille totale des fichiers")
+    total_size_bytes: int = Field(..., description="Taille totale estimée du backup")
+    total_size_human: str = Field(..., description="Taille lisible (ex: 15.3 MB)")
+    
+    estimated_duration_seconds: float = Field(..., description="Durée estimée en secondes")
+    estimated_duration_human: str = Field(..., description="Durée lisible")
+    
+    files_by_category: dict = Field(default_factory=dict)
+    files_by_mime_type: dict = Field(default_factory=dict)
+    
+    warning: Optional[str] = Field(None, description="Avertissement si backup volumineux")
+
+
+class BackupMetadata(BaseModel):
+    """Métadonnées d\'un backup."""
+    backup_id: str = Field(..., description="Identifiant unique du backup")
+    app_slug: str = Field(..., description="Slug de l\'application")
+    app_version: str = Field(..., description="Version de l\'application")
+    created_at: str = Field(..., description="Date de création ISO")
+    created_by: str = Field(..., description="Utilisateur ayant créé le backup")
+    
+    total_preferences: int = Field(..., description="Nombre de préférences")
+    total_files: int = Field(..., description="Nombre de fichiers")
+    total_size_bytes: int = Field(..., description="Taille totale")
+    total_size_human: str = Field(..., description="Taille lisible")
+    
+    includes_files: bool = Field(True, description="Fichiers inclus dans le backup")
+    checksum: str = Field(..., description="Checksum du backup")
+
+
+class BackupResponse(BaseModel):
+    """Réponse après création d\'un backup."""
+    success: bool
+    message: str
+    metadata: BackupMetadata
+    download_url: Optional[str] = Field(None, description="URL de téléchargement")
+
+
+class RestoreRequest(BaseModel):
+    """Requête de restauration."""
+    backup_id: Optional[str] = Field(None)
+    clear_existing: bool = Field(False)
+    restore_preferences: bool = Field(True)
+    restore_files: bool = Field(True)
+
+
+class RestoreResponse(BaseModel):
+    """Réponse après restauration."""
+    success: bool
+    message: str
+    
+    preferences_restored: int = Field(0)
+    files_restored: int = Field(0)
+    files_skipped: int = Field(0)
+    
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SyncToHubRequest(BaseModel):
+    """Requête de synchronisation vers le Hub."""
+    description: Optional[str] = Field(None)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SyncFromHubRequest(BaseModel):
+    """Requête de synchronisation depuis le Hub."""
+    backup_id: Optional[str] = Field(None)
+    clear_existing: bool = Field(False)
+'''
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ schemas.py nettoyé (Item/TestData schémas supprimés){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur schemas.py: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_main(root: Path, config: dict) -> bool:
+    """Nettoie main.py : supprime les endpoints de démo, garde l'infra."""
+    filepath = root / 'backend' / 'main.py'
+    
+    try:
+        content = filepath.read_text(encoding='utf-8')
+        
+        # Remplacer les imports de démo
+        content = content.replace(
+            'from models import Item, UserPreference, TestData',
+            'from models import UserPreference'
+        )
+        
+        # Supprimer les imports de schémas de démo
+        content = re.sub(
+            r'from schemas import \(\n.*?\)',
+            '''from schemas import (
+    UserPreferenceUpdate, UserPreferenceResponse,
+    UserInfo, MessageResponse, PaginatedResponse,
+    ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse
+)''',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer les sections de démo par marqueurs de section
+        # On garde tout ce qui est avant "ENDPOINTS PUBLICS" et les sections infra
+        
+        # Supprimer endpoint /api/public
+        content = re.sub(
+            r'\n@app\.get\("/api/public".*?\n    return \{[^}]+\}\n',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer endpoint /api/protected
+        content = re.sub(
+            r'\n@app\.get\("/api/protected".*?\n    return \{[^}]+\}\n',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer la section "ENDPOINTS PAR RÔLE" entière
+        content = re.sub(
+            r'\n# ={5,}\n# ENDPOINTS PAR RÔLE.*?(?=\n# ={5,}\n# ENDPOINTS M2M)',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer endpoint /api/m2m/test-call (SSRF)
+        content = re.sub(
+            r'\n@app\.post\("/api/m2m/test-call".*?\n    except Exception as e:\n        return \{"success": False, "error": str\(e\)\}\n',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer la section "CRUD ITEMS" entière
+        content = re.sub(
+            r'\n# ={5,}\n# CRUD ITEMS.*?(?=\n# ={5,}\n# DONNÉES DE TEST)',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Supprimer la section "DONNÉES DE TEST" entière
+        content = re.sub(
+            r'\n# ={5,}\n# DONNÉES DE TEST.*?(?=\n# ={5,}\n# PRÉFÉRENCES)',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Nettoyer les lignes vides multiples
+        content = re.sub(r'\n{4,}', '\n\n\n', content)
+        
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ main.py nettoyé (endpoints de démo supprimés){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur main.py: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_frontend_components(root: Path) -> bool:
+    """Supprime les composants frontend de démonstration."""
+    demo_components = [
+        'EndpointTests.jsx',
+        'M2MTests.jsx',
+        'DataTable.jsx',
+        'TokenCard.jsx',
+        'UserCard.jsx',
+    ]
+    
+    components_dir = root / 'frontend' / 'src' / 'components'
+    success = True
+    
+    for component in demo_components:
+        filepath = components_dir / component
+        if filepath.exists():
+            try:
+                filepath.unlink()
+                print(f"    {Colors.GREEN}✓ Supprimé {component}{Colors.ENDC}")
+            except Exception as e:
+                print(f"    {Colors.RED}✗ Erreur {component}: {e}{Colors.ENDC}")
+                success = False
+    
+    return success
+
+
+def _clean_app_jsx(root: Path) -> bool:
+    """Réécrit App.jsx avec un squelette minimal."""
+    filepath = root / 'frontend' / 'src' / 'App.jsx'
+    
+    content = """import React, { useState, useEffect } from 'react'
+import { useConfig } from './context/ConfigContext'
+import { useAuth } from './context/AuthContext'
+import Header from './components/Header'
+import LoginPrompt from './components/LoginPrompt'
+
+function App() {
+  const [theme, setTheme] = useState(() => 
+    localStorage.getItem('theme') || 'light'
+  )
+  const config = useConfig()
+  const { isAuthenticated, user } = useAuth()
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }
+
+  if (!config.loaded) {
+    return (
+      <div className="loading">
+        <p>Chargement de la configuration...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app">
+      <Header theme={theme} toggleTheme={toggleTheme} />
+      
+      <div className="container">
+        {!isAuthenticated ? (
+          <LoginPrompt />
+        ) : (
+          <div className="card">
+            <h2>Bienvenue {user?.username} !</h2>
+            <p>Votre application est prête. Commencez à développer ici.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default App
+"""
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ App.jsx réécrit (squelette minimal){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur App.jsx: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_demo_tests(root: Path) -> bool:
+    """Supprime les fichiers de test de démo."""
+    demo_tests = [
+        'test_auth.py',
+        'test_items.py',
+    ]
+    
+    tests_dir = root / 'backend' / 'tests'
+    success = True
+    
+    for test_file in demo_tests:
+        filepath = tests_dir / test_file
+        if filepath.exists():
+            try:
+                filepath.unlink()
+                print(f"    {Colors.GREEN}✓ Supprimé {test_file}{Colors.ENDC}")
+            except Exception as e:
+                print(f"    {Colors.RED}✗ Erreur {test_file}: {e}{Colors.ENDC}")
+                success = False
+    
+    return success
+
+
 def create_version_file(root: Path) -> bool:
     """Réinitialise le fichier VERSION."""
     try:
@@ -441,7 +1105,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ### ✨ Initialisation
 
-- Création du projet à partir de HUBapp_TEMPLATE v1.7.0
+- Création du projet à partir de HUBapp_TEMPLATE
 - Configuration initiale : `{config['APP_SLUG']}`
 - Intégration authentification Hub
 
@@ -567,7 +1231,13 @@ Projet interne - Tous droits réservés.
 
 def main():
     """Point d'entrée principal."""
+    # Détecter le flag --clean
+    clean_mode = '--clean' in sys.argv
+    
     print_header()
+    
+    if clean_mode:
+        print(f"{Colors.YELLOW}🧹 Mode --clean activé : le contenu de démonstration sera supprimé{Colors.ENDC}\n")
     
     # Vérifier qu'on est dans le bon répertoire
     root = get_project_root()
@@ -590,45 +1260,61 @@ def main():
     success = True
     
     # 1. Créer .env
-    print(f"{Colors.CYAN}[1/10] Création du fichier .env{Colors.ENDC}")
+    print(f"{Colors.CYAN}[1/13] Création du fichier .env{Colors.ENDC}")
     success &= create_env_file(root, config)
     
     # 2. Mettre à jour .env.example
-    print(f"{Colors.CYAN}[2/10] Mise à jour .env.example{Colors.ENDC}")
+    print(f"{Colors.CYAN}[2/13] Mise à jour .env.example{Colors.ENDC}")
     success &= update_env_example(root, config)
     
     # 3. docker-compose.yml
-    print(f"{Colors.CYAN}[3/10] Mise à jour docker-compose.yml{Colors.ENDC}")
+    print(f"{Colors.CYAN}[3/13] Mise à jour docker-compose.yml{Colors.ENDC}")
     success &= update_docker_compose(root, config)
     
     # 4. backend/config.py
-    print(f"{Colors.CYAN}[4/10] Mise à jour backend/config.py{Colors.ENDC}")
+    print(f"{Colors.CYAN}[4/13] Mise à jour backend/config.py{Colors.ENDC}")
     success &= update_backend_config(root, config)
     
     # 5. Dockerfile.frontend
-    print(f"{Colors.CYAN}[5/10] Mise à jour Dockerfile.frontend{Colors.ENDC}")
+    print(f"{Colors.CYAN}[5/13] Mise à jour Dockerfile.frontend{Colors.ENDC}")
     success &= update_dockerfile_frontend(root, config)
     
     # 6. frontend/index.html
-    print(f"{Colors.CYAN}[6/10] Mise à jour frontend/index.html{Colors.ENDC}")
+    print(f"{Colors.CYAN}[6/13] Mise à jour frontend/index.html{Colors.ENDC}")
     success &= update_frontend_index(root, config)
     
     # 7. frontend/Header.jsx
-    print(f"{Colors.CYAN}[7/10] Mise à jour frontend/Header.jsx{Colors.ENDC}")
+    print(f"{Colors.CYAN}[7/13] Mise à jour frontend/Header.jsx{Colors.ENDC}")
     success &= update_frontend_header(root, config)
     
     # 8. frontend/package.json
-    print(f"{Colors.CYAN}[8/10] Mise à jour frontend/package.json{Colors.ENDC}")
+    print(f"{Colors.CYAN}[8/13] Mise à jour frontend/package.json{Colors.ENDC}")
     success &= update_frontend_package_json(root, config)
     
-    # 9. VERSION
-    print(f"{Colors.CYAN}[9/10] Réinitialisation VERSION{Colors.ENDC}")
+    # 9. frontend/src/config.js (appSlug)
+    print(f"{Colors.CYAN}[9/13] Mise à jour frontend/src/config.js{Colors.ENDC}")
+    success &= update_frontend_config_js(root, config)
+    
+    # 10. Fixtures de test (appSlug)
+    print(f"{Colors.CYAN}[10/13] Mise à jour des fixtures de test{Colors.ENDC}")
+    success &= update_test_fixtures(root, config)
+    
+    # 11. VERSION
+    print(f"{Colors.CYAN}[11/13] Réinitialisation VERSION{Colors.ENDC}")
     success &= create_version_file(root)
     
-    # 10. CHANGELOG.md et README.md
-    print(f"{Colors.CYAN}[10/10] Réinitialisation documentation{Colors.ENDC}")
+    # 12. CHANGELOG.md et README.md
+    print(f"{Colors.CYAN}[12/13] Réinitialisation documentation{Colors.ENDC}")
     success &= create_changelog(root, config)
     success &= create_readme(root, config)
+    
+    # 13. Nettoyage fichiers obsolètes
+    print(f"{Colors.CYAN}[13/13] Nettoyage fichiers obsolètes{Colors.ENDC}")
+    success &= cleanup_obsolete_files(root)
+    
+    # Nettoyage du contenu de démo si --clean
+    if clean_mode:
+        success &= clean_demo_content(root, config)
     
     # Résumé final
     print(f"\n{'═' * 60}")

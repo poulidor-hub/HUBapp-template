@@ -1,45 +1,6 @@
 # 📚 Documentation API - HUBapp Template
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
+![Version](https://img.shields.io/badge/version-2.1.0-blue)
 Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 ## 🔗 Accès à la documentation interactive
@@ -66,7 +27,6 @@ L'API propose une documentation Swagger/OpenAPI interactive :
 10. [Codes d'erreur](#codes-derreur)
 
 ---
-
 
 ## 🔐 Authentification
 
