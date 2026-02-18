@@ -105,6 +105,11 @@ services:
     links:
       - api:backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # === VOLUMES ===
 volumes:

@@ -26,8 +26,17 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 from config import get_settings
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Répertoire pour les credentials - /app/storage en container, fallback /tmp en local/test
+_storage_dir = Path("/app/storage")
+try:
+    _storage_dir.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    _storage_dir = Path("/tmp")
+    logger.warning(f"⚠️ /app/storage inaccessible, fallback vers {_storage_dir}")
 
 # Nombre max de tentatives de resync automatique
 MAX_RESYNC_ATTEMPTS = 3
@@ -36,9 +45,9 @@ MAX_RESYNC_ATTEMPTS = 3
 DISCOVERED_SERVICES_CACHE_TTL = 60
 
 # Fichier de lock pour éviter les enregistrements concurrents entre workers
-REGISTER_LOCK_FILE = "/tmp/.hub_register.lock"
+REGISTER_LOCK_FILE = str(_storage_dir / ".hub_register.lock")
 # Fichier de credentials partagé entre workers
-CREDENTIALS_FILE = "/tmp/.hub_credentials"
+CREDENTIALS_FILE = str(_storage_dir / ".hub_credentials")
 
 
 @dataclass

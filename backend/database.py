@@ -18,6 +18,10 @@ engine = create_async_engine(
     get_settings().database_url,
     echo=get_settings().DEBUG,
     pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,  # Recycler les connexions toutes les 30 min
 )
 
 # Session factory

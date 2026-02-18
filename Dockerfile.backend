@@ -25,9 +25,6 @@ COPY VERSION /app/VERSION
 # Copier le code source
 COPY backend/ .
 
-# Copier le CHANGELOG pour les endpoints de documentation
-COPY CHANGELOG.md /app/CHANGELOG.md
-
 # Rendre l'entrypoint exécutable
 RUN chmod +x /app/entrypoint.sh
 

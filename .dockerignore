@@ -1,0 +1,55 @@
+# ==== Build artifacts ====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ==== Node ====
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# ==== IDE ====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==== Git ====
+.git/
+.gitignore
+
+# ==== Docker ====
+.dockerignore
+
+# ==== Environment ====
+.env
+.env.*
+!.env.example
+
+# ==== OS ====
+.DS_Store
+Thumbs.db
+
+# ==== Tests ====
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+backend/.mypy_cache/
+
+# ==== Docs (not needed in images) ====
+docs/
+*.md
+!README.md
+
+# ==== Scripts (not needed in images) ====
+scripts/
+
+# ==== SSL certs (mounted as volume) ====
+ssl/

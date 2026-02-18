@@ -1,0 +1,115 @@
+# ============================================================
+# Makefile - HUBapp Template
+# ============================================================
+# Usage:
+#   make help          Afficher l'aide
+#   make dev           Lancer en mode développement
+#   make build         Construire les images Docker
+#   make up            Démarrer les services
+#   make down          Arrêter les services
+#   make test          Lancer les tests
+#   make logs          Voir les logs
+# ============================================================
+
+.PHONY: help dev build up down restart logs test lint clean
+
+# Charger les variables .env si le fichier existe
+ifneq (,$(wildcard ./.env))
+	include .env
+	export
+endif
+
+APP_SLUG ?= mon-app
+
+help: ## Afficher cette aide
+	@echo "╔══════════════════════════════════════════════════╗"
+	@echo "║          HUBapp Template - Commandes            ║"
+	@echo "╚══════════════════════════════════════════════════╝"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+# === DÉVELOPPEMENT ===
+
+dev: ## Lancer en mode développement (rebuild + logs)
+	docker compose up --build -d
+	docker compose logs -f
+
+build: ## Construire les images Docker
+	docker compose build
+
+up: ## Démarrer les services en arrière-plan
+	docker compose up -d
+
+down: ## Arrêter tous les services
+	docker compose down
+
+restart: ## Redémarrer tous les services
+	docker compose restart
+
+restart-api: ## Redémarrer uniquement l'API
+	docker compose restart api
+
+restart-frontend: ## Redémarrer uniquement le frontend
+	docker compose restart frontend
+
+# === LOGS ===
+
+logs: ## Voir les logs de tous les services
+	docker compose logs -f
+
+logs-api: ## Voir les logs de l'API uniquement
+	docker compose logs -f api
+
+logs-db: ## Voir les logs de PostgreSQL
+	docker compose logs -f postgres
+
+# === TESTS ===
+
+test: ## Lancer les tests pytest
+	cd backend && python -m pytest -v
+
+test-cov: ## Lancer les tests avec couverture
+	cd backend && python -m pytest --cov=. --cov-report=html -v
+
+# === SANTÉ ===
+
+health: ## Vérifier le health check de l'API
+	@curl -sf http://localhost:$${API_PORT:-9045}/api/health | python3 -m json.tool || echo "❌ API non accessible"
+
+health-detailed: ## Health check détaillé
+	@curl -sf http://localhost:$${API_PORT:-9045}/api/health/detailed | python3 -m json.tool || echo "❌ API non accessible"
+
+version: ## Afficher la version
+	@cat VERSION
+
+# === BASE DE DONNÉES ===
+
+db-shell: ## Ouvrir un shell PostgreSQL
+	docker compose exec postgres psql -U $${POSTGRES_USER:-app_user} -d $${POSTGRES_DB:-app_db}
+
+# === NETTOYAGE ===
+
+clean: ## Supprimer les conteneurs, volumes et caches
+	docker compose down -v
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
+
+clean-all: clean ## Nettoyage complet (+ images Docker)
+	docker compose down -v --rmi local
+
+# === INITIALISATION ===
+
+init: ## Initialiser une nouvelle app depuis le template
+	python scripts/init_new_app.py
+
+# === VERSION ===
+
+bump-patch: ## Incrémenter la version patch (x.y.Z)
+	python scripts/bump_version.py patch
+
+bump-minor: ## Incrémenter la version minor (x.Y.0)
+	python scripts/bump_version.py minor
+
+bump-major: ## Incrémenter la version major (X.0.0)
+	python scripts/bump_version.py major

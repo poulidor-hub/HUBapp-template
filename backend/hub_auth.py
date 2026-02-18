@@ -165,7 +165,7 @@ class HubAuth:
         """Vérifie si le cache mémoire JWKS est expiré (TTL 30 min)."""
         if not self._cached_key_fetched_at:
             return True
-        elapsed = (datetime.now() - self._cached_key_fetched_at).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self._cached_key_fetched_at).total_seconds()
         return elapsed >= JWKS_CACHE_TTL_SECONDS
     
     def _save_key_to_persistent_cache(self, keys_data: dict) -> bool:

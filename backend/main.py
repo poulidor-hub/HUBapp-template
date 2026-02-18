@@ -1,41 +1,45 @@
 """
-Application FastAPI principale avec endpoints de démonstration.
+Application FastAPI principale.
 Template pour applications connectées au Hub.
+
+Les routes métier sont organisées dans le package routes/ :
+- routes/items.py        : CRUD items (exemple)
+- routes/preferences.py  : Préférences utilisateur
+- routes/m2m.py          : M2M et découverte de services
+- routes/test_data.py    : Données de test (backup)
+- routes/backup.py       : Backup / Restore
+- routes/docs.py         : Documentation / Changelog
+- routes/tests.py        : Tests des services Hub
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import Optional
 from datetime import datetime, timezone
+from typing import Optional
 import logging
 import asyncio
-
 import os
+
 from config import get_settings, APP_VERSION
-from database import get_db, init_db, close_db
+from database import init_db, close_db
 from hub_client import hub_client
 from hub_auth import (
-    hub_auth, 
-    get_current_user, 
-    get_optional_user,
+    hub_auth,
+    get_current_user,
     require_role,
-    require_any_role,
     require_service_account,
     TokenPayload
 )
-from models import Item, UserPreference, TestData
-from schemas import (
-    ItemCreate, ItemUpdate, ItemResponse,
-    UserPreferenceUpdate, UserPreferenceResponse,
-    UserInfo, MessageResponse, PaginatedResponse,
-    ServiceDiscoveryResponse, DiscoveredServiceResponse, DiscoveredServiceDetailResponse,
-    TestDataCreate, TestDataUpdate, TestDataResponse, TestDataListResponse
-)
+from schemas import UserInfo
+
+# Routeurs
 from routes.docs import router as docs_router
 from routes.backup import router as backup_router
 from routes.tests import router as tests_router
+from routes.items import router as items_router
+from routes.preferences import router as preferences_router
+from routes.m2m import router as m2m_router
+from routes.test_data import router as test_data_router
 
 # Configuration logging
 logging.basicConfig(
@@ -45,9 +49,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
-
-# Tâche de reconnexion Hub en arrière-plan
-_hub_reconnect_task: asyncio.Task = None
 
 
 async def hub_reconnection_loop():
@@ -62,18 +63,13 @@ async def hub_reconnection_loop():
         try:
             await asyncio.sleep(RECONNECT_INTERVAL)
             
-            # Vérifier si on doit tenter une reconnexion
-            needs_reconnect = False
-            
             # Cas 1: Application non enregistrée
             if not hub_client.is_registered:
                 logger.info("🔄 Hub non enregistré, tentative de reconnexion...")
                 registered = await hub_client.register()
                 if registered:
                     logger.info("✅ Enregistrement Hub réussi!")
-                    # Réinitialiser l'authentification après enregistrement
                     await hub_auth.initialize()
-                needs_reconnect = not registered
             
             # Cas 2: JWKS indisponible (Hub a peut-être redémarré)
             if not hub_auth._jwks_available or not hub_auth._hub_reachable:
@@ -96,8 +92,6 @@ async def lifespan(app: FastAPI):
     - Démarrage: enregistrement Hub + init DB + découverte services
     - Arrêt: fermeture connexions
     """
-    global _hub_reconnect_task
-    
     startup_time = datetime.now(timezone.utc)
     logger.info(f"🚀 Démarrage de l'application '{settings.APP_SLUG}'...")
     
@@ -133,11 +127,11 @@ async def lifespan(app: FastAPI):
     app.state.startup_time = startup_time
     app.state.is_registered = registered
     app.state.discovered_services_count = discovered_count
+    app.state.hub_reconnect_task = None
     
     # 6. Démarrer la tâche de reconnexion automatique en arrière-plan
-    # (uniquement si l'enregistrement a échoué ou si JWKS n'est pas disponible)
     if not registered or not hub_auth._jwks_available:
-        _hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
+        app.state.hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
         logger.info("🔄 Tâche de reconnexion Hub démarrée en arrière-plan")
     
     startup_duration = (datetime.now(timezone.utc) - startup_time).total_seconds()
@@ -148,11 +142,11 @@ async def lifespan(app: FastAPI):
     # Arrêt
     logger.info("🛑 Arrêt de l'application...")
     
-    # Arrêter la tâche de reconnexion si elle tourne
-    if _hub_reconnect_task and not _hub_reconnect_task.done():
-        _hub_reconnect_task.cancel()
+    reconnect_task = getattr(app.state, 'hub_reconnect_task', None)
+    if reconnect_task and not reconnect_task.done():
+        reconnect_task.cancel()
         try:
-            await _hub_reconnect_task
+            await reconnect_task
         except asyncio.CancelledError:
             pass
     
@@ -182,14 +176,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Inclusion des routeurs
 app.include_router(docs_router)
 app.include_router(backup_router)
 app.include_router(tests_router)
+app.include_router(items_router)
+app.include_router(preferences_router)
+app.include_router(m2m_router)
+app.include_router(test_data_router)
 
 
 # ============================================================
@@ -199,7 +197,6 @@ app.include_router(tests_router)
 @app.get("/api/health", tags=["Public"])
 async def health_check():
     """Health check - toujours accessible."""
-    # Déterminer le statut basé sur les composants critiques
     hub_registered = getattr(app.state, 'is_registered', False)
     
     return {
@@ -258,7 +255,7 @@ async def health_check_detailed():
             "cache_age_seconds": services_cache_age,
             "services": [
                 {"slug": s.slug, "status": s.status, "is_healthy": s.is_healthy}
-                for s in discovered_services[:10]  # Limiter à 10 pour le health check
+                for s in discovered_services[:10]
             ]
         },
         "jwks_cache": jwks_cache_status,
@@ -285,10 +282,11 @@ async def health_hub_jwks():
     return hub_auth.get_jwks_cache_status()
 
 
-@app.post("/api/health/hub/jwks/refresh", tags=["Public"])
-async def health_hub_jwks_refresh():
+@app.post("/api/health/hub/jwks/refresh", tags=["Admin"])
+async def health_hub_jwks_refresh(user: TokenPayload = Depends(require_role("admin"))):
     """
     Force le rafraîchissement du cache JWKS.
+    Réservé aux admins pour éviter les abus (rate limiting implicite).
     
     Utile pour :
     - Forcer la récupération des clés après rotation
@@ -434,562 +432,6 @@ async def service_endpoint(user: TokenPayload = Depends(require_service_account(
         "service": user.sub,
         "token_type": user.token_type
     }
-
-
-# ============================================================
-# ENDPOINTS M2M (Machine-to-Machine)
-# ============================================================
-
-@app.get("/api/m2m/status", tags=["M2M"])
-async def m2m_status():
-    """
-    Statut de la connexion M2M avec le Hub.
-    Retourne si l'app est enregistrée et peut obtenir des tokens.
-    """
-    is_registered = hub_client.is_registered
-    token = None
-    token_error = None
-    
-    if is_registered:
-        try:
-            token = await hub_client.get_m2m_token()
-        except Exception as e:
-            token_error = str(e)
-    
-    return {
-        "registered": is_registered,
-        "client_id": hub_client.credentials.client_id if hub_client.credentials else None,
-        "can_get_token": token is not None,
-        "token_preview": f"{token[:20]}...{token[-10:]}" if token else None,
-        "error": token_error
-    }
-
-
-@app.get("/api/apps/discover", response_model=ServiceDiscoveryResponse, tags=["Services"])
-async def discover_services(
-    force_refresh: bool = Query(False, description="Forcer le rafraîchissement du cache"),
-    user: TokenPayload = Depends(get_current_user)
-):
-    """
-    Découvre les services partagés (IS_SHARED=true) disponibles via le Hub.
-    
-    Cet endpoint permet aux utilisateurs authentifiés de voir les services
-    disponibles dans l'écosystème. Utile pour construire des intégrations
-    ou afficher les services disponibles dans le frontend.
-    
-    Utilise le endpoint GET /api/apps/discover du Hub qui retourne tous les 
-    services en mode IS_SHARED avec leur api_url dynamique.
-    
-    Les résultats sont mis en cache pendant 60 secondes.
-    
-    Returns:
-        Liste des services découverts avec leurs informations publiques.
-    """
-    try:
-        services = await hub_client.list_discovered_services(force_refresh=force_refresh)
-        
-        return ServiceDiscoveryResponse(
-            count=len(services),
-            services=[
-                DiscoveredServiceResponse(
-                    slug=svc.slug,
-                    name=svc.name,
-                    description=svc.description,
-                    api_url=svc.api_url,
-                    frontend_url=svc.frontend_url,
-                    version=svc.version,
-                    status=svc.status,
-                    is_healthy=svc.is_healthy,
-                )
-                for svc in services
-            ],
-            cached_at=hub_client._discovered_services_fetched_at.isoformat() if hub_client._discovered_services_fetched_at else None
-        )
-    except Exception as e:
-        logger.error(f"Erreur découverte services: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Impossible de découvrir les services: {str(e)}"
-        )
-
-
-@app.get("/api/m2m/discover", tags=["M2M"])
-async def discover_m2m_services(
-    force_refresh: bool = Query(False, description="Forcer le rafraîchissement du cache"),
-    user: TokenPayload = Depends(require_role("admin"))
-):
-    """
-    Découvre les services partagés (IS_SHARED=true) avec toutes les informations M2M.
-    
-    Version admin qui inclut des informations techniques supplémentaires
-    comme les ports, IPs et détails d'enregistrement.
-    
-    Utilise le endpoint GET /api/apps/discover du Hub qui retourne tous les 
-    services en mode IS_SHARED avec leur api_url dynamique.
-    
-    Les résultats sont mis en cache pendant 60 secondes.
-    
-    Returns:
-        Liste des services découverts avec toutes leurs informations techniques.
-    """
-    try:
-        services = await hub_client.list_discovered_services(force_refresh=force_refresh)
-        
-        return {
-            "count": len(services),
-            "services": [
-                {
-                    "slug": svc.slug,
-                    "name": svc.name,
-                    "description": svc.description,
-                    # Informations réseau
-                    "ip": svc.ip,
-                    "api_url": svc.api_url,
-                    "api_port": svc.api_port,
-                    "frontend_url": svc.frontend_url,
-                    "frontend_port": svc.frontend_port,
-                    # Métadonnées
-                    "version": svc.version,
-                    "registered_at": svc.registered_at,
-                    "last_seen": svc.last_seen,
-                    # Statut
-                    "status": svc.status,
-                    "is_healthy": svc.is_healthy,
-                    "is_shared": svc.is_shared,
-                }
-                for svc in services
-            ],
-            "cached_at": hub_client._discovered_services_fetched_at.isoformat() if hub_client._discovered_services_fetched_at else None
-        }
-    except Exception as e:
-        logger.error(f"Erreur découverte services: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Impossible de découvrir les services: {str(e)}"
-        )
-
-
-@app.post("/api/m2m/call/{service_slug}", tags=["M2M"])
-async def call_discovered_service(
-    service_slug: str,
-    endpoint: str = Query(..., description="Endpoint à appeler sur le service (ex: /api/items)"),
-    method: str = Query("GET", description="Méthode HTTP (GET, POST, PUT, DELETE)"),
-    user: TokenPayload = Depends(require_role("admin"))
-):
-    """
-    Appelle un service découvert via son slug et le système M2M.
-    
-    Utilise l'api_url récupérée dynamiquement via GET /api/apps/discover
-    et ajoute le header X-Slug pour l'identification.
-    
-    Args:
-        service_slug: Identifiant unique du service cible
-        endpoint: Endpoint à appeler sur le service
-        method: Méthode HTTP à utiliser
-    
-    Returns:
-        Réponse du service appelé
-    """
-    # Vérifier que le service existe
-    service = await hub_client.get_service_by_slug(service_slug)
-    if not service:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Service '{service_slug}' non trouvé parmi les services partagés"
-        )
-    
-    # Appeler le service
-    try:
-        result = await hub_client.call_discovered_service(
-            service_slug=service_slug,
-            endpoint=endpoint,
-            method=method.upper()
-        )
-        
-        if result is None:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Aucune réponse du service '{service_slug}'"
-            )
-        
-        return {
-            "success": True,
-            "service": {
-                "slug": service.slug,
-                "api_url": service.api_url
-            },
-            "endpoint": endpoint,
-            "method": method.upper(),
-            "response": result
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erreur appel service {service_slug}: {e}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Erreur lors de l'appel au service '{service_slug}': {str(e)}"
-        )
-
-
-# ============================================================
-# CRUD ITEMS (exemple avec base de données)
-# ============================================================
-
-@app.get("/api/items", response_model=PaginatedResponse, tags=["Items"])
-async def list_items(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
-    user: Optional[TokenPayload] = Depends(get_optional_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Liste les items.
-    - Sans auth: uniquement les items publics
-    - Avec auth: items publics + ses propres items
-    - Admin: tous les items
-    """
-    query = select(Item)
-    
-    if user is None:
-        # Non authentifié: uniquement publics
-        query = query.where(Item.is_public == True)
-    elif user.get_app_role(settings.APP_SLUG) == "admin":
-        # Admin: tous les items
-        pass
-    else:
-        # Authentifié: publics + les siens
-        query = query.where(
-            (Item.is_public == True) | (Item.owner == user.sub)
-        )
-    
-    # Comptage total
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-    
-    # Pagination
-    query = query.offset((page - 1) * per_page).limit(per_page)
-    result = await db.execute(query)
-    items = result.scalars().all()
-    
-    return PaginatedResponse(
-        items=[ItemResponse.model_validate(item) for item in items],
-        total=total,
-        page=page,
-        per_page=per_page,
-        pages=(total + per_page - 1) // per_page
-    )
-
-
-@app.post("/api/items", response_model=ItemResponse, status_code=status.HTTP_201_CREATED, tags=["Items"])
-async def create_item(
-    item_data: ItemCreate,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Crée un nouvel item.
-    Requiert le rôle user minimum.
-    """
-    item = Item(
-        title=item_data.title,
-        description=item_data.description,
-        is_public=item_data.is_public,
-        owner=user.sub
-    )
-    db.add(item)
-    await db.flush()
-    await db.refresh(item)
-    
-    return ItemResponse.model_validate(item)
-
-
-@app.get("/api/items/{item_id}", response_model=ItemResponse, tags=["Items"])
-async def get_item(
-    item_id: int,
-    user: Optional[TokenPayload] = Depends(get_optional_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Récupère un item par son ID."""
-    result = await db.execute(select(Item).where(Item.id == item_id))
-    item = result.scalar_one_or_none()
-    
-    if not item:
-        raise HTTPException(status_code=404, detail="Item non trouvé")
-    
-    # Vérifier les droits d'accès
-    if not item.is_public:
-        if user is None:
-            raise HTTPException(status_code=401, detail="Authentification requise")
-        if item.owner != user.sub and user.get_app_role(settings.APP_SLUG) != "admin":
-            raise HTTPException(status_code=403, detail="Accès non autorisé")
-    
-    return ItemResponse.model_validate(item)
-
-
-@app.put("/api/items/{item_id}", response_model=ItemResponse, tags=["Items"])
-async def update_item(
-    item_id: int,
-    item_data: ItemUpdate,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Met à jour un item.
-    Seul le propriétaire ou un admin peut modifier.
-    """
-    result = await db.execute(select(Item).where(Item.id == item_id))
-    item = result.scalar_one_or_none()
-    
-    if not item:
-        raise HTTPException(status_code=404, detail="Item non trouvé")
-    
-    # Vérifier les droits (seul le rôle applicatif compte)
-    is_admin = user.get_app_role(settings.APP_SLUG) == "admin"
-    if item.owner != user.sub and not is_admin:
-        raise HTTPException(status_code=403, detail="Seul le propriétaire peut modifier")
-    
-    # Mise à jour des champs fournis
-    update_data = item_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(item, field, value)
-    
-    await db.flush()
-    await db.refresh(item)
-    
-    return ItemResponse.model_validate(item)
-
-
-@app.delete("/api/items/{item_id}", response_model=MessageResponse, tags=["Items"])
-async def delete_item(
-    item_id: int,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Supprime un item.
-    Seul le propriétaire ou un admin peut supprimer.
-    """
-    result = await db.execute(select(Item).where(Item.id == item_id))
-    item = result.scalar_one_or_none()
-    
-    if not item:
-        raise HTTPException(status_code=404, detail="Item non trouvé")
-    
-    # Vérifier les droits (seul le rôle applicatif compte)
-    is_admin = user.get_app_role(settings.APP_SLUG) == "admin"
-    if item.owner != user.sub and not is_admin:
-        raise HTTPException(status_code=403, detail="Seul le propriétaire peut supprimer")
-    
-    await db.delete(item)
-    
-    return MessageResponse(message="Item supprimé", detail=f"Item #{item_id} supprimé avec succès")
-
-
-# ============================================================
-# DONNÉES DE TEST (pour test backup)
-# ============================================================
-
-@app.get("/api/test-data", response_model=TestDataListResponse, tags=["Test Data"])
-async def list_test_data(
-    category: Optional[str] = Query(None, description="Filtrer par catégorie"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Liste toutes les données de test.
-    Accessible sans authentification pour visualisation.
-    Ces données sont partagées entre tous les utilisateurs.
-    """
-    query = select(TestData)
-    
-    if category:
-        query = query.where(TestData.category == category)
-    
-    query = query.order_by(TestData.id)
-    result = await db.execute(query)
-    items = result.scalars().all()
-    
-    return TestDataListResponse(
-        items=[TestDataResponse.model_validate(item) for item in items],
-        total=len(items)
-    )
-
-
-@app.post("/api/test-data", response_model=TestDataResponse, status_code=status.HTTP_201_CREATED, tags=["Test Data"])
-async def create_test_data(
-    data: TestDataCreate,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Crée une nouvelle donnée de test.
-    Requiert le rôle user minimum.
-    """
-    test_data = TestData(
-        name=data.name,
-        value=data.value,
-        category=data.category,
-        last_modified_by=user.sub
-    )
-    db.add(test_data)
-    await db.flush()
-    await db.refresh(test_data)
-    
-    return TestDataResponse.model_validate(test_data)
-
-
-@app.put("/api/test-data/{data_id}", response_model=TestDataResponse, tags=["Test Data"])
-async def update_test_data(
-    data_id: int,
-    data: TestDataUpdate,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Met à jour une donnée de test.
-    Tous les utilisateurs authentifiés (rôle user+) peuvent modifier.
-    """
-    result = await db.execute(select(TestData).where(TestData.id == data_id))
-    test_data = result.scalar_one_or_none()
-    
-    if not test_data:
-        raise HTTPException(status_code=404, detail="Donnée non trouvée")
-    
-    # Mise à jour des champs fournis
-    update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(test_data, field, value)
-    
-    # Mettre à jour le modificateur
-    test_data.last_modified_by = user.sub
-    
-    await db.flush()
-    await db.refresh(test_data)
-    
-    return TestDataResponse.model_validate(test_data)
-
-
-@app.delete("/api/test-data/{data_id}", response_model=MessageResponse, tags=["Test Data"])
-async def delete_test_data(
-    data_id: int,
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Supprime une donnée de test.
-    Tous les utilisateurs authentifiés (rôle user+) peuvent supprimer.
-    """
-    result = await db.execute(select(TestData).where(TestData.id == data_id))
-    test_data = result.scalar_one_or_none()
-    
-    if not test_data:
-        raise HTTPException(status_code=404, detail="Donnée non trouvée")
-    
-    await db.delete(test_data)
-    
-    return MessageResponse(message="Donnée supprimée", detail=f"Donnée #{data_id} supprimée avec succès")
-
-
-@app.post("/api/test-data/seed", response_model=TestDataListResponse, tags=["Test Data"])
-async def seed_test_data(
-    user: TokenPayload = Depends(require_role("user")),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Initialise des données de test par défaut.
-    Utile pour avoir des données à sauvegarder/restaurer.
-    """
-    # Données de test initiales
-    seed_data = [
-        {"name": "Serveur Web", "value": "nginx", "category": "infrastructure"},
-        {"name": "Base de données", "value": "PostgreSQL 15", "category": "infrastructure"},
-        {"name": "Framework Backend", "value": "FastAPI", "category": "stack"},
-        {"name": "Framework Frontend", "value": "React", "category": "stack"},
-        {"name": "Version Python", "value": "3.11", "category": "stack"},
-        {"name": "Environnement", "value": "development", "category": "config"},
-        {"name": "Port API", "value": "8000", "category": "config"},
-        {"name": "Debug Mode", "value": "true", "category": "config"},
-    ]
-    
-    created = []
-    for item in seed_data:
-        # Vérifier si existe déjà
-        existing = await db.execute(
-            select(TestData).where(
-                TestData.name == item["name"],
-                TestData.category == item["category"]
-            )
-        )
-        if existing.scalar_one_or_none():
-            continue
-        
-        test_data = TestData(
-            name=item["name"],
-            value=item["value"],
-            category=item["category"],
-            last_modified_by=user.sub
-        )
-        db.add(test_data)
-        await db.flush()
-        await db.refresh(test_data)
-        created.append(test_data)
-    
-    return TestDataListResponse(
-        items=[TestDataResponse.model_validate(item) for item in created],
-        total=len(created)
-    )
-
-
-# ============================================================
-# PRÉFÉRENCES UTILISATEUR
-# ============================================================
-
-@app.get("/api/preferences", response_model=UserPreferenceResponse, tags=["Preferences"])
-async def get_preferences(
-    user: TokenPayload = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Récupère les préférences de l'utilisateur connecté."""
-    result = await db.execute(
-        select(UserPreference).where(UserPreference.username == user.sub)
-    )
-    prefs = result.scalar_one_or_none()
-    
-    if not prefs:
-        # Créer des préférences par défaut
-        prefs = UserPreference(username=user.sub)
-        db.add(prefs)
-        await db.flush()
-        await db.refresh(prefs)
-    
-    return UserPreferenceResponse.model_validate(prefs)
-
-
-@app.put("/api/preferences", response_model=UserPreferenceResponse, tags=["Preferences"])
-async def update_preferences(
-    prefs_data: UserPreferenceUpdate,
-    user: TokenPayload = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Met à jour les préférences de l'utilisateur connecté."""
-    result = await db.execute(
-        select(UserPreference).where(UserPreference.username == user.sub)
-    )
-    prefs = result.scalar_one_or_none()
-    
-    if not prefs:
-        prefs = UserPreference(username=user.sub)
-        db.add(prefs)
-    
-    # Mise à jour des champs fournis
-    update_data = prefs_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(prefs, field, value)
-    
-    await db.flush()
-    await db.refresh(prefs)
-    
-    return UserPreferenceResponse.model_validate(prefs)
 
 
 # ============================================================
