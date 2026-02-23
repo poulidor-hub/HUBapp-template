@@ -366,7 +366,11 @@ class HubClient:
                     if "expires_at" in data:
                         try:
                             expires_str = data["expires_at"].replace("Z", "+00:00")
-                            self._credentials.token_expires_at = datetime.fromisoformat(expires_str).replace(tzinfo=None)
+                            parsed = datetime.fromisoformat(expires_str)
+                            # S'assurer que le datetime est timezone-aware (UTC)
+                            if parsed.tzinfo is None:
+                                parsed = parsed.replace(tzinfo=timezone.utc)
+                            self._credentials.token_expires_at = parsed
                         except (ValueError, TypeError):
                             self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
                     else:
