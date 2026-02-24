@@ -71,7 +71,6 @@ class UserPreferenceResponse(UserPreferenceBase):
 class UserInfo(BaseModel):
     """Informations utilisateur depuis le token."""
     username: str
-    roles: list[str]
     app_role: Optional[str]
     is_service_account: bool
 

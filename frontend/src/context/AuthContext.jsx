@@ -270,7 +270,6 @@ export function AuthProvider({ children }) {
     const userRole = getAppRole()
     
     if (!userRole) return false
-    if (user?.roles?.includes('admin')) return true // Admin global
     
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[minRole] || 0)
   }, [user, getAppRole])

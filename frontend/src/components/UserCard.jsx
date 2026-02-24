@@ -9,7 +9,6 @@ function UserCard() {
   if (!user) return null
 
   const appRole = getAppRole() || 'aucun'
-  const globalRoles = user.roles?.length ? user.roles.join(', ') : 'aucun'
   const tokenType = user.type || 'user'
 
   return (
@@ -25,10 +24,6 @@ function UserCard() {
           <div className="value">
             <span className={`role-badge role-${appRole}`}>{appRole}</span>
           </div>
-        </div>
-        <div className="user-info-item">
-          <label>Rôles globaux</label>
-          <div className="value">{globalRoles}</div>
         </div>
         <div className="user-info-item">
           <label>Type de token</label>

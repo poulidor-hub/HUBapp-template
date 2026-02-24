@@ -136,7 +136,6 @@ async def _test_slug_recovery(user: TokenPayload) -> ServiceTestResult:
                 "app_slug": settings.APP_SLUG,
                 "app_role": app_role,
                 "role_level": role_level,
-                "global_roles": user.roles,
                 "token_type": user.token_type,
                 "is_service_account": is_service,
                 "apps_in_token": list(user.apps.keys()) if user.apps else []

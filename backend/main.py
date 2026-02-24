@@ -359,7 +359,6 @@ async def get_current_user_info(user: TokenPayload = Depends(get_current_user)):
     """Retourne les informations de l'utilisateur connecté."""
     return UserInfo(
         username=user.sub,
-        roles=user.roles,
         app_role=user.get_app_role(settings.APP_SLUG),
         is_service_account=user.is_service_account()
     )

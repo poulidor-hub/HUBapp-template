@@ -100,7 +100,6 @@ def mock_hub_auth():
 def create_mock_token(
     username: str = "testuser",
     app_role: str = "user",
-    global_roles: list = None,
     token_type: str = "user"
 ):
     """Helper pour créer un TokenPayload mock."""
@@ -108,7 +107,6 @@ def create_mock_token(
     
     return TokenPayload(
         sub=username,
-        roles=global_roles or [],
         apps={"mon-app": app_role} if app_role else {},
         token_type=token_type,
         exp=9999999999,
@@ -167,8 +165,7 @@ async def admin_client(app_with_db, mock_hub_auth) -> AsyncGenerator[AsyncClient
     """Client authentifié avec un admin."""
     mock_hub_auth.decode_token.return_value = create_mock_token(
         username="admin",
-        app_role="admin",
-        global_roles=["admin"]
+        app_role="admin"
     )
     
     transport = ASGITransport(app=app_with_db)
@@ -208,7 +205,6 @@ def mock_m2m_token():
     
     return TokenPayload(
         sub="sa_test_service_account",
-        roles=[],
         apps={"mon-app": "service"},  # Rôle "service" pour les service accounts
         token_type="m2m",
         exp=9999999999,

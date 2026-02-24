@@ -122,8 +122,7 @@ function M2MTests() {
   const [selectedEndpoints, setSelectedEndpoints] = useState({})
 
   // Vérifier si l'utilisateur est admin
-  const isAdmin = user?.roles?.includes('admin') || 
-                  user?.apps?.[config.appSlug] === 'admin'
+  const isAdmin = user?.apps?.[config.appSlug] === 'admin'
 
   // Charger le statut M2M au montage
   useEffect(() => {

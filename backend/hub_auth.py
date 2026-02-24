@@ -58,7 +58,6 @@ ROLE_MAPPING = {
 class TokenPayload:
     """Payload décodé du token JWT."""
     sub: str  # Username
-    roles: list[str]  # Rôles globaux
     apps: dict[str, str]  # Rôles par application {app_slug: role}
     token_type: str  # "user" ou "service"
     exp: int  # Expiration timestamp
@@ -76,17 +75,10 @@ class TokenPayload:
             return ROLE_MAPPING.get(role, 0)
         return 0
     
-    def has_global_role(self, role: str) -> bool:
-        """Vérifie si l'utilisateur a un rôle global."""
-        return role in self.roles
-    
     def is_service_account(self) -> bool:
         """Vérifie si c'est un service account (M2M)."""
-        # La doc indique que token_type peut être "service_account" ou "service"
-        # Et le rôle dans apps peut être "service"
         return (
             self.token_type in ("service", "service_account") or 
-            "service_account" in self.roles or
             "service" in self.apps.values()
         )
 
@@ -523,7 +515,6 @@ class HubAuth:
             
             return TokenPayload(
                 sub=payload.get("sub", ""),
-                roles=payload.get("roles", []),
                 apps=payload.get("apps", {}),
                 token_type=payload.get("type", payload.get("token_type", "user")),
                 exp=payload.get("exp", 0),
