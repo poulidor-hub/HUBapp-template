@@ -126,10 +126,6 @@ class Settings(BaseSettings):
     HUB_API_PORT: int = 8000
     HUB_FRONTEND_PORT: int = 80
     
-    # SSL/TLS (pour HTTPS - non utilisé en HTTP)
-    VERIFY_SSL: bool = True
-    HUB_CA_CERT_PATH: Optional[str] = None
-    
     # Base de données PostgreSQL
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432

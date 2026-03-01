@@ -21,6 +21,9 @@ endif
 
 APP_SLUG ?= mon-app
 
+# Calculer automatiquement le port HTTPS (HTTP + 1)
+FRONTEND_HTTPS_PORT := $(shell echo $$(($(FRONTEND_PORT) + 1)))
+
 help: ## Afficher cette aide
 	@echo "╔══════════════════════════════════════════════════╗"
 	@echo "║          HUBapp Template - Commandes            ║"
@@ -28,16 +31,32 @@ help: ## Afficher cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
+# === SSL / HTTPS ===
+
+sync-env: ## Synchroniser le port HTTPS dans .env
+	@if grep -q "^FRONTEND_HTTPS_PORT=" .env 2>/dev/null; then \
+		sed -i "s/^FRONTEND_HTTPS_PORT=.*/FRONTEND_HTTPS_PORT=$(FRONTEND_HTTPS_PORT)/" .env; \
+	else \
+		echo "" >> .env; \
+		echo "FRONTEND_HTTPS_PORT=$(FRONTEND_HTTPS_PORT)" >> .env; \
+	fi
+
+ssl: ## Générer les certificats SSL (pour HTTPS)
+	@bash scripts/generate-ssl.sh
+
 # === DÉVELOPPEMENT ===
 
-dev: ## Lancer en mode développement (rebuild + logs)
+dev: sync-env ## Lancer en mode développement (rebuild + logs)
+	@if [ "$(HTTPS_ENABLED)" = "true" ]; then bash scripts/generate-ssl.sh; fi
 	docker compose up --build -d
 	docker compose logs -f
 
 build: ## Construire les images Docker
 	docker compose build
 
-up: ## Démarrer les services en arrière-plan
+up: sync-env ## Démarrer les services en arrière-plan
+	@echo "🚀 Démarrage: HTTP=$(FRONTEND_PORT), HTTPS=$(FRONTEND_HTTPS_PORT), HTTPS_ENABLED=$(HTTPS_ENABLED)"
+	@if [ "$(HTTPS_ENABLED)" = "true" ]; then bash scripts/generate-ssl.sh; fi
 	docker compose up -d
 
 down: ## Arrêter tous les services

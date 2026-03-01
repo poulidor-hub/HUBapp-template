@@ -19,8 +19,8 @@ from enum import IntEnum
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import logging
-import ssl
 import json
+import asyncio
 
 from config import get_settings
 from hub_client import hub_client
@@ -98,9 +98,8 @@ class HubAuth:
     - Pas besoin de redéployer lors de la rotation des clés
     - Reconnexion automatique au Hub après indisponibilité
     
-    Configuration SSL/TLS :
-    - VERIFY_SSL: Active/désactive la vérification SSL (défaut: True)
-    - HUB_CA_CERT_PATH: Chemin vers le certificat CA pour les certificats auto-signés
+    Note : Le Hub est toujours contacté en HTTP (réseau Docker interne).
+    Aucune configuration SSL n'est nécessaire côté backend.
     """
     
     # Délai minimum entre deux tentatives de reconnexion (en secondes)
@@ -115,7 +114,6 @@ class HubAuth:
         self._jwk_client: Optional[PyJWKClient] = None
         self._public_key: Optional[str] = None
         self._public_key_fetched_at: Optional[datetime] = None
-        self._ssl_context: Optional[ssl.SSLContext] = None
         self._jwks_available: bool = True  # Flag pour le fallback intelligent
         
         # Nouveau: Cache JWKS avec TTL
@@ -128,30 +126,6 @@ class HubAuth:
         self._last_reconnect_attempt: Optional[datetime] = None
         self._reconnect_attempt_count: int = 0
         self._reconnect_blocked_until: Optional[datetime] = None
-    
-    def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
-        """
-        Crée un contexte SSL pour les connexions JWKS.
-        
-        Returns:
-            SSLContext configuré ou None si SSL désactivé
-        """
-        if not self.settings.VERIFY_SSL:
-            logger.warning("⚠️ Vérification SSL désactivée (VERIFY_SSL=False)")
-            return None
-        
-        ssl_context = ssl.create_default_context()
-        
-        # Certificat CA personnalisé (pour certificats auto-signés)
-        if self.settings.HUB_CA_CERT_PATH:
-            ca_path = Path(self.settings.HUB_CA_CERT_PATH)
-            if ca_path.exists():
-                ssl_context.load_verify_locations(str(ca_path))
-                logger.info(f"✅ Certificat CA chargé: {ca_path}")
-            else:
-                logger.warning(f"⚠️ Certificat CA non trouvé: {ca_path}")
-        
-        return ssl_context
     
     def _is_cache_expired(self) -> bool:
         """Vérifie si le cache mémoire JWKS est expiré (TTL 30 min)."""
@@ -285,14 +259,11 @@ class HubAuth:
         3. Cache persistant sur disque (si pas de cache mémoire)
         4. Clé PEM statique (dernier recours)
         """
-        self._ssl_context = self._create_ssl_context()
-        
         # Tentative 1: JWKS (méthode recommandée - standard OIDC)
         try:
             jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
             self._jwk_client = PyJWKClient(
                 jwks_url,
-                ssl_context=self._ssl_context,
                 cache_keys=True,
                 lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 30 min
             )
@@ -351,7 +322,6 @@ class HubAuth:
             jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
             self._jwk_client = PyJWKClient(
                 jwks_url,
-                ssl_context=self._ssl_context,
                 cache_keys=True,
                 lifespan=JWKS_CACHE_TTL_SECONDS
             )

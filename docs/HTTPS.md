@@ -1,66 +1,65 @@
 # Configuration HTTPS
 
-Ce document explique comment configurer et utiliser HTTPS sur les applications Hub.
+Ce document explique comment activer HTTPS sur les applications Hub.
 
 ## Pourquoi HTTPS ?
 
 Certaines fonctionnalités du navigateur nécessitent un **contexte sécurisé** (HTTPS) :
-- 📷 Accès caméra (`navigator.mediaDevices.getUserMedia`)
-- 🎤 Accès microphone
-- 📍 Géolocalisation
-- 🔔 Notifications Push
+- Accès caméra (`navigator.mediaDevices.getUserMedia`)
+- Accès microphone
+- Géolocalisation
+- Notifications Push
+
+> Par défaut, HTTPS est **désactivé**. L'application fonctionne en HTTP simple.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        NAVIGATEUR                                │
-│                                                                  │
-│  ┌──────────────┐     HTTPS      ┌──────────────────────────┐  │
-│  │  Frontend    │◄──────────────►│  Nginx (SSL Termination) │  │
-│  │  React/Vite  │                │  Port: FRONTEND_PORT + 1 │  │
-│  └──────────────┘                └──────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                           │
-                    ┌──────────────────────┼──────────────────────┐
-                    │                      │                      │
-                    ▼                      ▼                      ▼
-            ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-            │   /api/*     │      │   /hub/*     │      │   /*         │
-            │   Backend    │      │   Hub SSO    │      │   Static     │
-            │   (HTTP)     │      │   (HTTP)     │      │   Files      │
-            └──────────────┘      └──────────────┘      └──────────────┘
+                       HTTPS_ENABLED=true
+┌─────────────────────────────────────────────────────────┐
+│                     NAVIGATEUR                           │
+│                                                          │
+│  https://<IP>:FRONTEND_PORT+1                            │
+│       │                                                  │
+│       ▼                                                  │
+│  ┌──────────────────────────────────────┐               │
+│  │  Nginx (SSL Termination)             │               │
+│  │  Port 443 → mappé FRONTEND_PORT + 1  │               │
+│  └──────────┬──────────┬───────────────┘               │
+│             │          │          │                      │
+│          /api/*     /hub/*      /*                       │
+│             │          │          │                      │
+│         Backend    Hub SSO    Fichiers                   │
+│         (HTTP)     (HTTP)    statiques                   │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Points clés
 
-| Composant | Protocole | Port | Description |
-|-----------|-----------|------|-------------|
-| Frontend externe | HTTPS | `FRONTEND_PORT + 1` | Accès navigateur sécurisé |
-| Frontend interne | HTTP | 80 → 443 | Nginx redirige vers HTTPS |
-| Backend | HTTP | `API_PORT` | Communication interne Docker |
-| Hub SSO | HTTP | 8000 | Jamais en HTTPS (proxy nginx) |
+- **Nginx** = seul composant HTTPS (SSL termination)
+- **Backend** = toujours HTTP (communication interne Docker)
+- **Hub** = toujours HTTP (proxifié via `/hub/` pour éviter Mixed Content)
+- **Port HTTPS** = `FRONTEND_PORT + 1` (calculé automatiquement)
 
-## Installation
+## Activation rapide
 
-### 1. Générer les certificats SSL
+### 1. Activer HTTPS dans `.env`
 
 ```bash
-./scripts/generate-ssl.sh
+HTTPS_ENABLED=true
 ```
 
-Ce script :
-- Détecte automatiquement l'IP locale
-- Génère un certificat auto-signé valide 365 jours
-- Couvre toutes les IPs locales (192.168.x.x, 10.0.0.x, localhost)
-- Place les fichiers dans `ssl/server.crt` et `ssl/server.key`
-
-### 2. Redémarrer les containers
+### 2. Générer les certificats et démarrer
 
 ```bash
-docker compose down
-docker compose build --no-cache frontend
-docker compose up -d
+make ssl        # Génère les certificats auto-signés
+make up         # Démarre (génère aussi les certs si absents)
+```
+
+Ou en une commande :
+
+```bash
+make start      # ./start.sh : génère les certs si HTTPS + démarre
 ```
 
 ### 3. Accéder à l'application
@@ -69,206 +68,118 @@ docker compose up -d
 https://<IP>:<FRONTEND_PORT + 1>
 ```
 
-Exemple : Si `FRONTEND_PORT=9590`, accédez à `https://192.168.1.100:9591`
+Exemple : `FRONTEND_PORT=4250` → accédez à `https://192.168.1.100:4251`
+
+> Le navigateur affichera un avertissement (certificat auto-signé) — cliquez "Avancé" → "Continuer".
+
+## Certificats SSL
+
+### Génération automatique
+
+Le script `scripts/generate-ssl.sh` génère un certificat auto-signé couvrant :
+
+| SAN | Description |
+|-----|-------------|
+| `DNS:localhost` | Accès local |
+| `DNS:host.docker.internal` | Accès depuis Docker |
+| `IP:127.0.0.1` | Loopback |
+| `IP:<IP détectée>` | IP réseau de la machine |
+
+```bash
+# Génère ssl/server.crt + ssl/server.key (validité 365 jours)
+./scripts/generate-ssl.sh
+
+# Forcer la regénération
+./scripts/generate-ssl.sh --force
+```
+
+### Génération de secours
+
+Si `generate-ssl.sh` n'est pas disponible, le `docker-entrypoint.sh` du frontend
+génère automatiquement un certificat minimal au démarrage du container
+(couvre uniquement `localhost`).
 
 ## Convention de ports
 
-| Variable | Port HTTP | Port HTTPS |
-|----------|-----------|------------|
-| `FRONTEND_PORT` | 9590 | 9591 (auto) |
-| Formule | N | N + 1 |
+| Mode | Port | Variable |
+|------|------|----------|
+| HTTP | `FRONTEND_PORT` | Configuré dans `.env` |
+| HTTPS | `FRONTEND_PORT + 1` | Calculé automatiquement |
 
-Le port HTTPS est calculé automatiquement : `HTTPS_PORT = FRONTEND_PORT + 1`
+Exemple : `FRONTEND_PORT=4250` → HTTP sur 4250, HTTPS sur 4251
 
 ## Proxy Hub (Mixed Content)
 
-### Le problème
-
-Quand le frontend est en HTTPS, les appels vers le Hub HTTP sont bloqués :
-
-```
-Mixed Content: The page at 'https://...' was loaded over HTTPS, 
-but requested an insecure resource 'http://hub:8000/...'. 
-This request has been blocked.
-```
-
-### La solution
-
-Nginx agit comme proxy pour les appels Hub :
+En HTTPS, les appels directs vers le Hub HTTP sont bloqués par le navigateur (Mixed Content).
+Nginx résout ce problème en proxifiant `/hub/` :
 
 ```nginx
 location /hub/ {
-    proxy_pass http://${HUB_HOST}:${HUB_API_PORT}/;
-    proxy_buffering off;      # Pour SSE
+    proxy_pass http://<HUB_HOST>:<HUB_API_PORT>/;
+    proxy_buffering off;       # Pour SSE
     proxy_read_timeout 86400s; # 24h pour SSE
 }
 ```
 
-### Adaptation du frontend
-
-**IMPORTANT** : Tous les fichiers frontend qui appellent le Hub doivent utiliser `/hub/` en mode HTTPS.
-
-#### 1. ConfigContext.jsx (ou équivalent)
-
-Si votre app charge la config Hub depuis le backend, le backend retourne `http://...` mais le navigateur bloque ces appels. Il faut forcer `/hub/` :
+Le frontend détecte automatiquement le protocole et utilise `/hub/` en mode HTTPS :
 
 ```javascript
-// Dans ConfigContext.jsx ou équivalent
-const data = await response.json()
-
-// IMPORTANT: En HTTPS, utiliser le proxy /hub/ pour éviter Mixed Content
-const isHttps = window.location.protocol === 'https:'
-const hubApiUrl = isHttps 
-  ? `${window.location.origin}/hub`  // Proxy nginx
-  : (data.hub_api_url || config.hubApiUrl)
+const isHttps = window.location.protocol === 'https:';
+const hubApiUrl = isHttps
+  ? `${window.location.origin}/hub`   // Proxy nginx
+  : `http://${hubHost}:${hubPort}`;   // Accès direct
 ```
-
-#### 2. AuthContext.jsx - getHubUrl()
-
-```javascript
-const getHubUrl = () => {
-  // En HTTPS, utiliser le proxy nginx /hub/ pour éviter Mixed Content
-  if (window.location.protocol === 'https:') {
-    return `${window.location.origin}/hub`;
-  }
-  
-  // En HTTP, accès direct au Hub
-  const envUrl = import.meta.env.VITE_HUB_URL;
-  if (envUrl && !envUrl.includes('localhost')) {
-    return envUrl;
-  }
-  const hubPort = import.meta.env.VITE_HUB_PORT || '80';
-  return `http://${window.location.hostname}:${hubPort}`;
-};
-```
-
-#### 3. api.js - getHubApiUrl()
-
-```javascript
-const getHubApiUrl = () => {
-  // En HTTPS, utiliser le proxy nginx /hub/ pour éviter Mixed Content
-  if (window.location.protocol === 'https:') {
-    return `${window.location.origin}/hub`;
-  }
-  
-  // En HTTP, accès direct au Hub
-  const envUrl = import.meta.env.VITE_HUB_URL;
-  if (envUrl && !envUrl.includes('localhost')) {
-    return envUrl;
-  }
-  const hubPort = import.meta.env.VITE_HUB_PORT || '80';
-  return `http://${window.location.hostname}:${hubPort}`;
-};
-```
-
-### Cas d'usage concernés
-
-| Fonctionnalité | Fichier | Variable/Fonction |
-|----------------|---------|-------------------|
-| SSE (événements temps réel) | AuthContext.jsx | `getHubUrl()` |
-| Refresh token | api.js | `getHubApiUrl()` |
-| Config chargée du backend | ConfigContext.jsx | `hubApiUrl` |
-| Redirection SSO | AuthContext.jsx | `HUB_URL` |
 
 ## Communication M2M (Backend)
 
-Le système M2M n'est **pas affecté** par HTTPS car il s'exécute côté backend :
+Le système M2M n'est **pas affecté** car les échanges backend ↔ Hub
+restent en HTTP direct (réseau Docker interne).
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      SERVEUR (Docker)                        │
-│                                                              │
-│  ┌─────────────────┐       HTTP        ┌─────────────────┐  │
-│  │ Backend Python  │◄─────────────────►│    Hub SSO      │  │
-│  │ (M2M Client)    │    (Direct)       │  (port 8000)    │  │
-│  └─────────────────┘                   └─────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+## Fichiers concernés
 
-- ✅ Auto-enregistrement : HTTP direct
-- ✅ Token M2M : HTTP direct
-- ✅ Découverte services : HTTP direct
-- ✅ Appels inter-services : HTTP direct
-
-## Fichiers de configuration
-
-### `nginx-ssl.conf`
-
-Configuration nginx pour HTTPS avec :
-- Redirection HTTP → HTTPS
-- Certificats SSL
-- Proxy `/api/` vers le backend
-- Proxy `/hub/` vers le Hub SSO
-- `client_max_body_size 50M` pour les uploads
-
-### `docker-entrypoint.sh`
-
-Script d'entrée du frontend qui :
-- Détecte la présence des certificats SSL
-- Calcule le port HTTPS (`FRONTEND_PORT + 1`)
-- Substitue les variables dans nginx-ssl.conf
-- Active la configuration HTTPS ou HTTP selon le cas
-
-### `scripts/generate-ssl.sh`
-
-Génère les certificats auto-signés avec :
-- Détection automatique de l'IP
-- SAN (Subject Alternative Names) pour toutes les IPs locales
-- Validité de 365 jours
+| Fichier | Rôle |
+|---------|------|
+| `nginx-ssl.conf` | Config nginx HTTPS (SSL, proxies /api/ et /hub/) |
+| `nginx.conf` | Config nginx HTTP (proxies /api/ et /hub/) |
+| `frontend/docker-entrypoint.sh` | Choix HTTP/HTTPS selon `HTTPS_ENABLED`, auto-génération certs |
+| `scripts/generate-ssl.sh` | Génération certificats (localhost + IP détectée) |
+| `ssl/openssl.cnf` | Template OpenSSL (placeholder `__IP__`) |
 
 ## Troubleshooting
 
-### Erreur "NET::ERR_CERT_AUTHORITY_UNTRUSTED"
+### Certificat non reconnu par le navigateur
 
-C'est normal avec un certificat auto-signé. Cliquez sur "Avancé" puis "Continuer".
+Normal avec un auto-signé. Cliquez "Avancé" → "Continuer".
 
-### Erreur 413 Request Entity Too Large
+### Erreur 413 (upload trop gros)
 
-Augmentez `client_max_body_size` dans `nginx-ssl.conf` :
+Augmenter `client_max_body_size` dans `nginx-ssl.conf`.
 
+### Mixed Content
+
+Vérifier que `/hub/` est bien configuré dans `nginx-ssl.conf` et que le frontend
+utilise le proxy en HTTPS.
+
+### SSE ne fonctionne pas
+
+Vérifier dans nginx :
 ```nginx
-client_max_body_size 50M;  # Ou plus selon vos besoins
-```
-
-### Mixed Content Block
-
-Vérifiez que :
-1. Le proxy `/hub/` est configuré dans nginx-ssl.conf
-2. Le frontend utilise `/hub/` pour les appels Hub en mode HTTPS
-3. Les variables `HUB_HOST` et `HUB_API_PORT` sont définies dans docker-compose.yml
-
-### SSE ne fonctionne pas via le proxy
-
-Vérifiez la configuration SSE dans nginx :
-
-```nginx
-location /hub/ {
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 86400s;
-}
+proxy_buffering off;
+proxy_cache off;
+proxy_read_timeout 86400s;
 ```
 
 ### Certificats non détectés
 
-Vérifiez que :
-1. Les fichiers `ssl/server.crt` et `ssl/server.key` existent
-2. Le volume est monté : `./ssl:/etc/nginx/ssl:ro`
-3. Les permissions sont correctes
+1. Fichiers `ssl/server.crt` et `ssl/server.key` existent ?
+2. Volume monté : `./ssl:/etc/nginx/ssl:ro` ?
+3. `HTTPS_ENABLED=true` dans `.env` ?
 
 ## Variables d'environnement
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `FRONTEND_PORT` | Port HTTP du frontend | 9590 |
-| `HUB_HOST` | IP du serveur Hub | Auto-détecté |
-| `HUB_API_PORT` | Port API du Hub | 8000 |
-
-## Résumé
-
-| Scénario | Configuration |
-|----------|---------------|
-| Développement local sans scanner | HTTP suffit |
-| Scanner/caméra requis | HTTPS obligatoire |
-| Communication Hub | Proxy `/hub/` en HTTPS |
-| Communication M2M backend | HTTP direct (non affecté) |
+| `HTTPS_ENABLED` | Activer HTTPS | `false` |
+| `FRONTEND_PORT` | Port HTTP du frontend | — |
+| `HUB_HOST` | IP du serveur Hub | — |
+| `HUB_API_PORT` | Port API du Hub | `8000` |

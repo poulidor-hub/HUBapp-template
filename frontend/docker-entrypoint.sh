@@ -2,45 +2,56 @@
 # =============================================================================
 # Entrypoint Nginx - Démarrage HTTP ou HTTPS
 # =============================================================================
+# HTTPS_ENABLED=true  → active HTTPS (auto-génère les certificats si absents)
+# HTTPS_ENABLED=false → HTTP uniquement (défaut)
+# Port HTTPS = FRONTEND_PORT + 1
+# =============================================================================
 
 set -e
 
-# Calcul du port HTTPS = FRONTEND_PORT + 1
 FRONTEND_PORT="${FRONTEND_PORT:-4250}"
 HTTPS_EXTERNAL_PORT=$((FRONTEND_PORT + 1))
-
-# Config Hub (pour le proxy /hub/)
-HUB_HOST="${HUB_HOST:-192.0.2.11}"
-HUB_API_PORT="${HUB_API_PORT:-8000}"
-
-# Variable HTTPS_ENABLED depuis le .env
 HTTPS_ENABLED="${HTTPS_ENABLED:-false}"
 
-echo "📦 Configuration: HTTP=$FRONTEND_PORT, HTTPS=$HTTPS_EXTERNAL_PORT, HUB=$HUB_HOST:$HUB_API_PORT, HTTPS_ENABLED=$HTTPS_ENABLED"
+# Hub configuration (pour le proxy /hub/)
+HUB_HOST="${HUB_HOST:-localhost}"
+HUB_API_PORT="${HUB_API_PORT:-8000}"
 
-# Vérifier si HTTPS est activé ET si les certificats SSL sont présents
+echo "📦 Config: HTTP=$FRONTEND_PORT, HTTPS=$HTTPS_EXTERNAL_PORT, HTTPS_ENABLED=$HTTPS_ENABLED, HUB=$HUB_HOST:$HUB_API_PORT"
+
 if [ "$HTTPS_ENABLED" = "true" ]; then
-    if [ -f "/etc/nginx/ssl/server.crt" ] && [ -f "/etc/nginx/ssl/server.key" ]; then
-        echo "🔐 HTTPS activé, certificats SSL détectés..."
-        
-        # Remplacer les placeholders dans la config nginx
-        sed -e "s/\${HTTPS_PORT}/$HTTPS_EXTERNAL_PORT/g" \
-            -e "s/\${HUB_HOST}/$HUB_HOST/g" \
-            -e "s/\${HUB_API_PORT}/$HUB_API_PORT/g" \
-            /etc/nginx/nginx-ssl.conf.template > /etc/nginx/conf.d/default.conf
-        
-        echo "✅ Configuration HTTPS activée"
-        echo "   - HTTP  : port $FRONTEND_PORT → redirige vers HTTPS"
-        echo "   - HTTPS : port $HTTPS_EXTERNAL_PORT"
-        echo "   - Hub proxy : /hub/ → http://$HUB_HOST:$HUB_API_PORT"
-    else
-        echo "⚠️  HTTPS_ENABLED=true mais certificats manquants !"
-        echo "   💡 Générez-les avec: ./scripts/generate-ssl.sh"
-        echo "   🚀 Démarrage en HTTP par défaut..."
+    # Auto-générer les certificats si absents
+    if [ ! -f "/etc/nginx/ssl/server.crt" ] || [ ! -f "/etc/nginx/ssl/server.key" ]; then
+        echo "🔐 Certificats absents, génération automatique..."
+        HOST_IP=$(hostname -i 2>/dev/null || echo "127.0.0.1")
+
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/nginx/ssl/server.key \
+            -out /etc/nginx/ssl/server.crt \
+            -subj "/C=FR/ST=France/L=Local/O=Dev/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,DNS:host.docker.internal,IP:127.0.0.1,IP:$HOST_IP" \
+            2>/dev/null
+
+        echo "✅ Certificats auto-générés (localhost + $HOST_IP)"
     fi
+
+    # Activer la config SSL
+    sed -e "s/\${HTTPS_PORT}/$HTTPS_EXTERNAL_PORT/g" \
+        -e "s/\${HUB_HOST}/$HUB_HOST/g" \
+        -e "s/\${HUB_API_PORT}/$HUB_API_PORT/g" \
+        /etc/nginx/nginx-ssl.conf.template > /etc/nginx/conf.d/default.conf
+
+    echo "✅ HTTPS activé"
+    echo "   HTTP :80 → redirige vers HTTPS :$HTTPS_EXTERNAL_PORT"
+    echo "   Hub proxy: /hub/ → http://$HUB_HOST:$HUB_API_PORT"
 else
-    echo "🚀 HTTPS désactivé (HTTPS_ENABLED=false), démarrage en HTTP..."
+    echo "🚀 Mode HTTP uniquement"
+    # Substituer les variables Hub dans la config HTTP
+    sed -e "s/\${HUB_HOST}/$HUB_HOST/g" \
+        -e "s/\${HUB_API_PORT}/$HUB_API_PORT/g" \
+        /etc/nginx/conf.d/default.conf > /tmp/nginx-http.conf \
+        && mv /tmp/nginx-http.conf /etc/nginx/conf.d/default.conf
+    echo "   Hub proxy: /hub/ → http://$HUB_HOST:$HUB_API_PORT"
 fi
 
-# Exécuter Nginx
 exec nginx -g "daemon off;"
