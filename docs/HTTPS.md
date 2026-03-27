@@ -108,6 +108,24 @@ génère automatiquement un certificat minimal au démarrage du container
 
 Exemple : `FRONTEND_PORT=4250` → HTTP sur 4250, HTTPS sur 4251
 
+### Synchronisation obligatoire de `.env`
+
+Le mapping Docker HTTPS utilise `FRONTEND_HTTPS_PORT` tel qu'il est défini dans `.env`.
+Après chaque changement de `FRONTEND_PORT`, resynchronisez :
+
+```bash
+make sync-env
+```
+
+Puis démarrez avec :
+
+```bash
+docker compose up -d
+```
+
+Si `FRONTEND_HTTPS_PORT` est absent ou incohérent, le frontend échoue explicitement au démarrage
+pour éviter d'exposer un ancien port HTTPS par erreur.
+
 ## Proxy Hub (Mixed Content)
 
 En HTTPS, les appels directs vers le Hub HTTP sont bloqués par le navigateur (Mixed Content).

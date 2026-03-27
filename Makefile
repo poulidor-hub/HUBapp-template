@@ -21,9 +21,6 @@ endif
 
 APP_SLUG ?= mon-app
 
-# Calculer automatiquement le port HTTPS (HTTP + 1)
-FRONTEND_HTTPS_PORT := $(shell echo $$(($(FRONTEND_PORT) + 1)))
-
 help: ## Afficher cette aide
 	@echo "╔══════════════════════════════════════════════════╗"
 	@echo "║          HUBapp Template - Commandes            ║"
@@ -34,12 +31,19 @@ help: ## Afficher cette aide
 # === SSL / HTTPS ===
 
 sync-env: ## Synchroniser le port HTTPS dans .env
-	@if grep -q "^FRONTEND_HTTPS_PORT=" .env 2>/dev/null; then \
-		sed -i "s/^FRONTEND_HTTPS_PORT=.*/FRONTEND_HTTPS_PORT=$(FRONTEND_HTTPS_PORT)/" .env; \
+	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
+	if ! echo "$$frontend_port" | grep -Eq '^[0-9]+$$'; then \
+		echo "❌ FRONTEND_PORT invalide dans .env: '$$frontend_port'"; \
+		exit 1; \
+	fi; \
+	frontend_https_port=$$((frontend_port + 1)); \
+	if grep -q "^FRONTEND_HTTPS_PORT=" .env 2>/dev/null; then \
+		sed -i "s/^FRONTEND_HTTPS_PORT=.*/FRONTEND_HTTPS_PORT=$$frontend_https_port/" .env; \
 	else \
 		echo "" >> .env; \
-		echo "FRONTEND_HTTPS_PORT=$(FRONTEND_HTTPS_PORT)" >> .env; \
-	fi
+		echo "FRONTEND_HTTPS_PORT=$$frontend_https_port" >> .env; \
+	fi; \
+	echo "🔢 Ports synchronisés: HTTP=$$frontend_port, HTTPS=$$frontend_https_port"
 
 ssl: ## Générer les certificats SSL (pour HTTPS)
 	@bash scripts/generate-ssl.sh
@@ -47,7 +51,8 @@ ssl: ## Générer les certificats SSL (pour HTTPS)
 # === DÉVELOPPEMENT ===
 
 dev: sync-env ## Lancer en mode développement (rebuild + logs)
-	@if [ "$(HTTPS_ENABLED)" = "true" ]; then bash scripts/generate-ssl.sh; fi
+	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
+	if [ "$$https_enabled" = "true" ]; then bash scripts/generate-ssl.sh; fi
 	docker compose up --build -d
 	docker compose logs -f
 
@@ -55,8 +60,12 @@ build: ## Construire les images Docker
 	docker compose build
 
 up: sync-env ## Démarrer les services en arrière-plan
-	@echo "🚀 Démarrage: HTTP=$(FRONTEND_PORT), HTTPS=$(FRONTEND_HTTPS_PORT), HTTPS_ENABLED=$(HTTPS_ENABLED)"
-	@if [ "$(HTTPS_ENABLED)" = "true" ]; then bash scripts/generate-ssl.sh; fi
+	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
+	frontend_https_port=$$(grep -E '^FRONTEND_HTTPS_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
+	https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
+	echo "🚀 Démarrage: HTTP=$$frontend_port, HTTPS=$$frontend_https_port, HTTPS_ENABLED=$$https_enabled"
+	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
+	if [ "$$https_enabled" = "true" ]; then bash scripts/generate-ssl.sh; fi
 	docker compose up -d
 
 down: ## Arrêter tous les services

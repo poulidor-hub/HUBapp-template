@@ -70,8 +70,11 @@ python scripts/init_new_app.py --clean
 Puis lancer l'application :
 
 ```bash
-docker-compose up -d
+make sync-env
+docker compose up -d
 ```
+
+> Important: après toute modification de `FRONTEND_PORT` dans `.env`, relancez `make sync-env` pour conserver `FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1`.
 
 ### 3. Accès
 

@@ -11,13 +11,20 @@ set -e
 
 FRONTEND_PORT="${FRONTEND_PORT:-4250}"
 HTTPS_EXTERNAL_PORT=$((FRONTEND_PORT + 1))
+FRONTEND_HTTPS_PORT="${FRONTEND_HTTPS_PORT:-$HTTPS_EXTERNAL_PORT}"
 HTTPS_ENABLED="${HTTPS_ENABLED:-false}"
+
+if [ "$FRONTEND_HTTPS_PORT" != "$HTTPS_EXTERNAL_PORT" ]; then
+    echo "❌ Configuration invalide: FRONTEND_HTTPS_PORT=$FRONTEND_HTTPS_PORT, attendu=$HTTPS_EXTERNAL_PORT (FRONTEND_PORT + 1)"
+    echo "   Corrigez .env puis relancez (ex: make sync-env)"
+    exit 1
+fi
 
 # Hub configuration (pour le proxy /hub/)
 HUB_HOST="${HUB_HOST:-localhost}"
 HUB_API_PORT="${HUB_API_PORT:-8000}"
 
-echo "📦 Config: HTTP=$FRONTEND_PORT, HTTPS=$HTTPS_EXTERNAL_PORT, HTTPS_ENABLED=$HTTPS_ENABLED, HUB=$HUB_HOST:$HUB_API_PORT"
+echo "📦 Config: HTTP=$FRONTEND_PORT, HTTPS=$FRONTEND_HTTPS_PORT, HTTPS_ENABLED=$HTTPS_ENABLED, HUB=$HUB_HOST:$HUB_API_PORT"
 
 if [ "$HTTPS_ENABLED" = "true" ]; then
     # Auto-générer les certificats si absents
@@ -36,13 +43,13 @@ if [ "$HTTPS_ENABLED" = "true" ]; then
     fi
 
     # Activer la config SSL
-    sed -e "s/\${HTTPS_PORT}/$HTTPS_EXTERNAL_PORT/g" \
+    sed -e "s/\${HTTPS_PORT}/$FRONTEND_HTTPS_PORT/g" \
         -e "s/\${HUB_HOST}/$HUB_HOST/g" \
         -e "s/\${HUB_API_PORT}/$HUB_API_PORT/g" \
         /etc/nginx/nginx-ssl.conf.template > /etc/nginx/conf.d/default.conf
 
     echo "✅ HTTPS activé"
-    echo "   HTTP :80 → redirige vers HTTPS :$HTTPS_EXTERNAL_PORT"
+    echo "   HTTP :80 → redirige vers HTTPS :$FRONTEND_HTTPS_PORT"
     echo "   Hub proxy: /hub/ → http://$HUB_HOST:$HUB_API_PORT"
 else
     echo "🚀 Mode HTTP uniquement"
