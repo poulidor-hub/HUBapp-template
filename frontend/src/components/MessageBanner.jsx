@@ -1,8 +1,9 @@
 import React from 'react'
 import { useAuth } from '../context/AuthContext'
+import { AlertCircle, AlertTriangle, Info, X, Clock, ExternalLink } from 'lucide-react'
 
 /**
- * Bandeau flottant (position: fixed) en haut de l'écran.
+ * Panneau de notifications flottant (position: fixed) en haut à droite.
  * Identique quelle que soit l'application et son frontend.
  * Affiche automatiquement les messages SSE actifs (non-fermés).
  * L'utilisateur doit fermer chaque message manuellement.
@@ -12,19 +13,23 @@ export default function MessageBanner() {
 
   if (!isAuthenticated || !activeMessages || activeMessages.length === 0) return null
 
-  const getPriorityClass = (priority) => {
+  const getPriorityConfig = (priority) => {
     switch (priority) {
-      case 'urgent': return 'message-banner-item urgent'
-      case 'warning': return 'message-banner-item warning'
-      default: return 'message-banner-item normal'
-    }
-  }
-
-  const getPriorityIcon = (priority) => {
-    switch (priority) {
-      case 'urgent': return '🔴'
-      case 'warning': return '🟡'
-      default: return '🔵'
+      case 'urgent':
+        return {
+          className: 'message-banner-item urgent',
+          icon: <AlertCircle className="message-banner-icon-svg" />,
+        }
+      case 'warning':
+        return {
+          className: 'message-banner-item warning',
+          icon: <AlertTriangle className="message-banner-icon-svg" />,
+        }
+      default:
+        return {
+          className: 'message-banner-item normal',
+          icon: <Info className="message-banner-icon-svg" />,
+        }
     }
   }
 
@@ -40,49 +45,70 @@ export default function MessageBanner() {
       {activeMessages.length > 1 && (
         <div className="message-banner-controls">
           <span className="message-banner-count">
-            {activeMessages.length} message{activeMessages.length > 1 ? 's' : ''}
+            {activeMessages.length} notification{activeMessages.length > 1 ? 's' : ''}
           </span>
           <button
             className="message-banner-dismiss-all"
             onClick={dismissAllMessages}
-            title="Tout fermer"
+            title="Fermer toutes les notifications"
           >
-            Tout fermer ✕
+            Tout fermer
+            <X className="message-banner-dismiss-all-icon" />
           </button>
         </div>
       )}
-      {activeMessages.map((m, idx) => (
-        <div key={m.id || idx} className={getPriorityClass(m.priority)}>
-          <span className="message-banner-icon">{getPriorityIcon(m.priority)}</span>
-          <div className="message-banner-content">
-            <strong className="message-banner-title">{m.title}</strong>
-            {m.body && <span className="message-banner-body">{m.body}</span>}
+      {activeMessages.map((m) => {
+        const config = getPriorityConfig(m.priority)
+        return (
+          <div key={m.id} className={config.className}>
+            <div className="message-banner-icon">
+              {config.icon}
+            </div>
+            <div className="message-banner-content">
+              <div className="message-banner-header">
+                <strong className="message-banner-title">{m.title}</strong>
+                <button
+                  className="message-banner-close"
+                  onClick={() => dismissMessage(m.id)}
+                  title="Fermer ce message"
+                >
+                  <X className="message-banner-close-icon" />
+                </button>
+              </div>
+              {m.body && (
+                <p className="message-banner-body">{m.body}</p>
+              )}
+              {m.action_url && (
+                <div className="message-banner-action-wrapper">
+                  <a
+                    href={m.action_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="message-banner-action"
+                  >
+                    {m.action_label || 'Consulter'}
+                    <ExternalLink className="message-banner-action-icon" />
+                  </a>
+                </div>
+              )}
+              <div className="message-banner-meta">
+                {(m.sender_app_slug || m.sender_type) && (
+                  <span className="message-banner-sender">
+                    <span className="message-banner-sender-dot"></span>
+                    {m.sender_app_slug || m.sender_type}
+                  </span>
+                )}
+                {m.created_at && (
+                  <span className="message-banner-time">
+                    <Clock className="message-banner-time-icon" />
+                    {formatTime(m.created_at)}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="message-banner-meta">
-            <span className="message-banner-sender">
-              {m.sender_app_slug || m.sender_type}
-            </span>
-            <span className="message-banner-time">{formatTime(m.created_at)}</span>
-          </div>
-          {m.action_url && (
-            <a
-              href={m.action_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="message-banner-action"
-            >
-              {m.action_label || 'Ouvrir'}
-            </a>
-          )}
-          <button
-            className="message-banner-close"
-            onClick={() => dismissMessage(m.id)}
-            title="Fermer ce message"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
