@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import config from '../config'
+import config, { APP_VERSION } from '../config'
 
 const ConfigContext = createContext(null)
 
@@ -16,6 +16,30 @@ export function ConfigProvider({ children }) {
   useEffect(() => {
     loadConfig()
   }, [])
+
+  const checkVersion = async () => {
+    // Ne pas vérifier en mode dev (pas de version embarquée)
+    if (APP_VERSION === 'dev') return
+    // Guard anti-boucle : un seul reload par session
+    if (sessionStorage.getItem('version_reload_attempted') === APP_VERSION) return
+
+    try {
+      const res = await fetch(`${config.apiUrl}/api/version`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000)
+      })
+      if (!res.ok) return
+      const { version } = await res.json()
+
+      if (version && version !== APP_VERSION) {
+        console.warn(`⚠️ Version mismatch : frontend=${APP_VERSION}, serveur=${version} → reload`)
+        sessionStorage.setItem('version_reload_attempted', APP_VERSION)
+        window.location.reload()
+      }
+    } catch {
+      // Silencieux : pas critique si la vérification échoue
+    }
+  }
 
   const loadConfig = async () => {
     try {
@@ -55,6 +79,9 @@ export function ConfigProvider({ children }) {
         hubApiUrl,
         hubFrontendUrl
       })
+
+      // Vérification de version : comparer la version embarquée avec celle du serveur
+      checkVersion()
     } catch (error) {
       console.error('❌ Erreur chargement config:', error)
       

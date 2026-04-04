@@ -57,7 +57,7 @@ class StorageManager:
         """Nettoie un nom de fichier."""
         # Garder l'extension
         name, ext = os.path.splitext(filename)
-        safe_name = "".join(c for c in name if c.isalnum() or c in "-_. ")[:200]
+        safe_name = "".join(c for c in name if c.isalnum() or c in "-_.")[:200]
         safe_ext = "".join(c for c in ext if c.isalnum() or c == ".")[:10]
         return f"{safe_name}{safe_ext}"
     

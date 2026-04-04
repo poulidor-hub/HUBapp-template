@@ -98,6 +98,8 @@ class HubClient:
         self._credentials: Optional[HubCredentials] = None
         self._public_key: Optional[str] = None
         self._jwks: Optional[dict] = None
+        # Client HTTP partagé (connection pooling)
+        self._http_client: Optional[httpx.AsyncClient] = None
         # Lock pour éviter les régénérations concurrentes
         self._resync_lock = asyncio.Lock()
         self._last_resync_attempt: Optional[datetime] = None
@@ -105,6 +107,18 @@ class HubClient:
         # Cache des services découverts
         self._discovered_services: Dict[str, DiscoveredService] = {}
         self._discovered_services_fetched_at: Optional[datetime] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Retourne le client HTTP partagé, le créant si nécessaire."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=10.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        """Ferme le client HTTP partagé. À appeler au shutdown de l'application."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.close()
+            self._http_client = None
     
     @property
     def is_registered(self) -> bool:
@@ -198,56 +212,56 @@ class HubClient:
     async def _do_register(self) -> bool:
         """Effectue l'enregistrement réel auprès du Hub."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Construire le payload
-                payload = {
-                    "slug": self.settings.APP_SLUG,
-                    "name": self.settings.APP_NAME,
-                    "description": self.settings.APP_DESCRIPTION,
-                    "api_port": self.settings.API_PORT,
-                    "frontend_port": self.settings.FRONTEND_PORT,
-                    "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
-                }
-                # Toujours envoyer custom_host avec l'IP de l'application
-                # Permet au Hub d'utiliser l'IP correcte définie dans le .env de l'app
-                # (APP_HOST si défini, sinon HUB_HOST qui est l'IP du serveur Hub)
-                payload["custom_host"] = self.settings.app_host
-                if self.settings.is_remote_app:
-                    logger.info(f"🌐 Application DISTANTE : enregistrement avec custom_host={self.settings.app_host}")
-                else:
-                    logger.info(f"📍 Application LOCALE : enregistrement avec custom_host={self.settings.app_host}")
+            client = await self._get_client()
+            # Construire le payload
+            payload = {
+                "slug": self.settings.APP_SLUG,
+                "name": self.settings.APP_NAME,
+                "description": self.settings.APP_DESCRIPTION,
+                "api_port": self.settings.API_PORT,
+                "frontend_port": self.settings.FRONTEND_PORT,
+                "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
+            }
+            # Toujours envoyer custom_host avec l'IP de l'application
+            # Permet au Hub d'utiliser l'IP correcte définie dans le .env de l'app
+            # (APP_HOST si défini, sinon HUB_HOST qui est l'IP du serveur Hub)
+            payload["custom_host"] = self.settings.app_host
+            if self.settings.is_remote_app:
+                logger.info(f"🌐 Application DISTANTE : enregistrement avec custom_host={self.settings.app_host}")
+            else:
+                logger.info(f"📍 Application LOCALE : enregistrement avec custom_host={self.settings.app_host}")
+            
+            response = await client.post(
+                f"{self.settings.hub_api_url}/api/apps/register",
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Les credentials sont dans data["credentials"] ou directement dans data
+                creds = data.get("credentials", data)
+                is_new = data.get("is_new", True)
                 
-                response = await client.post(
-                    f"{self.settings.hub_api_url}/api/apps/register",
-                    json=payload
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    # Les credentials sont dans data["credentials"] ou directement dans data
-                    creds = data.get("credentials", data)
-                    is_new = data.get("is_new", True)
-                    
-                    # Si l'app existait déjà, le secret n'est pas retourné - il faut le régénérer
-                    if not is_new and not creds.get("client_secret"):
-                        logger.info(f"Application existante, régénération du secret...")
-                        return await self._recover_credentials()
-                    
-                    self._credentials = HubCredentials(
-                        client_id=creds["client_id"],
-                        client_secret=creds["client_secret"]
-                    )
-                    # Sauvegarder pour les autres workers
-                    self._save_credentials_to_file()
-                    logger.info(f"✅ Application '{self.settings.APP_SLUG}' {'enregistrée' if is_new else 'reconnectée'} au Hub")
-                    return True
-                elif response.status_code == 409:
-                    # App déjà enregistrée, récupérer les credentials existants
-                    logger.info(f"Application déjà enregistrée, récupération des credentials...")
+                # Si l'app existait déjà, le secret n'est pas retourné - il faut le régénérer
+                if not is_new and not creds.get("client_secret"):
+                    logger.info(f"Application existante, régénération du secret...")
                     return await self._recover_credentials()
-                else:
-                    logger.error(f"❌ Échec enregistrement Hub: {response.status_code} - {response.text}")
-                    return False
+                
+                self._credentials = HubCredentials(
+                    client_id=creds["client_id"],
+                    client_secret=creds["client_secret"]
+                )
+                # Sauvegarder pour les autres workers
+                self._save_credentials_to_file()
+                logger.info(f"✅ Application '{self.settings.APP_SLUG}' {'enregistrée' if is_new else 'reconnectée'} au Hub")
+                return True
+            elif response.status_code == 409:
+                # App déjà enregistrée, récupérer les credentials existants
+                logger.info(f"Application déjà enregistrée, récupération des credentials...")
+                return await self._recover_credentials()
+            else:
+                logger.error(f"❌ Échec enregistrement Hub: {response.status_code} - {response.text}")
+                return False
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Impossible de contacter le Hub: {e}")
@@ -261,29 +275,29 @@ class HubClient:
         async with self._resync_lock:
             logger.debug(f"🔐 Lock acquis pour régénération des credentials")
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
-                    response = await client.post(
-                        f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
-                        headers={"X-Slug": self.settings.APP_SLUG}
+                client = await self._get_client()
+                logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
+                response = await client.post(
+                    f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
+                    headers={"X-Slug": self.settings.APP_SLUG}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    self._credentials = HubCredentials(
+                        client_id=data["client_id"],
+                        client_secret=data["client_secret"]
                     )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        self._credentials = HubCredentials(
-                            client_id=data["client_id"],
-                            client_secret=data["client_secret"]
-                        )
-                        self._last_resync_attempt = datetime.now(timezone.utc)
-                        self._resync_count += 1
-                        # Sauvegarder pour les autres workers
-                        self._save_credentials_to_file()
-                        logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}' (resync #{self._resync_count})")
-                        logger.debug(f"   Client ID: {self._credentials.client_id}")
-                        return True
-                    else:
-                        logger.error(f"❌ Impossible de récupérer les credentials: {response.status_code} - {response.text}")
-                        return False
+                    self._last_resync_attempt = datetime.now(timezone.utc)
+                    self._resync_count += 1
+                    # Sauvegarder pour les autres workers
+                    self._save_credentials_to_file()
+                    logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}' (resync #{self._resync_count})")
+                    logger.debug(f"   Client ID: {self._credentials.client_id}")
+                    return True
+                else:
+                    logger.error(f"❌ Impossible de récupérer les credentials: {response.status_code} - {response.text}")
+                    return False
             except httpx.RequestError as e:
                 logger.error(f"❌ Erreur récupération credentials: {e}")
                 return False
@@ -348,52 +362,76 @@ class HubClient:
         
         # Obtenir un nouveau token
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self.settings.hub_api_url}/api/auth/token",
-                    data={
-                        "grant_type": "client_credentials",
-                        "client_id": self._credentials.client_id,
-                        "client_secret": self._credentials.client_secret,
-                    }
-                )
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.settings.hub_api_url}/api/auth/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._credentials.client_id,
+                    "client_secret": self._credentials.client_secret,
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self._credentials.access_token = data["access_token"]
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    self._credentials.access_token = data["access_token"]
-                    
-                    # Parser l'expiration si fournie
-                    if "expires_at" in data:
-                        try:
-                            expires_str = data["expires_at"].replace("Z", "+00:00")
-                            parsed = datetime.fromisoformat(expires_str)
-                            # S'assurer que le datetime est timezone-aware (UTC)
-                            if parsed.tzinfo is None:
-                                parsed = parsed.replace(tzinfo=timezone.utc)
-                            self._credentials.token_expires_at = parsed
-                        except (ValueError, TypeError):
-                            self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
-                    else:
+                # Parser l'expiration si fournie
+                if "expires_at" in data:
+                    try:
+                        expires_str = data["expires_at"].replace("Z", "+00:00")
+                        parsed = datetime.fromisoformat(expires_str)
+                        # S'assurer que le datetime est timezone-aware (UTC)
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                        self._credentials.token_expires_at = parsed
+                    except (ValueError, TypeError):
                         self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
-                    
-                    logger.info(f"✅ Token M2M obtenu (expire: {self._credentials.token_expires_at})")
-                    return self._credentials.access_token
-                
-                elif response.status_code == 401:
-                    # Secret invalide → resync automatique
-                    if _retry_count < MAX_RESYNC_ATTEMPTS:
-                        logger.warning(f"⚠️ Erreur 401 - Secret invalide (tentative {_retry_count + 1}/{MAX_RESYNC_ATTEMPTS})")
-                        if await self._auto_resync():
-                            logger.info(f"🔄 Retry après resync...")
-                            return await self.get_m2m_token(_retry_count=_retry_count + 1)
-                        else:
-                            logger.error(f"❌ Resync échoué")
-                    else:
-                        logger.error(f"❌ Max tentatives atteint ({MAX_RESYNC_ATTEMPTS}), abandon")
-                    return None
                 else:
-                    logger.error(f"❌ Échec obtention token M2M: {response.status_code} - {response.text}")
-                    return None
+                    self._credentials.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=28)
+                
+                logger.info(f"✅ Token M2M obtenu (expire: {self._credentials.token_expires_at})")
+                return self._credentials.access_token
+            
+            elif response.status_code == 401:
+                # Secret invalide → resync automatique
+                if _retry_count < MAX_RESYNC_ATTEMPTS:
+                    logger.warning(f"⚠️ Erreur 401 - Secret invalide (tentative {_retry_count + 1}/{MAX_RESYNC_ATTEMPTS})")
+                    if await self._auto_resync():
+                        # Backoff exponentiel avant retry (1s, 2s, 4s)
+                        backoff = 2 ** _retry_count
+                        logger.info(f"🔄 Retry après resync (backoff {backoff}s)...")
+                        await asyncio.sleep(backoff)
+                        return await self.get_m2m_token(_retry_count=_retry_count + 1)
+                    else:
+                        logger.error(f"❌ Resync échoué")
+                else:
+                    logger.error(f"❌ Max tentatives atteint ({MAX_RESYNC_ATTEMPTS}), abandon")
+                return None
+            
+            elif response.status_code == 403:
+                # Service account désactivé → réenregistrement complet
+                if _retry_count < MAX_RESYNC_ATTEMPTS:
+                    logger.warning(f"⚠️ Erreur 403 - SA désactivé (tentative {_retry_count + 1}/{MAX_RESYNC_ATTEMPTS}), réenregistrement...")
+                    # Invalider les credentials actuelles pour forcer un nouvel enregistrement
+                    self._credentials = None
+                    try:
+                        os.remove(CREDENTIALS_FILE)
+                    except OSError:
+                        pass
+                    if await self.register():
+                        backoff = 2 ** _retry_count
+                        logger.info(f"🔄 Retry après réenregistrement (backoff {backoff}s)...")
+                        await asyncio.sleep(backoff)
+                        return await self.get_m2m_token(_retry_count=_retry_count + 1)
+                    else:
+                        logger.error(f"❌ Réenregistrement échoué")
+                else:
+                    logger.error(f"❌ Max tentatives atteint ({MAX_RESYNC_ATTEMPTS}), abandon")
+                return None
+            else:
+                logger.error(f"❌ Échec obtention token M2M: {response.status_code} - {response.text}")
+                return None
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur obtention token M2M: {e}")
@@ -419,18 +457,18 @@ class HubClient:
             return self._jwks
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
-                )
-                
-                if response.status_code == 200:
-                    self._jwks = response.json()
-                    logger.info("✅ Clé JWKS récupérée du Hub")
-                    return self._jwks
-                else:
-                    logger.error(f"❌ Échec récupération JWKS: {response.text}")
-                    return None
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
+            )
+            
+            if response.status_code == 200:
+                self._jwks = response.json()
+                logger.info("✅ Clé JWKS récupérée du Hub")
+                return self._jwks
+            else:
+                logger.error(f"❌ Échec récupération JWKS: {response.text}")
+                return None
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur récupération JWKS: {e}")
@@ -444,19 +482,19 @@ class HubClient:
             return self._public_key
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.settings.hub_api_url}/api/auth/public-key"
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    self._public_key = data.get("public_key")
-                    logger.info("✅ Clé publique PEM récupérée du Hub")
-                    return self._public_key
-                else:
-                    logger.error(f"❌ Échec récupération clé publique: {response.text}")
-                    return None
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.settings.hub_api_url}/api/auth/public-key"
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self._public_key = data.get("public_key")
+                logger.info("✅ Clé publique PEM récupérée du Hub")
+                return self._public_key
+            else:
+                logger.error(f"❌ Échec récupération clé publique: {response.text}")
+                return None
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur récupération clé publique: {e}")
@@ -491,53 +529,53 @@ class HubClient:
             return self._discovered_services
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.settings.hub_api_url}/api/apps/discover",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "X-Slug": self.settings.APP_SLUG
-                    }
-                )
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.settings.hub_api_url}/api/apps/discover",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Slug": self.settings.APP_SLUG
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Le Hub retourne "shared_services" (priorité), "services" ou "apps"
+                services = data if isinstance(data, list) else data.get("shared_services", data.get("services", data.get("apps", [])))
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    # Le Hub retourne "shared_services" (priorité), "services" ou "apps"
-                    services = data if isinstance(data, list) else data.get("shared_services", data.get("services", data.get("apps", [])))
-                    
-                    self._discovered_services = {}
-                    for svc in services:
-                        slug = svc.get("slug")
-                        if slug:
-                            self._discovered_services[slug] = DiscoveredService(
-                                slug=slug,
-                                name=svc.get("name", slug),
-                                api_url=svc.get("api_url", ""),
-                                description=svc.get("description"),
-                                # Informations réseau
-                                ip=svc.get("ip"),
-                                api_port=svc.get("api_port"),
-                                frontend_port=svc.get("frontend_port"),
-                                frontend_url=svc.get("frontend_url"),
-                                # Métadonnées
-                                version=svc.get("version"),
-                                registered_at=svc.get("registered_at"),
-                                last_seen=svc.get("last_seen"),
-                                # Statut détaillé
-                                is_healthy=svc.get("is_healthy", True),
-                                is_shared=svc.get("is_shared", True),
-                                status=svc.get("status", "online" if svc.get("is_healthy", True) else "offline")
-                            )
-                    
-                    self._discovered_services_fetched_at = datetime.now(timezone.utc)
-                    logger.info(f"✅ {len(self._discovered_services)} service(s) partagé(s) découvert(s)")
-                    for slug, svc in self._discovered_services.items():
-                        logger.debug(f"   - {slug}: {svc.api_url} (v{svc.version or '?'}, {svc.status})")
-                    
-                    return self._discovered_services
-                else:
-                    logger.error(f"❌ Échec découverte services: {response.status_code} - {response.text}")
-                    return self._discovered_services
+                self._discovered_services = {}
+                for svc in services:
+                    slug = svc.get("slug")
+                    if slug:
+                        self._discovered_services[slug] = DiscoveredService(
+                            slug=slug,
+                            name=svc.get("name", slug),
+                            api_url=svc.get("api_url", ""),
+                            description=svc.get("description"),
+                            # Informations réseau
+                            ip=svc.get("ip"),
+                            api_port=svc.get("api_port"),
+                            frontend_port=svc.get("frontend_port"),
+                            frontend_url=svc.get("frontend_url"),
+                            # Métadonnées
+                            version=svc.get("version"),
+                            registered_at=svc.get("registered_at"),
+                            last_seen=svc.get("last_seen"),
+                            # Statut détaillé
+                            is_healthy=svc.get("is_healthy", True),
+                            is_shared=svc.get("is_shared", True),
+                            status=svc.get("status", "online" if svc.get("is_healthy", True) else "offline")
+                        )
+                
+                self._discovered_services_fetched_at = datetime.now(timezone.utc)
+                logger.info(f"✅ {len(self._discovered_services)} service(s) partagé(s) découvert(s)")
+                for slug, svc in self._discovered_services.items():
+                    logger.debug(f"   - {slug}: {svc.api_url} (v{svc.version or '?'}, {svc.status})")
+                
+                return self._discovered_services
+            else:
+                logger.error(f"❌ Échec découverte services: {response.status_code} - {response.text}")
+                return self._discovered_services
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur découverte services: {e}")
@@ -626,48 +664,49 @@ class HubClient:
         logger.debug(f"📡 Appel service découvert: {method} {url} (X-Slug: {service_slug})")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = kwargs.pop("headers", {})
-                headers["Authorization"] = f"Bearer {token}"
-                headers["X-Slug"] = service_slug  # Identification du service cible
-                
-                response = await client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    **kwargs
-                )
-                
-                if response.status_code == 200:
-                    logger.debug(f"✅ Réponse OK de {service_slug}")
-                    return response.json()
-                
-                elif response.status_code == 401 and _retry_on_401:
-                    # Token rejeté → resync et retry
-                    logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
-                    if await self._auto_resync():
-                        logger.info(f"🔄 Retry après resync...")
-                        return await self.call_discovered_service(
-                            service_slug, endpoint, method,
-                            _retry_on_401=False,
-                            _retry_on_discover=False,
-                            **kwargs
-                        )
-                    logger.error(f"❌ Resync échoué, abandon de l'appel")
-                    return None
-                
-                elif response.status_code == 404 and _retry_on_discover:
-                    # Service peut avoir changé d'URL → re-découvrir
-                    logger.warning(f"⚠️ 404 sur {url}, le service a peut-être changé d'URL...")
+            client = await self._get_client()
+            headers = kwargs.pop("headers", {})
+            headers["Authorization"] = f"Bearer {token}"
+            headers["X-Slug"] = service_slug  # Identification du service cible
+            
+            response = await client.request(
+                method,
+                url,
+                headers=headers,
+                timeout=30.0,
+                **kwargs
+            )
+            
+            if response.status_code == 200:
+                logger.debug(f"✅ Réponse OK de {service_slug}")
+                return response.json()
+            
+            elif response.status_code == 401 and _retry_on_401:
+                # Token rejeté → resync et retry
+                logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
+                if await self._auto_resync():
+                    logger.info(f"🔄 Retry après resync...")
                     return await self.call_discovered_service(
                         service_slug, endpoint, method,
-                        _retry_on_401=_retry_on_401,
+                        _retry_on_401=False,
                         _retry_on_discover=False,
                         **kwargs
                     )
-                else:
-                    logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
-                    return None
+                logger.error(f"❌ Resync échoué, abandon de l'appel")
+                return None
+            
+            elif response.status_code == 404 and _retry_on_discover:
+                # Service peut avoir changé d'URL → re-découvrir
+                logger.warning(f"⚠️ 404 sur {url}, le service a peut-être changé d'URL...")
+                return await self.call_discovered_service(
+                    service_slug, endpoint, method,
+                    _retry_on_401=_retry_on_401,
+                    _retry_on_discover=False,
+                    **kwargs
+                )
+            else:
+                logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
+                return None
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur appel service {service_slug}: {e}")
@@ -685,6 +724,56 @@ class HubClient:
         """
         services = await self.discover_services(force_refresh=force_refresh)
         return list(services.values())
+
+    async def send_user_message(
+        self,
+        target_usernames: list[str],
+        title: str,
+        body: str = None,
+        priority: str = "info",
+        action_url: str = None,
+        action_label: str = None,
+        expires_at: str = None
+    ) -> Optional[dict]:
+        """
+        Envoie un message à des utilisateurs via le Hub (M2M).
+        
+        Args:
+            target_usernames: Liste des usernames destinataires
+            title: Titre du message (max 200 caractères)
+            body: Corps du message (optionnel)
+            priority: Niveau de priorité ("info", "warning", "urgent")
+            action_url: URL d'action optionnelle (lien cliquable)
+            action_label: Libellé du bouton d'action (optionnel)
+            expires_at: Date d'expiration ISO (optionnel)
+        
+        Returns:
+            Réponse JSON du Hub ou None si erreur
+        """
+        payload = {
+            "title": title,
+            "target_usernames": target_usernames,
+            "priority": priority,
+        }
+        if body:
+            payload["body"] = body
+        if action_url:
+            payload["action_url"] = action_url
+        if action_label:
+            payload["action_label"] = action_label
+        if expires_at:
+            payload["expires_at"] = expires_at
+
+        result = await self.call_hub_endpoint(
+            "/api/messages/m2m/send",
+            method="POST",
+            json=payload
+        )
+        if result and "error" not in result:
+            logger.info(f"📩 Message envoyé à {len(target_usernames)} utilisateur(s): {title}")
+        else:
+            logger.error(f"❌ Erreur envoi message: {result}")
+        return result
 
     async def call_hub_endpoint(
         self,
@@ -720,41 +809,42 @@ class HubClient:
         logger.debug(f"📡 Appel Hub: {method} {url}")
         
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                headers = kwargs.pop("headers", {})
-                headers["Authorization"] = f"Bearer {token}"
-                headers["X-Slug"] = self.settings.APP_SLUG
-                
-                response = await client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    **kwargs
-                )
-                
-                if response.status_code == 200:
-                    # Essayer de parser en JSON, sinon retourner le contenu brut
-                    try:
-                        return response.json()
-                    except Exception:
-                        return {"success": True, "content": response.text[:500]}
-                
-                elif response.status_code == 401 and _retry_on_401:
-                    logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
-                    if await self._auto_resync():
-                        return await self.call_hub_endpoint(
-                            endpoint, method,
-                            _retry_on_401=False,
-                            timeout=timeout,
-                            **kwargs
-                        )
-                    logger.error(f"❌ Resync échoué, abandon de l'appel Hub")
-                    return None
-                
-                else:
-                    error_text = response.text[:200] if response.text else "(pas de contenu)"
-                    logger.error(f"❌ Erreur appel Hub: {response.status_code} - {error_text}")
-                    return {"error": error_text, "status_code": response.status_code}
+            client = await self._get_client()
+            headers = kwargs.pop("headers", {})
+            headers["Authorization"] = f"Bearer {token}"
+            headers["X-Slug"] = self.settings.APP_SLUG
+            
+            response = await client.request(
+                method,
+                url,
+                headers=headers,
+                timeout=timeout,
+                **kwargs
+            )
+            
+            if response.status_code == 200:
+                # Essayer de parser en JSON, sinon retourner le contenu brut
+                try:
+                    return response.json()
+                except Exception:
+                    return {"success": True, "content": response.text[:500]}
+            
+            elif response.status_code == 401 and _retry_on_401:
+                logger.warning(f"⚠️ 401 sur {method} {url}, tentative de resync...")
+                if await self._auto_resync():
+                    return await self.call_hub_endpoint(
+                        endpoint, method,
+                        _retry_on_401=False,
+                        timeout=timeout,
+                        **kwargs
+                    )
+                logger.error(f"❌ Resync échoué, abandon de l'appel Hub")
+                return None
+            
+            else:
+                error_text = response.text[:200] if response.text else "(pas de contenu)"
+                logger.error(f"❌ Erreur appel Hub: {response.status_code} - {error_text}")
+                return {"error": error_text, "status_code": response.status_code}
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur réseau appel Hub: {e}")

@@ -139,7 +139,11 @@ function M2MTests() {
     setError(null)
     
     try {
-      const response = await fetch(`${config.apiUrl}/api/m2m/status`)
+      const response = await fetch(`${config.apiUrl}/api/m2m/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       const contentType = response.headers.get('content-type')
       
       if (!contentType || !contentType.includes('application/json')) {
@@ -208,10 +212,13 @@ function M2MTests() {
       const selectedEndpoint = selectedEndpoints[serviceKey] || '/api/health'
       const endpointInfo = AVAILABLE_ENDPOINTS.find(e => e.value === selectedEndpoint)
       
-      // Construire l'URL de test
-      const testUrl = `${service.api_url}${selectedEndpoint}`
+      // Utiliser l'endpoint sécurisé /api/m2m/call/{slug} avec le slug du service
+      const params = new URLSearchParams({
+        endpoint: selectedEndpoint,
+        method: endpointInfo?.method || 'GET'
+      })
       
-      const response = await fetch(`${config.apiUrl}/api/m2m/test-call?target_url=${encodeURIComponent(testUrl)}`, {
+      const response = await fetch(`${config.apiUrl}/api/m2m/call/${encodeURIComponent(service.slug)}?${params}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -227,13 +234,17 @@ function M2MTests() {
       
       const data = await response.json()
       
+      if (!response.ok) {
+        throw new Error(data.detail || `Erreur ${response.status}`)
+      }
+      
       setTestResults(prev => ({
         ...prev,
         [serviceKey]: {
-          success: data.success,
-          status: data.status_code,
+          success: data.success !== false,
+          status: response.status,
           response: data.response,
-          error: data.error,
+          error: data.error || data.detail,
           endpoint: selectedEndpoint,
           endpointLabel: endpointInfo?.label || selectedEndpoint,
           timestamp: new Date().toLocaleTimeString()
