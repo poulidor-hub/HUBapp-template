@@ -21,7 +21,7 @@ import asyncio
 import os
 
 from config import get_settings, APP_VERSION
-from database import init_db, close_db
+from database import init_db, close_db, apply_migrations
 from hub_client import hub_client
 from hub_auth import (
     hub_auth,
@@ -115,6 +115,7 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("✅ Base de données initialisée")
+        await apply_migrations()
     except Exception as e:
         logger.error(f"❌ Erreur init DB: {e}")
     

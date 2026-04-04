@@ -222,6 +222,9 @@ class HubClient:
                 "frontend_port": self.settings.FRONTEND_PORT,
                 "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
             }
+            # Envoyer le port HTTPS si HTTPS est activé
+            if self.settings.HTTPS_ENABLED and self.settings.FRONTEND_HTTPS_PORT:
+                payload["frontend_https_port"] = self.settings.FRONTEND_HTTPS_PORT
             # Toujours envoyer custom_host avec l'IP de l'application
             # Permet au Hub d'utiliser l'IP correcte définie dans le .env de l'app
             # (APP_HOST si défini, sinon HUB_HOST qui est l'IP du serveur Hub)

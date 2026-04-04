@@ -29,12 +29,47 @@ function decodeToken(token) {
   }
 }
 
+// Extraire le token de l'URL et du localStorage à l'initialisation (synchrone)
+function getInitialToken() {
+  const urlParams = new URLSearchParams(window.location.search)
+  const urlToken = urlParams.get('token') || urlParams.get('access_token')
+  const urlRefreshToken = urlParams.get('refresh_token')
+  const error = urlParams.get('error')
+
+  if (urlToken) {
+    console.log('✅ Token reçu du Hub')
+    localStorage.setItem(config.storageKeys.accessToken, urlToken)
+    if (urlRefreshToken) {
+      localStorage.setItem(config.storageKeys.refreshToken, urlRefreshToken)
+    }
+    // Nettoyer l'URL (sans reload)
+    window.history.replaceState({}, document.title, window.location.pathname)
+    return urlToken
+  }
+
+  if (error) {
+    console.error('❌ Erreur d\'authentification:', error)
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }
+
+  return localStorage.getItem(config.storageKeys.accessToken)
+}
+
+// Décoder et valider le token (synchrone)
+function getInitialUser(token) {
+  if (!token) return null
+  const decoded = decodeToken(token)
+  if (decoded && decoded.exp) {
+    const now = Math.floor(Date.now() / 1000)
+    if (decoded.exp > now) return decoded
+  }
+  return null
+}
+
 export function AuthProvider({ children }) {
   const appConfig = useConfig()
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => 
-    localStorage.getItem(config.storageKeys.accessToken)
-  )
+  const [token, setToken] = useState(getInitialToken)
+  const [user, setUser] = useState(() => getInitialUser(token))
   const [unreadMessages, setUnreadMessages] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeMessages, setActiveMessages] = useState([])
@@ -45,7 +80,7 @@ export function AuthProvider({ children }) {
     [appConfig.hubApiUrl]
   )
 
-  // Décoder et vérifier le token au chargement
+  // Décoder et vérifier le token quand il change (après refresh par ex.)
   useEffect(() => {
     if (token) {
       const decoded = decodeToken(token)
@@ -60,31 +95,6 @@ export function AuthProvider({ children }) {
       }
     }
   }, [token])
-
-  // Gérer le callback de connexion depuis le Hub
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const accessToken = urlParams.get('token') || urlParams.get('access_token')
-    const refreshToken = urlParams.get('refresh_token')
-    const error = urlParams.get('error')
-
-    if (accessToken) {
-      console.log('✅ Token reçu du Hub')
-      localStorage.setItem(config.storageKeys.accessToken, accessToken)
-      setToken(accessToken)
-      
-      if (refreshToken) {
-        localStorage.setItem(config.storageKeys.refreshToken, refreshToken)
-      }
-      
-      // Nettoyer l'URL
-      window.history.replaceState({}, document.title, window.location.pathname)
-    } else if (error) {
-      console.error('❌ Erreur d\'authentification:', error)
-      alert(`Erreur de connexion: ${error}`)
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
-  }, [])
 
   const login = useCallback(() => {
     const callbackUrl = encodeURIComponent(window.location.origin + window.location.pathname)
