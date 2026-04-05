@@ -86,6 +86,9 @@ async def apply_migrations():
     Applique automatiquement les migrations SQL depuis le dossier migrations/.
     Utilise une table schema_migrations pour suivre les migrations appliquées.
     Les fichiers doivent suivre le format NNN_description.sql (ex: 001_add_column.sql).
+    
+    Chaque statement est isolé via SAVEPOINT pour éviter qu'un échec
+    (ex: colonne déjà existante) n'avorte toute la transaction PostgreSQL.
     """
     migrations_dir = Path("/app/migrations")
     if not migrations_dir.exists():
@@ -127,8 +130,11 @@ async def apply_migrations():
                 statement = _strip_sql_comments(statement)
                 if statement:
                     try:
+                        await conn.execute(text("SAVEPOINT migration_stmt"))
                         await conn.execute(text(statement))
+                        await conn.execute(text("RELEASE SAVEPOINT migration_stmt"))
                     except Exception as e:
+                        await conn.execute(text("ROLLBACK TO SAVEPOINT migration_stmt"))
                         logger.warning(f"Migration {mf.name} statement ignoré: {e}")
 
             await conn.execute(text(
