@@ -1,4 +1,20 @@
-# Backend API
+# === Stage 1: Builder — Installation des dépendances ===
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Dépendances système pour compiler psycopg2
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installer les dépendances Python dans un wheel cache
+COPY backend/requirements.txt .
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
+
+
+# === Stage 2: Runtime — Image finale légère ===
 FROM python:3.11-slim
 
 # Version de l'application (passée au build)
@@ -8,16 +24,19 @@ LABEL maintainer="HUBapp Template"
 
 WORKDIR /app
 
-# Dépendances système pour psycopg2 et healthcheck
+# Dépendances runtime uniquement (pas gcc)
 RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
+    libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les requirements et installer
+# Installer les wheels pré-compilés
+COPY --from=builder /build/wheels /tmp/wheels/
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir /tmp/wheels/* && rm -rf /tmp/wheels/
+
+# Créer un utilisateur non-root (aligné avec le HUB)
+RUN useradd -m -u 1000 appuser
 
 # Copier le fichier VERSION (source unique de vérité)
 COPY VERSION /app/VERSION
@@ -27,6 +46,12 @@ COPY backend/ .
 
 # Rendre l'entrypoint exécutable
 RUN chmod +x /app/entrypoint.sh
+
+# Créer les répertoires nécessaires et donner les permissions
+RUN mkdir -p /app/uploads /app/storage && chown -R appuser:appuser /app
+
+# Passer en utilisateur non-root
+USER appuser
 
 # Port exposé (HTTP)
 EXPOSE 8000

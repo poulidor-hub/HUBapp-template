@@ -27,6 +27,11 @@ services:
       resources:
         limits:
           memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - app-network
     restart: unless-stopped
@@ -47,6 +52,8 @@ services:
       - APP_HOST=${APP_HOST:-}
       - API_PORT=${API_PORT}
       - FRONTEND_PORT=${FRONTEND_PORT}
+      - HTTPS_ENABLED=${HTTPS_ENABLED:-false}
+      - FRONTEND_HTTPS_PORT=${FRONTEND_HTTPS_PORT:-}
       - HUB_HOST=${HUB_HOST}
       - HUB_API_PORT=${HUB_API_PORT}
       - HUB_FRONTEND_PORT=${HUB_FRONTEND_PORT}
@@ -75,6 +82,11 @@ services:
       resources:
         limits:
           memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health"]
       interval: 30s
@@ -118,6 +130,11 @@ services:
       resources:
         limits:
           memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
       interval: 30s

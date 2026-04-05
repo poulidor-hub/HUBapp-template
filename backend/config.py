@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     API_PORT: int = 9045
     FRONTEND_PORT: int = 4250
     
+    # HTTPS
+    HTTPS_ENABLED: bool = False
+    FRONTEND_HTTPS_PORT: Optional[int] = None
+    
     # Hub - Auto-détecté si non spécifié
     HUB_HOST: Optional[str] = None
     HUB_API_PORT: int = 8000
@@ -142,7 +146,7 @@ class Settings(BaseSettings):
     # Environnement
     DEBUG: bool = False
     
-    @field_validator('APP_HOST', 'HUB_HOST', mode='before')
+    @field_validator('APP_HOST', 'HUB_HOST', 'FRONTEND_HTTPS_PORT', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):
         """Convertit les chaînes vides en None pour les chaînes optionnelles."""

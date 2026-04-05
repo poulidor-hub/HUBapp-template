@@ -432,56 +432,8 @@ class HubAuth:
         Raises:
             HTTPException: Si le token est invalide ou expiré
         """
-        payload = None
-        
         try:
-            # Stratégie 1: JWKS (recommandé) avec fallback en cascade
-            if self._jwk_client and self._jwks_available:
-                try:
-                    payload = self._decode_with_jwks(token)
-                    self._hub_reachable = True
-                    self._cached_key_fetched_at = datetime.now()
-                except Exception as jwks_error:
-                    # JWKS a échoué en runtime → marquer Hub comme injoignable
-                    logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
-                    self._hub_reachable = False
-                    
-                    # Planifier une reconnexion en arrière-plan
-                    self.schedule_reconnect()
-                    
-                    # Fallback 1: Essayer de décoder quand même avec le client existant
-                    # (les clés peuvent être en cache dans PyJWKClient)
-                    try:
-                        payload = self._decode_with_jwks(token)
-                        logger.info("✅ Décodage réussi avec cache JWKS client")
-                    except Exception:
-                        # Fallback 2: Clé PEM en cache
-                        if self._public_key:
-                            logger.info("⚠️ Fallback sur clé PEM en cache")
-                            payload = self._decode_with_pem(token)
-                        else:
-                            # Fallback 3: Aucun cache disponible → planifier reconnexion et erreur
-                            self.schedule_reconnect()
-                            raise HTTPException(
-                                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                                detail="Service d'authentification temporairement indisponible (Hub down, pas de cache)"
-                            )
-            
-            # Stratégie 2: PEM uniquement (fallback ou mode dégradé)
-            elif self._public_key:
-                payload = self._decode_with_pem(token)
-                # En mode PEM, tenter de restaurer JWKS en arrière-plan
-                if not self._jwks_available:
-                    self.schedule_reconnect()
-            
-            else:
-                # Aucune méthode d'authentification disponible
-                # Planifier une reconnexion
-                self.schedule_reconnect()
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Service d'authentification non disponible (aucun cache JWKS ni clé PEM)"
-                )
+            payload = self._try_decode(token)
             
             return TokenPayload(
                 sub=payload.get("sub", ""),
@@ -512,6 +464,53 @@ class HubAuth:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Erreur interne lors de la validation du token"
             )
+    
+    def _try_decode(self, token: str) -> dict:
+        """
+        Tente de décoder le token JWT avec fallback en cascade.
+        
+        Stratégies (dans l'ordre) :
+        1. JWKS live (recommandé)
+        2. JWKS cache client (si Hub down)
+        3. PEM en cache
+        4. Erreur 503
+        
+        Returns:
+            dict payload du token décodé
+        """
+        # Stratégie 1 & 2: JWKS (live puis cache)
+        if self._jwk_client and self._jwks_available:
+            try:
+                payload = self._decode_with_jwks(token)
+                self._hub_reachable = True
+                self._cached_key_fetched_at = datetime.now()
+                return payload
+            except Exception as jwks_error:
+                logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
+                self._hub_reachable = False
+                self.schedule_reconnect()
+                
+                # Fallback: cache JWKS client puis PEM
+                try:
+                    payload = self._decode_with_jwks(token)
+                    logger.info("✅ Décodage réussi avec cache JWKS client")
+                    return payload
+                except Exception:
+                    pass
+        
+        # Stratégie 3: PEM en cache
+        if self._public_key:
+            if not self._jwks_available:
+                self.schedule_reconnect()
+            logger.info("⚠️ Fallback sur clé PEM en cache")
+            return self._decode_with_pem(token)
+        
+        # Aucune méthode disponible
+        self.schedule_reconnect()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service d'authentification non disponible (aucun cache JWKS ni clé PEM)"
+        )
     
     async def try_restore_jwks(self) -> bool:
         """

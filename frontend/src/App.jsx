@@ -8,11 +8,14 @@ import EndpointTests from './components/EndpointTests'
 import M2MTests from './components/M2MTests'
 import LoginPrompt from './components/LoginPrompt'
 import DataTable from './components/DataTable'
+import MessageBanner from './components/MessageBanner'
+import MessageArchive from './components/MessageArchive'
 
 function App() {
   const [theme, setTheme] = useState(() => 
     localStorage.getItem('theme') || 'light'
   )
+  const [loadTimeout, setLoadTimeout] = useState(false)
   const config = useConfig()
   const { isAuthenticated } = useAuth()
 
@@ -21,6 +24,12 @@ function App() {
     localStorage.setItem('theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    if (config.loaded) return
+    const timer = setTimeout(() => setLoadTimeout(true), 10000)
+    return () => clearTimeout(timer)
+  }, [config.loaded])
+
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }
@@ -28,7 +37,19 @@ function App() {
   if (!config.loaded) {
     return (
       <div className="loading">
-        <p>Chargement de la configuration...</p>
+        {loadTimeout ? (
+          <>
+            <p>La configuration n'a pas pu être chargée.</p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}
+            >
+              Réessayer
+            </button>
+          </>
+        ) : (
+          <p>Chargement de la configuration...</p>
+        )}
       </div>
     )
   }
@@ -55,6 +76,10 @@ function App() {
         {/* Tests M2M - visible uniquement pour les admins authentifiés */}
         {isAuthenticated && <M2MTests />}
       </div>
+
+      {/* Overlays flottants — indépendants du layout */}
+      <MessageBanner />
+      <MessageArchive />
     </div>
   )
 }

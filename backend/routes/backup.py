@@ -15,6 +15,7 @@ Endpoints:
 """
 import json
 import base64
+import re
 import zipfile
 import io
 import uuid
@@ -47,6 +48,9 @@ router = APIRouter(prefix="/api/admin", tags=["Backup/Restore"])
 # Constantes pour l'estimation
 BYTES_PER_ROW_AVG = 400  # Taille moyenne d'une ligne en JSON
 BYTES_PER_SECOND_ESTIMATE = 10 * 1024 * 1024  # 10 MB/s estimation
+
+# Regex de validation pour les identifiants SQL (tables, colonnes)
+_SAFE_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 # Tables système à exclure du backup (internes PostgreSQL/SQLAlchemy)
 EXCLUDED_TABLES = {
@@ -106,7 +110,11 @@ def _deserialize_value(value: Any) -> Any:
             elif type_name == "decimal":
                 return Decimal(raw_value)
             elif type_name == "bytes":
-                return base64.b64decode(raw_value)
+                try:
+                    return base64.b64decode(raw_value)
+                except Exception:
+                    logger.warning(f"⚠️ Données base64 corrompues, valeur brute conservée")
+                    return raw_value
         return {k: _deserialize_value(v) for k, v in value.items()}
     elif isinstance(value, list):
         return [_deserialize_value(v) for v in value]
@@ -129,8 +137,8 @@ async def _get_all_tables(db: AsyncSession) -> List[str]:
     """))
     
     tables = [row[0] for row in result.fetchall()]
-    # Exclure les tables système
-    return [t for t in tables if t not in EXCLUDED_TABLES]
+    # Exclure les tables système et valider les noms
+    return [t for t in tables if t not in EXCLUDED_TABLES and _SAFE_IDENTIFIER_RE.match(t)]
 
 
 async def _get_table_row_count(db: AsyncSession, table_name: str) -> int:
@@ -232,7 +240,7 @@ async def _import_table_data(
             deserialized = {k: _deserialize_value(v) for k, v in row_data.items()}
             
             # Filtrer les colonnes qui existent dans la table
-            filtered_data = {k: v for k, v in deserialized.items() if k in existing_columns}
+            filtered_data = {k: v for k, v in deserialized.items() if k in existing_columns and _SAFE_IDENTIFIER_RE.match(k)}
             
             if not filtered_data:
                 stats["skipped"] += 1

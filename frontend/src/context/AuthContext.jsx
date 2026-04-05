@@ -29,12 +29,50 @@ function decodeToken(token) {
   }
 }
 
+// Extraire le token de l'URL et du localStorage à l'initialisation (synchrone)
+function getInitialToken() {
+  const urlParams = new URLSearchParams(window.location.search)
+  const urlToken = urlParams.get('token') || urlParams.get('access_token')
+  const urlRefreshToken = urlParams.get('refresh_token')
+  const error = urlParams.get('error')
+
+  if (urlToken) {
+    console.log('✅ Token reçu du Hub')
+    localStorage.setItem(config.storageKeys.accessToken, urlToken)
+    if (urlRefreshToken) {
+      localStorage.setItem(config.storageKeys.refreshToken, urlRefreshToken)
+    }
+    // Nettoyer l'URL (sans reload)
+    window.history.replaceState({}, document.title, window.location.pathname)
+    return urlToken
+  }
+
+  if (error) {
+    console.error('❌ Erreur d\'authentification:', error)
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }
+
+  return localStorage.getItem(config.storageKeys.accessToken)
+}
+
+// Décoder et valider le token (synchrone)
+function getInitialUser(token) {
+  if (!token) return null
+  const decoded = decodeToken(token)
+  if (decoded && decoded.exp) {
+    const now = Math.floor(Date.now() / 1000)
+    if (decoded.exp > now) return decoded
+  }
+  return null
+}
+
 export function AuthProvider({ children }) {
   const appConfig = useConfig()
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => 
-    localStorage.getItem(config.storageKeys.accessToken)
-  )
+  const [token, setToken] = useState(getInitialToken)
+  const [user, setUser] = useState(() => getInitialUser(token))
+  const [unreadMessages, setUnreadMessages] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [activeMessages, setActiveMessages] = useState([])
 
   // URL du Hub avec support du proxy HTTPS
   const hubApiUrl = useMemo(() => 
@@ -42,7 +80,7 @@ export function AuthProvider({ children }) {
     [appConfig.hubApiUrl]
   )
 
-  // Décoder et vérifier le token au chargement
+  // Décoder et vérifier le token quand il change (après refresh par ex.)
   useEffect(() => {
     if (token) {
       const decoded = decodeToken(token)
@@ -57,31 +95,6 @@ export function AuthProvider({ children }) {
       }
     }
   }, [token])
-
-  // Gérer le callback de connexion depuis le Hub
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const accessToken = urlParams.get('token') || urlParams.get('access_token')
-    const refreshToken = urlParams.get('refresh_token')
-    const error = urlParams.get('error')
-
-    if (accessToken) {
-      console.log('✅ Token reçu du Hub')
-      localStorage.setItem(config.storageKeys.accessToken, accessToken)
-      setToken(accessToken)
-      
-      if (refreshToken) {
-        localStorage.setItem(config.storageKeys.refreshToken, refreshToken)
-      }
-      
-      // Nettoyer l'URL
-      window.history.replaceState({}, document.title, window.location.pathname)
-    } else if (error) {
-      console.error('❌ Erreur d\'authentification:', error)
-      alert(`Erreur de connexion: ${error}`)
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
-  }, [])
 
   const login = useCallback(() => {
     const callbackUrl = encodeURIComponent(window.location.origin + window.location.pathname)
@@ -204,6 +217,14 @@ export function AuthProvider({ children }) {
                 await refreshAccessToken()
               }
             }
+
+            // Message utilisateur reçu via SSE
+            if (data.type === 'user_message') {
+              console.log('📩 Nouveau message:', data.data?.title)
+              setUnreadMessages(prev => [data.data, ...prev])
+              setUnreadCount(prev => prev + 1)
+              setActiveMessages(prev => [data.data, ...prev])
+            }
             
           } catch (e) {
             console.warn('SSE: erreur parsing message', e)
@@ -231,6 +252,85 @@ export function AuthProvider({ children }) {
       }
     }
   }, [user, hubApiUrl, refreshAccessToken, logout])
+
+  // Charger les messages non-lus depuis le Hub au login
+  useEffect(() => {
+    if (!user || !hubApiUrl || !token) return
+
+    const loadMessages = async () => {
+      try {
+        // Charger le compteur non-lus
+        const countRes = await fetch(`${hubApiUrl}/api/messages/me/unread-count`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (countRes.ok) {
+          const countData = await countRes.json()
+          setUnreadCount(countData.count || 0)
+        }
+
+        // Charger les messages
+        const msgRes = await fetch(`${hubApiUrl}/api/messages/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (msgRes.ok) {
+          const msgData = await msgRes.json()
+          setUnreadMessages(msgData || [])
+          // Peupler le bandeau avec les messages non-lus
+          setActiveMessages((msgData || []).filter(m => !m.is_read))
+        }
+      } catch (e) {
+        console.warn('Messages: impossible de charger les messages', e)
+      }
+    }
+
+    loadMessages()
+  }, [user, hubApiUrl, token])
+
+  // Marquer un message comme lu
+  const markMessageRead = useCallback(async (messageId) => {
+    try {
+      const res = await fetch(`${hubApiUrl}/api/messages/${messageId}/read`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setUnreadMessages(prev => prev.map(m =>
+          m.id === messageId ? { ...m, is_read: true } : m
+        ))
+        setUnreadCount(prev => Math.max(0, prev - 1))
+      }
+    } catch (e) {
+      console.warn('Messages: erreur marquage lu', e)
+    }
+  }, [hubApiUrl, token])
+
+  // Marquer tous les messages comme lus
+  const markAllMessagesRead = useCallback(async () => {
+    try {
+      const res = await fetch(`${hubApiUrl}/api/messages/read-all`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setUnreadMessages(prev => prev.map(m => ({ ...m, is_read: true })))
+        setUnreadCount(0)
+      }
+    } catch (e) {
+      console.warn('Messages: erreur marquage tous lus', e)
+    }
+  }, [hubApiUrl, token])
+
+  // Fermer un message du bandeau (le retire du bandeau + marque lu)
+  const dismissMessage = useCallback(async (messageId) => {
+    setActiveMessages(prev => prev.filter(m => m.id !== messageId))
+    await markMessageRead(messageId)
+  }, [markMessageRead])
+
+  // Fermer tous les messages du bandeau
+  const dismissAllMessages = useCallback(async () => {
+    setActiveMessages([])
+    await markAllMessagesRead()
+  }, [markAllMessagesRead])
 
   // Fetch authentifié avec gestion automatique du refresh
   const authFetch = useCallback(async (url, options = {}) => {
@@ -289,7 +389,16 @@ export function AuthProvider({ children }) {
     authFetch,
     getAppRole,
     hasMinRole,
-    refreshAccessToken: forceRefreshToken
+    refreshAccessToken: forceRefreshToken,
+    // Messages
+    unreadMessages,
+    unreadCount,
+    markMessageRead,
+    markAllMessagesRead,
+    // Bandeau messages actifs
+    activeMessages,
+    dismissMessage,
+    dismissAllMessages,
   }
 
   return (

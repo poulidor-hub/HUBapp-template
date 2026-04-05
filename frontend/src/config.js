@@ -4,6 +4,9 @@
  * En production, elles viennent du .env via Docker.
  */
 
+// Version de l'application (injectée au build par Vite)
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || 'dev'
+
 // Variables d'environnement Vite (préfixées par VITE_)
 const env = {
   API_PORT: import.meta.env.VITE_API_PORT || '9045',

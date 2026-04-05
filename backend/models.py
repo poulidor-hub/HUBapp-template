@@ -2,7 +2,7 @@
 Modèles SQLAlchemy pour l'application.
 Exemple de modèle Item pour démonstration.
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger, Index
 from datetime import datetime, timezone
 
 from database import Base
@@ -28,6 +28,10 @@ class Item(Base):
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index('ix_item_owner_is_public', 'owner', 'is_public'),
+    )
     
     def __repr__(self):
         return f"<Item(id={self.id}, title='{self.title}', owner='{self.owner}')>"
@@ -98,6 +102,10 @@ class UploadedFile(Base):
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index('ix_uploaded_files_owner_category', 'owner', 'category'),
+    )
     
     def __repr__(self):
         return f"<UploadedFile(id={self.id}, filename='{self.filename}', owner='{self.owner}')>"

@@ -21,7 +21,7 @@ import asyncio
 import os
 
 from config import get_settings, APP_VERSION
-from database import init_db, close_db
+from database import init_db, close_db, apply_migrations
 from hub_client import hub_client
 from hub_auth import (
     hub_auth,
@@ -55,7 +55,8 @@ async def hub_reconnection_loop():
     """
     Boucle de reconnexion automatique au Hub.
     Tourne en arrière-plan et tente de se reconnecter périodiquement
-    si l'application n'est pas enregistrée ou si l'auth Hub est indisponible.
+    si l'application n'est pas enregistrée, si le token M2M est indisponible,
+    ou si l'auth Hub est indisponible.
     """
     RECONNECT_INTERVAL = 15  # secondes entre les tentatives
     
@@ -71,7 +72,14 @@ async def hub_reconnection_loop():
                     logger.info("✅ Enregistrement Hub réussi!")
                     await hub_auth.initialize()
             
-            # Cas 2: JWKS indisponible (Hub a peut-être redémarré)
+            # Cas 2: Token M2M indisponible (SA peut-être désactivé puis approuvé)
+            if hub_client.is_registered:
+                token = await hub_client.get_m2m_token()
+                if token:
+                    logger.info("✅ Token M2M disponible, boucle de reconnexion terminée")
+                    break
+            
+            # Cas 3: JWKS indisponible (Hub a peut-être redémarré)
             if not hub_auth._jwks_available or not hub_auth._hub_reachable:
                 logger.info("🔄 JWKS/Hub indisponible, tentative de restauration...")
                 await hub_auth.initialize()
@@ -107,15 +115,18 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("✅ Base de données initialisée")
+        await apply_migrations()
     except Exception as e:
         logger.error(f"❌ Erreur init DB: {e}")
     
     # 4. Découverte des services partagés (si IS_SHARED actif)
     discovered_count = 0
+    m2m_ok = False
     if registered:
         try:
             services = await hub_client.discover_services()
             discovered_count = len(services)
+            m2m_ok = discovered_count > 0 or (await hub_client.get_m2m_token() is not None)
             if discovered_count > 0:
                 logger.info(f"🔍 {discovered_count} service(s) partagé(s) découvert(s)")
             else:
@@ -130,7 +141,7 @@ async def lifespan(app: FastAPI):
     app.state.hub_reconnect_task = None
     
     # 6. Démarrer la tâche de reconnexion automatique en arrière-plan
-    if not registered or not hub_auth._jwks_available:
+    if not registered or not hub_auth._jwks_available or not m2m_ok:
         app.state.hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
         logger.info("🔄 Tâche de reconnexion Hub démarrée en arrière-plan")
     
@@ -150,6 +161,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     
+    await hub_client.close()
     await close_db()
 
 
