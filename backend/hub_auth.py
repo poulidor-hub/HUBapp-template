@@ -54,6 +54,18 @@ ROLE_MAPPING = {
 }
 
 
+def utcnow() -> datetime:
+    """Retourne un datetime UTC timezone-aware."""
+    return datetime.now(timezone.utc)
+
+
+def ensure_aware_utc(dt: datetime) -> datetime:
+    """Normalise un datetime en UTC timezone-aware (suppose UTC si naive)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @dataclass
 class TokenPayload:
     """Payload décodé du token JWT."""
@@ -131,7 +143,7 @@ class HubAuth:
         """Vérifie si le cache mémoire JWKS est expiré (TTL 30 min)."""
         if not self._cached_key_fetched_at:
             return True
-        elapsed = (datetime.now(timezone.utc) - self._cached_key_fetched_at).total_seconds()
+        elapsed = (utcnow() - self._cached_key_fetched_at).total_seconds()
         return elapsed >= JWKS_CACHE_TTL_SECONDS
     
     def _save_key_to_persistent_cache(self, keys_data: dict) -> bool:
@@ -150,7 +162,7 @@ class HubAuth:
             
             cache_data = {
                 "keys": keys_data,
-                "cached_at": datetime.now().isoformat(),
+                "cached_at": utcnow().isoformat(),
                 "hub_url": self.settings.hub_api_url,
             }
             
@@ -181,8 +193,8 @@ class HubAuth:
                 cache_data = json.load(f)
             
             # Vérifier l'âge du cache
-            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
-            age_days = (datetime.now() - cached_at).days
+            cached_at = ensure_aware_utc(datetime.fromisoformat(cache_data.get("cached_at", "")))
+            age_days = (utcnow() - cached_at).days
             
             if age_days > PERSISTENT_CACHE_MAX_AGE_DAYS:
                 logger.warning(f"⚠️ Cache JWKS persistant trop ancien ({age_days} jours > {PERSISTENT_CACHE_MAX_AGE_DAYS})")
@@ -209,19 +221,19 @@ class HubAuth:
         """
         memory_cache_age = None
         if self._cached_key_fetched_at:
-            memory_cache_age = (datetime.now() - self._cached_key_fetched_at).total_seconds()
+            memory_cache_age = (utcnow() - self._cached_key_fetched_at).total_seconds()
         
         persistent_cache_info = None
         if JWKS_PERSISTENT_CACHE_PATH.exists():
             try:
                 with open(JWKS_PERSISTENT_CACHE_PATH, "r") as f:
                     cache_data = json.load(f)
-                cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
+                cached_at = ensure_aware_utc(datetime.fromisoformat(cache_data.get("cached_at", "")))
                 persistent_cache_info = {
                     "exists": True,
                     "cached_at": cached_at.isoformat(),
-                    "age_seconds": (datetime.now() - cached_at).total_seconds(),
-                    "age_days": (datetime.now() - cached_at).days,
+                    "age_seconds": (utcnow() - cached_at).total_seconds(),
+                    "age_days": (utcnow() - cached_at).days,
                     "hub_url": cache_data.get("hub_url"),
                 }
             except Exception:
@@ -271,7 +283,7 @@ class HubAuth:
             signing_keys = self._jwk_client.get_signing_keys()
             self._jwks_available = True
             self._hub_reachable = True
-            self._cached_key_fetched_at = datetime.now()
+            self._cached_key_fetched_at = utcnow()
             
             # Sauvegarder dans le cache persistant pour fallback futur
             if signing_keys:
@@ -328,7 +340,7 @@ class HubAuth:
             signing_keys = self._jwk_client.get_signing_keys()
             self._jwks_available = True
             self._hub_reachable = True
-            self._cached_key_fetched_at = datetime.now()
+            self._cached_key_fetched_at = utcnow()
             
             # Sauvegarder dans le cache persistant
             if signing_keys:
@@ -367,7 +379,7 @@ class HubAuth:
         try:
             self._public_key = await hub_client.fetch_public_key()
             if self._public_key:
-                self._public_key_fetched_at = datetime.now()
+                self._public_key_fetched_at = utcnow()
                 logger.info("✅ Clé PEM récupérée (fallback)")
                 return True
         except Exception as e:
@@ -378,7 +390,7 @@ class HubAuth:
         """Vérifie si le cache PEM est encore valide."""
         if not self._public_key or not self._public_key_fetched_at:
             return False
-        elapsed = (datetime.now() - self._public_key_fetched_at).total_seconds()
+        elapsed = (utcnow() - self._public_key_fetched_at).total_seconds()
         return elapsed < PEM_CACHE_TTL_SECONDS
     
     def _decode_with_jwks(self, token: str) -> dict:
@@ -483,7 +495,7 @@ class HubAuth:
             try:
                 payload = self._decode_with_jwks(token)
                 self._hub_reachable = True
-                self._cached_key_fetched_at = datetime.now()
+                self._cached_key_fetched_at = utcnow()
                 return payload
             except Exception as jwks_error:
                 logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
@@ -541,7 +553,7 @@ class HubAuth:
         Returns:
             True si reconnexion autorisée, False sinon
         """
-        now = datetime.now()
+        now = utcnow()
         
         # Vérifier si on est en période de blocage (après MAX_RECONNECT_ATTEMPTS échecs)
         if self._reconnect_blocked_until and now < self._reconnect_blocked_until:
@@ -572,7 +584,7 @@ class HubAuth:
             return
         
         self._reconnect_in_progress = True
-        self._last_reconnect_attempt = datetime.now()
+        self._last_reconnect_attempt = utcnow()
         self._reconnect_attempt_count += 1
         
         logger.info(f"🔄 Tentative de reconnexion au Hub ({self._reconnect_attempt_count}/{self.MAX_RECONNECT_ATTEMPTS})...")
@@ -590,13 +602,13 @@ class HubAuth:
                 
                 # Si on a atteint le max de tentatives, activer le backoff
                 if self._reconnect_attempt_count >= self.MAX_RECONNECT_ATTEMPTS:
-                    self._reconnect_blocked_until = datetime.now() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
+                    self._reconnect_blocked_until = utcnow() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
                     logger.warning(f"⏳ Trop de tentatives échouées, pause de {self.RECONNECT_BACKOFF_SECONDS}s")
         except Exception as e:
             logger.error(f"❌ Erreur lors de la tentative de reconnexion: {e}")
             
             if self._reconnect_attempt_count >= self.MAX_RECONNECT_ATTEMPTS:
-                self._reconnect_blocked_until = datetime.now() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
+                self._reconnect_blocked_until = utcnow() + timedelta(seconds=self.RECONNECT_BACKOFF_SECONDS)
         finally:
             self._reconnect_in_progress = False
     
