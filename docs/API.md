@@ -902,6 +902,49 @@ Vérifie :
 - L'endpoint backup du Hub est disponible
 - Des données locales sont présentes
 
+#### Envoi d'un message de test Hub
+
+```http
+POST /api/tests/messages/send
+```
+
+**Authentification requise** : Oui (admin uniquement)
+
+Permet de valider l'integration Hub Messages avec le compte M2M de l'application.
+
+Comportement :
+- si `target_usernames` est vide ou absent, le message est envoye a l'utilisateur courant ;
+- la route appelle `hub_client.send_user_message(...)` ;
+- en cas d'erreur du Hub, la route retourne `502`.
+
+**Exemple de payload** :
+```json
+{
+  "target_usernames": ["alice", "bob"],
+  "title": "Validation requise",
+  "body": "Le dossier 1842 attend votre validation.",
+  "priority": "warning",
+  "action_url": "https://mon-app.exemple.fr/dossiers/1842",
+  "action_label": "Ouvrir",
+  "expires_at": "2026-04-30T18:00:00Z"
+}
+```
+
+**Exemple de réponse** :
+```json
+{
+  "message": "Message de test envoye avec succes",
+  "sent_by": "admin",
+  "target_usernames": ["alice", "bob"],
+  "title": "Validation requise",
+  "priority": "warning",
+  "hub_response": {
+    "status": "sent",
+    "queued": 2
+  }
+}
+```
+
 ### Démonstration SSE
 
 ```http

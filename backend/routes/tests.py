@@ -8,11 +8,13 @@ Endpoints:
 - GET  /api/tests/m2m               : Test du service M2M
 - GET  /api/tests/sse               : Test du flux SSE
 - GET  /api/tests/backup            : Test du système de backup
+- POST /api/tests/messages/send     :
+    Envoie un message de test via le Hub (admin)
 """
 import asyncio
 import httpx
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -52,6 +54,92 @@ class AllServicesTestResult(BaseModel):
     total_duration_ms: float = Field(..., description="Durée totale en millisecondes")
     tests: list[ServiceTestResult] = Field(..., description="Résultats de chaque test")
     summary: dict = Field(..., description="Résumé des tests")
+
+
+class SendTestMessageRequest(BaseModel):
+    """Payload d'envoi d'un message de test via le Hub."""
+    target_usernames: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Destinataires. Si vide, le message est envoyé "
+            "à l'utilisateur courant."
+        )
+    )
+    title: str = Field(
+        default="Message de test HUB",
+        min_length=1,
+        max_length=200,
+        description="Titre du message"
+    )
+    body: Optional[str] = Field(
+        default=(
+            "Ce message valide l'integration de la messagerie "
+            "Hub via M2M."
+        ),
+        description="Contenu optionnel du message"
+    )
+    priority: Literal["info", "warning", "urgent"] = Field(
+        default="info",
+        description="Priorité du message"
+    )
+    action_url: Optional[str] = Field(
+        default=None,
+        description="URL d'action optionnelle"
+    )
+    action_label: Optional[str] = Field(
+        default=None,
+        description="Libellé du bouton d'action"
+    )
+    expires_at: Optional[str] = Field(
+        default=None,
+        description="Date d'expiration ISO 8601 optionnelle"
+    )
+
+
+class SendTestMessageResult(BaseModel):
+    """Réponse de l'endpoint d'envoi de message de test."""
+    message: str = Field(..., description="Résultat de l'opération")
+    sent_by: str = Field(
+        ...,
+        description="Utilisateur ayant déclenché l'envoi"
+    )
+    target_usernames: list[str] = Field(
+        ...,
+        description="Destinataires effectifs"
+    )
+    title: str = Field(..., description="Titre envoyé")
+    priority: Literal["info", "warning", "urgent"] = Field(
+        ...,
+        description="Priorité envoyée"
+    )
+    hub_response: dict = Field(
+        ...,
+        description="Réponse brute retournée par le Hub"
+    )
+
+
+def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
+    """Supprime les espaces inutiles et convertit les chaînes vides en None."""
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_target_usernames(target_usernames: list[str]) -> list[str]:
+    """Nettoie et déduplique une liste de usernames en préservant l'ordre."""
+    normalized_targets: list[str] = []
+    seen_targets: set[str] = set()
+
+    for raw_username in target_usernames:
+        normalized_username = raw_username.strip()
+        if not normalized_username or normalized_username in seen_targets:
+            continue
+        seen_targets.add(normalized_username)
+        normalized_targets.append(normalized_username)
+
+    return normalized_targets
 
 
 # ============================================================
@@ -508,6 +596,60 @@ async def test_backup_endpoint(
     """
     return await _test_backup_system(db)
 
+
+@router.post("/messages/send", response_model=SendTestMessageResult)
+async def send_test_message_endpoint(
+    payload: Optional[SendTestMessageRequest] = None,
+    user: TokenPayload = Depends(require_role("admin"))
+):
+    """
+    Envoie un message de test via le Hub avec le compte M2M de l'application.
+
+    Cet endpoint sert de démonstration pratique pour valider l'intégration
+    Hub Messages sans avoir à écrire immédiatement une route métier dédiée.
+
+    Comportement:
+    - accès réservé aux admins ;
+    - si `target_usernames` est vide, le message est envoyé à l'utilisateur courant ;
+    - l'envoi réel passe par `hub_client.send_user_message(...)`.
+    """
+    payload = payload or SendTestMessageRequest()
+
+    title = _normalize_optional_text(payload.title)
+    if not title:
+        raise HTTPException(status_code=400, detail="Le titre du message est requis")
+
+    fallback_target = _normalize_optional_text(user.sub)
+    requested_targets = payload.target_usernames or ([fallback_target] if fallback_target else [])
+    target_usernames = _normalize_target_usernames(requested_targets)
+    if not target_usernames:
+        raise HTTPException(status_code=400, detail="Aucun destinataire valide fourni")
+
+    result = await hub_client.send_user_message(
+        target_usernames=target_usernames,
+        title=title,
+        body=_normalize_optional_text(payload.body),
+        priority=payload.priority,
+        action_url=_normalize_optional_text(payload.action_url),
+        action_label=_normalize_optional_text(payload.action_label),
+        expires_at=_normalize_optional_text(payload.expires_at)
+    )
+
+    if not result or result.get("error"):
+        error_detail = result.get("error") if result else None
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail or "Le Hub n'a pas confirmé l'envoi du message"
+        )
+
+    return SendTestMessageResult(
+        message="Message de test envoye avec succes",
+        sent_by=user.sub,
+        target_usernames=target_usernames,
+        title=title,
+        priority=payload.priority,
+        hub_response=result
+    )
 
 # ============================================================
 # ENDPOINT SSE DE DÉMONSTRATION

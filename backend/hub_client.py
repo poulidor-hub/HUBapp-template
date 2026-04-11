@@ -732,11 +732,11 @@ class HubClient:
         self,
         target_usernames: list[str],
         title: str,
-        body: str = None,
+        body: Optional[str] = None,
         priority: str = "info",
-        action_url: str = None,
-        action_label: str = None,
-        expires_at: str = None
+        action_url: Optional[str] = None,
+        action_label: Optional[str] = None,
+        expires_at: Optional[str] = None
     ) -> Optional[dict]:
         """
         Envoie un message à des utilisateurs via le Hub (M2M).

@@ -120,6 +120,17 @@ DEBUG=true
 | **Backup/Restore** | Sauvegarde automatique vers le Hub |
 | **Découverte services** | Les apps partagées sont découvertes automatiquement |
 
+### Systeme de messages Hub
+
+Si vous devez ajouter la logique de notifications/messages Hub dans une application existante qui possede deja le M2M, utilisez le guide dedie : [`HUB_MESSAGES.md`](./HUB_MESSAGES.md).
+
+Ce guide detaille :
+
+- l'envoi backend via `/api/messages/m2m/send` ;
+- la lecture frontend via `/api/messages/me` et `/api/events/stream` ;
+- le proxy `/hub/` necessaire en HTTPS ;
+- les fichiers exacts du template a reprendre pour un retrofit legacy.
+
 ### Architecture réseau
 
 \`\`\`

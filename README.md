@@ -248,6 +248,13 @@ result = await hub_client.call_service(
 
 ## 📚 Documentation Hub
 
+Documentation locale utile :
+
+- `docs/REMOTE_APPS.md` : deploiement d'applications distantes ou sur le meme serveur
+- `docs/HUB_MESSAGES.md` : integration du systeme de notifications/messages Hub et retrofit sur une ancienne application
+- `docs/HTTPS.md` : proxy `/hub/`, HTTPS et SSE
+- `docs/BACKUP_RESTORE.md` : backup, restauration et synchronisation Hub
+
 Pour plus d'informations sur l'intégration :
 ```bash
 curl http://192.0.2.11:8000/api/docs/integration

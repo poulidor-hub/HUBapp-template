@@ -203,6 +203,96 @@ class TestBackupEndpoint:
         assert "local_data" in data["details"]
 
 
+class TestSendTestMessageEndpoint:
+    """Tests de l'endpoint /api/tests/messages/send."""
+
+    @pytest.mark.asyncio
+    async def test_send_test_message_requires_auth(self, client: AsyncClient):
+        """L'endpoint nécessite une authentification."""
+        response = await client.post("/api/tests/messages/send")
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_send_test_message_requires_admin_role(self, authenticated_client: AsyncClient):
+        """L'endpoint est réservé aux admins."""
+        response = await authenticated_client.post("/api/tests/messages/send")
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_send_test_message_defaults_to_current_admin(self, admin_client: AsyncClient):
+        """Sans payload, le message est envoyé à l'admin courant."""
+        mock_send = AsyncMock(return_value={"status": "sent", "queued": 1})
+
+        with patch("routes.tests.hub_client.send_user_message", new=mock_send):
+            response = await admin_client.post("/api/tests/messages/send")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["message"] == "Message de test envoye avec succes"
+        assert data["sent_by"] == "admin"
+        assert data["target_usernames"] == ["admin"]
+        assert data["title"] == "Message de test HUB"
+        assert data["priority"] == "info"
+        assert data["hub_response"] == {"status": "sent", "queued": 1}
+
+        mock_send.assert_awaited_once()
+        assert mock_send.await_args.kwargs["target_usernames"] == ["admin"]
+        assert mock_send.await_args.kwargs["title"] == "Message de test HUB"
+        assert mock_send.await_args.kwargs["priority"] == "info"
+
+    @pytest.mark.asyncio
+    async def test_send_test_message_normalizes_payload(self, admin_client: AsyncClient):
+        """L'endpoint nettoie les champs texte et déduplique les destinataires."""
+        mock_send = AsyncMock(return_value={"status": "sent", "queued": 2})
+
+        with patch("routes.tests.hub_client.send_user_message", new=mock_send):
+            response = await admin_client.post(
+                "/api/tests/messages/send",
+                json={
+                    "target_usernames": [" alice ", "alice", "bob", "  "],
+                    "title": "  Validation requise  ",
+                    "body": "  Merci de verifier le dossier.  ",
+                    "priority": "warning",
+                    "action_url": "  https://example.test/items/12  ",
+                    "action_label": "  Ouvrir  ",
+                    "expires_at": " 2026-04-30T18:00:00Z "
+                }
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["target_usernames"] == ["alice", "bob"]
+        assert data["title"] == "Validation requise"
+        assert data["priority"] == "warning"
+
+        assert mock_send.await_args.kwargs == {
+            "target_usernames": ["alice", "bob"],
+            "title": "Validation requise",
+            "body": "Merci de verifier le dossier.",
+            "priority": "warning",
+            "action_url": "https://example.test/items/12",
+            "action_label": "Ouvrir",
+            "expires_at": "2026-04-30T18:00:00Z"
+        }
+
+    @pytest.mark.asyncio
+    async def test_send_test_message_returns_502_when_hub_fails(self, admin_client: AsyncClient):
+        """Une erreur Hub est propagée en 502."""
+        with patch(
+            "routes.tests.hub_client.send_user_message",
+            new=AsyncMock(return_value={"error": "hub indisponible"})
+        ):
+            response = await admin_client.post(
+                "/api/tests/messages/send",
+                json={"target_usernames": ["alice"], "title": "Test Hub"}
+            )
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "hub indisponible"
+
+
 class TestSSEDemoEndpoint:
     """Tests de l'endpoint /api/tests/sse/demo."""
     
