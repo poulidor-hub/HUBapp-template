@@ -140,7 +140,7 @@ C'est tout ! Les versions seront maintenant **synchronisées automatiquement** �
 
 1. **À chaque commit** : Un hook Git synchronise automatiquement les versions dans tous les fichiers
 2. **Le développeur n'a rien à faire** : Il suffit de modifier le fichier `VERSION` si besoin
-3. **Fichiers auto-synchronisés** : `package.json`, `main.py`, `docs/API.md`
+3. **Fichiers auto-synchronisés** : `package.json`, `main.py`, `.env.example`, `docs/API.md`
 
 ### Changer de version
 
@@ -178,6 +178,7 @@ python3 scripts/bump_version.py --template
 | Fichier | Élément mis à jour |
 |---------|-------------------|
 | `VERSION` | Source de vérité |
+| `.env.example` | `APP_VERSION` pour les builds Docker |
 | `frontend/package.json` | Champ `version` |
 | `backend/main.py` | Version FastAPI |
 | `docs/API.md` | Badge de version |

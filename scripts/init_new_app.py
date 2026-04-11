@@ -252,6 +252,10 @@ APP_SLUG={config['APP_SLUG']}
 APP_NAME={config['APP_NAME']}
 APP_DESCRIPTION={config['APP_DESCRIPTION']}
 
+# === VERSION ===
+# Source de vérité: fichier VERSION
+APP_VERSION=0.0.1
+
 # === PORTS ===
 API_PORT={config['API_PORT']}
 FRONTEND_PORT={config['FRONTEND_PORT']}
@@ -293,23 +297,42 @@ IS_SHARED=false
 def update_env_example(root: Path, config: dict) -> bool:
     """Met à jour .env.example avec les nouvelles valeurs par défaut."""
     filepath = root / '.env.example'
-    
-    replacements = [
-        ('APP_SLUG=mon-app', f'APP_SLUG={config["APP_SLUG"]}'),
-        ('APP_NAME=Mon Application', f'APP_NAME={config["APP_NAME"]}'),
-        ('APP_DESCRIPTION=Application template avec authentification Hub', 
-         f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}'),
-        ('API_PORT=9045', f'API_PORT={config["API_PORT"]}'),
-        ('FRONTEND_PORT=4250', f'FRONTEND_PORT={config["FRONTEND_PORT"]}'),
-        ('HUB_HOST=192.0.2.11', f'HUB_HOST={config["HUB_HOST"]}'),
-        ('HUB_API_PORT=8000', f'HUB_API_PORT={config["HUB_API_PORT"]}'),
-        ('HUB_FRONTEND_PORT=80', f'HUB_FRONTEND_PORT={config["HUB_FRONTEND_PORT"]}'),
-        ('POSTGRES_HOST=mon-app-postgres', f'POSTGRES_HOST={config["APP_SLUG"]}-postgres'),
-        ('# Configuration de l\'application Template Hub',
-         f'# Configuration de l\'application {config["APP_NAME"]}'),
-    ]
-    
-    return update_file(filepath, replacements, "Valeurs par défaut mises à jour")
+
+    try:
+        content = filepath.read_text(encoding='utf-8')
+
+        replacements = [
+            ('APP_SLUG=mon-app', f'APP_SLUG={config["APP_SLUG"]}'),
+            ('APP_NAME=Mon Application', f'APP_NAME={config["APP_NAME"]}'),
+            ('APP_DESCRIPTION=Application template avec authentification Hub', 
+             f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}'),
+            ('API_PORT=9045', f'API_PORT={config["API_PORT"]}'),
+            ('FRONTEND_PORT=4250', f'FRONTEND_PORT={config["FRONTEND_PORT"]}'),
+            ('HUB_HOST=192.0.2.11', f'HUB_HOST={config["HUB_HOST"]}'),
+            ('HUB_API_PORT=8000', f'HUB_API_PORT={config["HUB_API_PORT"]}'),
+            ('HUB_FRONTEND_PORT=80', f'HUB_FRONTEND_PORT={config["HUB_FRONTEND_PORT"]}'),
+            ('POSTGRES_HOST=mon-app-postgres', f'POSTGRES_HOST={config["APP_SLUG"]}-postgres'),
+            ('# Configuration de l\'application Template Hub',
+             f'# Configuration de l\'application {config["APP_NAME"]}'),
+        ]
+
+        for old, new in replacements:
+            content = content.replace(old, new)
+
+        if re.search(r'^APP_VERSION=.*$', content, flags=re.MULTILINE):
+            content = re.sub(r'^APP_VERSION=.*$', 'APP_VERSION=0.0.1', content, flags=re.MULTILINE)
+        else:
+            content = content.replace(
+                f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}',
+                f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}\n\n# === VERSION ===\n# Source de vérité: fichier VERSION\nAPP_VERSION=0.0.1'
+            )
+
+        filepath.write_text(content, encoding='utf-8')
+        print(f"  {Colors.GREEN}✓ Valeurs par défaut mises à jour: {filepath.name}{Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"  {Colors.RED}✗ Erreur {filepath.name}: {e}{Colors.ENDC}")
+        return False
 
 
 def update_docker_compose(root: Path, config: dict) -> bool:

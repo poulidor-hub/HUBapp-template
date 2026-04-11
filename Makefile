@@ -30,10 +30,15 @@ help: ## Afficher cette aide
 
 # === SSL / HTTPS ===
 
-sync-env: ## Synchroniser le port HTTPS dans .env
+sync-env: ## Synchroniser FRONTEND_HTTPS_PORT et APP_VERSION dans .env
 	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
 	if ! echo "$$frontend_port" | grep -Eq '^[0-9]+$$'; then \
 		echo "❌ FRONTEND_PORT invalide dans .env: '$$frontend_port'"; \
+		exit 1; \
+	fi; \
+	app_version=$$(cat VERSION 2>/dev/null | tr -d '\r\n'); \
+	if ! echo "$$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+		echo "❌ VERSION invalide: '$$app_version'"; \
 		exit 1; \
 	fi; \
 	frontend_https_port=$$((frontend_port + 1)); \
@@ -43,7 +48,13 @@ sync-env: ## Synchroniser le port HTTPS dans .env
 		echo "" >> .env; \
 		echo "FRONTEND_HTTPS_PORT=$$frontend_https_port" >> .env; \
 	fi; \
-	echo "🔢 Ports synchronisés: HTTP=$$frontend_port, HTTPS=$$frontend_https_port"
+	if grep -q "^APP_VERSION=" .env 2>/dev/null; then \
+		sed -i "s/^APP_VERSION=.*/APP_VERSION=$$app_version/" .env; \
+	else \
+		echo "APP_VERSION=$$app_version" >> .env; \
+	fi; \
+	echo "🔢 Ports synchronisés: HTTP=$$frontend_port, HTTPS=$$frontend_https_port"; \
+	echo "🏷️ Version synchronisée: $$app_version"
 
 ssl: ## Générer les certificats SSL (pour HTTPS)
 	@bash scripts/generate-ssl.sh
@@ -56,7 +67,7 @@ dev: sync-env ## Lancer en mode développement (rebuild + logs)
 	docker compose up --build -d
 	docker compose logs -f
 
-build: ## Construire les images Docker
+build: sync-env ## Construire les images Docker
 	docker compose build
 
 up: sync-env ## Démarrer les services en arrière-plan

@@ -17,6 +17,7 @@ Le script met à jour automatiquement :
     - VERSION (fichier source de vérité)
     - frontend/package.json
     - backend/main.py (version FastAPI)
+    - .env.example et .env (APP_VERSION)
     - docs/API.md (badge de version)
     - Valide que CHANGELOG.md contient une entrée pour la version
 """
@@ -174,6 +175,42 @@ def update_api_docs(version: str) -> bool:
     return True
 
 
+def update_env_versions(version: str) -> bool:
+    """Synchronise APP_VERSION dans .env.example et .env si présents."""
+    updated_any = False
+
+    for filename in (".env.example", ".env"):
+        env_path = ROOT_DIR / filename
+        if not env_path.exists():
+            continue
+
+        content = env_path.read_text(encoding='utf-8')
+        if re.search(r'^APP_VERSION=.*$', content, flags=re.MULTILINE):
+            new_content = re.sub(r'^APP_VERSION=.*$', f'APP_VERSION={version}', content, flags=re.MULTILINE)
+        else:
+            insertion = f"\n# === VERSION ===\n# Synchronisé automatiquement depuis le fichier VERSION\nAPP_VERSION={version}\n"
+            if "APP_DESCRIPTION=" in content:
+                new_content = re.sub(
+                    r'^(APP_DESCRIPTION=.*)$',
+                    rf'\1{insertion.rstrip()}',
+                    content,
+                    flags=re.MULTILINE
+                )
+            else:
+                new_content = content.rstrip() + insertion
+
+        if new_content != content:
+            env_path.write_text(new_content, encoding='utf-8')
+
+        print(f"✅ {filename}: APP_VERSION={version}")
+        updated_any = True
+
+    if not updated_any:
+        print("⚠️  Aucun fichier .env.example/.env trouvé pour synchroniser APP_VERSION")
+
+    return updated_any
+
+
 def check_changelog(version: str) -> bool:
     """Vérifie que le CHANGELOG.md contient une entrée pour cette version."""
     changelog_path = ROOT_DIR / "CHANGELOG.md"
@@ -227,6 +264,16 @@ def check_version_consistency() -> bool:
                 all_ok = False
         elif "version=APP_VERSION" in content or "version = APP_VERSION" in content:
             print(f"✅ backend/main.py: version via APP_VERSION (fichier VERSION)")
+
+    env_example_path = ROOT_DIR / ".env.example"
+    if env_example_path.exists():
+        env_example = env_example_path.read_text(encoding='utf-8')
+        match = re.search(r'^APP_VERSION=(.+)$', env_example, flags=re.MULTILINE)
+        if match and match.group(1).strip() == version:
+            print(f"✅ .env.example: APP_VERSION={version}")
+        else:
+            print(f"❌ .env.example: APP_VERSION incohérent (attendu: {version})")
+            all_ok = False
     
     # Check changelog
     if not check_changelog(version):
@@ -247,6 +294,7 @@ def sync_all(version: str) -> None:
     
     update_package_json(version)
     update_main_py(version)
+    update_env_versions(version)
     update_api_docs(version)
     check_changelog(version)
     
