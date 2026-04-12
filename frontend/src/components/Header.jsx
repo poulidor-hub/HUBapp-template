@@ -1,59 +1,20 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { MoonStar, ShieldCheck, SunMedium } from 'lucide-react'
-import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
+import { useApiQuery } from '../hooks/useApiQuery'
 
 function Header({ theme, toggleTheme }) {
-  const config = useConfig()
   const { isAuthenticated, login, logout } = useAuth()
-  const [hubStatus, setHubStatus] = useState({ online: false, checking: true })
 
-  useEffect(() => {
-    if (!config.apiUrl) return
+  const { data, isLoading: checking } = useApiQuery({
+    queryKey: ['hub-status'],
+    endpoint: '/api/health/detailed',
+    refetchInterval: 15000,
+    retry: false,
+    staleTime: 10_000,
+  })
 
-    let isActive = true
-    const timeoutSignal = () => (
-      typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-        ? AbortSignal.timeout(3000)
-        : undefined
-    )
-
-    const checkHubStatus = async (markChecking = false) => {
-      if (markChecking) {
-        setHubStatus(prev => ({ ...prev, checking: true }))
-      }
-
-      try {
-        const response = await fetch(`${config.apiUrl}/api/health/detailed`, {
-          method: 'GET',
-          signal: timeoutSignal()
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
-        }
-
-        const data = await response.json()
-        if (!isActive) return
-
-        setHubStatus({
-          online: Boolean(data?.hub?.can_authenticate || data?.hub?.connected),
-          checking: false
-        })
-      } catch {
-        if (!isActive) return
-        setHubStatus({ online: false, checking: false })
-      }
-    }
-
-    checkHubStatus(true)
-    const intervalId = window.setInterval(() => checkHubStatus(false), 15000)
-
-    return () => {
-      isActive = false
-      window.clearInterval(intervalId)
-    }
-  }, [config.apiUrl])
+  const online = Boolean(data?.hub?.can_authenticate || data?.hub?.connected)
 
   return (
     <header>
@@ -63,8 +24,8 @@ function Header({ theme, toggleTheme }) {
       </h1>
       <div className="header-actions">
         <div className="status-indicator">
-          <span className={`status-dot ${hubStatus.checking ? '' : hubStatus.online ? 'online' : 'offline'}`} />
-          <span>{hubStatus.checking ? 'Vérification...' : hubStatus.online ? 'Hub connecté' : 'Hub indisponible'}</span>
+          <span className={`status-dot ${checking ? '' : online ? 'online' : 'offline'}`} />
+          <span>{checking ? 'Vérification...' : online ? 'Hub connecté' : 'Hub indisponible'}</span>
         </div>
         <button
           className="theme-toggle inline-flex items-center justify-center"

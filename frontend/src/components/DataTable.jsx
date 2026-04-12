@@ -1,164 +1,100 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { useConfig } from '../context/ConfigContext'
+import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useApiQuery } from '../hooks/useApiQuery'
+import { useApiMutation } from '../hooks/useApiMutation'
 
 // Catégories disponibles
 const CATEGORIES = ['general', 'infrastructure', 'stack', 'config', 'custom']
 
 function DataTable() {
-  const config = useConfig()
   const { token, isAuthenticated, hasMinRole } = useAuth()
   
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({ name: '', value: '', category: 'general' })
   const [newForm, setNewForm] = useState({ name: '', value: '', category: 'general' })
   const [showAddForm, setShowAddForm] = useState(false)
   const [filterCategory, setFilterCategory] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
 
-  // Charger les données
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const url = filterCategory 
-        ? `${config.apiUrl}/api/test-data?category=${filterCategory}`
-        : `${config.apiUrl}/api/test-data`
-      
-      const response = await fetch(url)
-      
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}`)
-      }
-      
-      const result = await response.json()
-      setData(result.items || [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [config.apiUrl, filterCategory])
+  // Lecture des données via TanStack Query
+  const {
+    data: queryData,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useApiQuery({
+    queryKey: ['test-data', filterCategory],
+    endpoint: '/api/test-data',
+    params: filterCategory ? { category: filterCategory } : undefined,
+  })
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const data = queryData?.items || []
+  const error = queryError?.message || null
+
+  // Mutations CRUD — chaque mutation invalide le cache 'test-data'
+  const createMutation = useApiMutation({
+    endpoint: '/api/test-data',
+    method: 'POST',
+    invalidateKeys: [['test-data']],
+  })
+
+  const updateMutation = useApiMutation({
+    endpoint: ({ id }) => `/api/test-data/${id}`,
+    method: 'PUT',
+    invalidateKeys: [['test-data']],
+  })
+
+  const deleteMutation = useApiMutation({
+    endpoint: ({ id }) => `/api/test-data/${id}`,
+    method: 'DELETE',
+    invalidateKeys: [['test-data']],
+  })
+
+  const seedMutation = useApiMutation({
+    endpoint: '/api/test-data/seed',
+    method: 'POST',
+    invalidateKeys: [['test-data']],
+  })
+
+  const actionLoading = createMutation.isPending || updateMutation.isPending
+    || deleteMutation.isPending || seedMutation.isPending
+
+  const mutationError = createMutation.error?.message || updateMutation.error?.message
+    || deleteMutation.error?.message || seedMutation.error?.message || null
 
   // Créer une entrée
-  const handleCreate = async (e) => {
+  const handleCreate = (e) => {
     e.preventDefault()
     if (!token || !newForm.name.trim()) return
     
-    setActionLoading(true)
-    try {
-      const response = await fetch(`${config.apiUrl}/api/test-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newForm)
-      })
-      
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || `Erreur ${response.status}`)
-      }
-      
-      setNewForm({ name: '', value: '', category: 'general' })
-      setShowAddForm(false)
-      await fetchData()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setActionLoading(false)
-    }
+    createMutation.mutate(newForm, {
+      onSuccess: () => {
+        setNewForm({ name: '', value: '', category: 'general' })
+        setShowAddForm(false)
+      },
+    })
   }
 
   // Mettre à jour une entrée
-  const handleUpdate = async (id) => {
+  const handleUpdate = (id) => {
     if (!token) return
     
-    setActionLoading(true)
-    try {
-      const response = await fetch(`${config.apiUrl}/api/test-data/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(editForm)
-      })
-      
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || `Erreur ${response.status}`)
-      }
-      
-      setEditingId(null)
-      await fetchData()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setActionLoading(false)
-    }
+    updateMutation.mutate({ id, body: editForm }, {
+      onSuccess: () => setEditingId(null),
+    })
   }
 
   // Supprimer une entrée
-  const handleDelete = async (id) => {
+  const handleDelete = (id) => {
     if (!token) return
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette entrée ?')) return
     
-    setActionLoading(true)
-    try {
-      const response = await fetch(`${config.apiUrl}/api/test-data/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || `Erreur ${response.status}`)
-      }
-      
-      await fetchData()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setActionLoading(false)
-    }
+    deleteMutation.mutate({ id })
   }
 
   // Initialiser des données de test
-  const handleSeed = async () => {
+  const handleSeed = () => {
     if (!token) return
-    
-    setActionLoading(true)
-    try {
-      const response = await fetch(`${config.apiUrl}/api/test-data/seed`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || `Erreur ${response.status}`)
-      }
-      
-      await fetchData()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setActionLoading(false)
-    }
+    seedMutation.mutate(null)
   }
 
   // Commencer l'édition
@@ -216,7 +152,7 @@ function DataTable() {
 
         <button 
           className="btn btn-secondary btn-small" 
-          onClick={fetchData}
+          onClick={() => refetch()}
           disabled={loading}
         >
           🔄 Rafraîchir
@@ -245,10 +181,9 @@ function DataTable() {
       </div>
 
       {/* Erreur */}
-      {error && (
+      {(error || mutationError) && (
         <div className="data-error">
-          ❌ {error}
-          <button onClick={() => setError(null)}>×</button>
+          ❌ {error || mutationError}
         </div>
       )}
 
