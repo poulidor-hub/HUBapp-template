@@ -181,8 +181,10 @@ app = FastAPI(
 # En prod, définir CORS_ORIGINS dans .env (ex: "http://localhost:4250,https://monapp.fr")
 cors_origins = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
     f"http://localhost:{settings.FRONTEND_PORT}",
+    f"http://127.0.0.1:{settings.FRONTEND_PORT}",
     f"http://{settings.app_host}:{settings.FRONTEND_PORT}",
     f"https://localhost:{settings.FRONTEND_PORT + 1}",
+    f"https://127.0.0.1:{settings.FRONTEND_PORT + 1}",
     f"https://{settings.app_host}:{settings.FRONTEND_PORT + 1}",
 ]
 app.add_middleware(

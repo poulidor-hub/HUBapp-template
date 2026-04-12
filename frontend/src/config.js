@@ -31,27 +31,27 @@ const getProtocol = () => {
   return 'http:'
 }
 
-// Retourne true si on est en HTTPS
-const isHttps = () => getProtocol() === 'https:'
+const isViteDevServer = () => {
+  if (typeof window === 'undefined') return false
+  return window.location.port === '3000'
+}
 
 const config = {
   // Slug de l'application
   appSlug: env.APP_SLUG,
   
   // URLs construites dynamiquement
-  // En HTTPS : tout passe par les proxies nginx (/api/, /hub/)
-  // En HTTP  : accès direct aux ports backend et Hub
+  // En mode Docker/nginx : tout passe par les proxies du même origin (/api/, /hub/)
+  // En mode Vite dev    : accès direct aux ports backend et Hub
   get apiUrl() {
-    if (isHttps()) {
-      // En HTTPS, l'API passe par le proxy nginx /api/ sur le même origin
+    if (typeof window !== 'undefined' && !isViteDevServer()) {
       return window.location.origin
     }
     return `http://${getHost()}:${env.API_PORT}`
   },
   
   get hubApiUrl() {
-    if (isHttps()) {
-      // En HTTPS, le Hub passe par le proxy nginx /hub/
+    if (typeof window !== 'undefined' && !isViteDevServer()) {
       return `${window.location.origin}/hub`
     }
     return `http://${getHost()}:${env.HUB_API_PORT}`

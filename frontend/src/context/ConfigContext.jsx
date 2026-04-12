@@ -56,19 +56,17 @@ export function ConfigProvider({ children }) {
 
       const data = await response.json()
       
-      // IMPORTANT: En HTTPS, utiliser le proxy /hub/ pour éviter Mixed Content
-      // Le proxy nginx redirige /hub/* vers le Hub HTTP interne
-      const isHttps = window.location.protocol === 'https:'
-      const hubApiUrl = isHttps 
-        ? `${window.location.origin}/hub`  // Proxy nginx
-        : (data.hub_api_url || config.hubApiUrl)
+      const isViteDevServer = window.location.port === '3000'
+      const hubApiUrl = isViteDevServer
+        ? (data.hub_api_url || config.hubApiUrl)
+        : `${window.location.origin}/hub`
       const hubFrontendUrl = data.hub_frontend_url || config.hubFrontendUrl
       
       setAppConfig({
         appSlug: data.app_slug || config.appSlug,
-        apiUrl: config.apiUrl,  // L'API locale utilise l'hostname du navigateur
-        hubApiUrl,              // URL du Hub fournie par le backend (via HUB_HOST)
-        hubFrontendUrl,         // URL frontend Hub fournie par le backend
+        apiUrl: config.apiUrl,
+        hubApiUrl,
+        hubFrontendUrl,
         loaded: true,
         error: null
       })

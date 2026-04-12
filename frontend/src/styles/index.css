@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   --bg-primary: #f5f5f5;
   --bg-secondary: #ffffff;
@@ -698,8 +700,8 @@ header h1 {
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
-  width: 100%;
-  max-width: 400px;
+  width: min(400px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   pointer-events: none;
 }
 
@@ -708,7 +710,10 @@ header h1 {
   pointer-events: auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
+  width: 100%;
   animation: messageBannerFadeIn 0.3s ease-out;
 }
 
@@ -754,6 +759,7 @@ header h1 {
   pointer-events: auto;
   position: relative;
   width: 100%;
+  max-width: 100%;
   display: flex;
   gap: 12px;
   padding: 16px;
@@ -1166,6 +1172,19 @@ header h1 {
 
 /* Responsive — Message Banner & Archive */
 @media (max-width: 768px) {
+  .message-banner {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    gap: 10px;
+  }
+
+  .message-banner-controls {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .message-banner-item {
     padding: 8px 12px;
     gap: 8px;
