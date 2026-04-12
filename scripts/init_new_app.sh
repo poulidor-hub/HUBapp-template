@@ -3,7 +3,8 @@
 # Script d'initialisation d'une nouvelle application HUB
 # ============================================================
 # Usage: ./scripts/init_new_app.sh
-#        ou: bash scripts/init_new_app.sh
+#        ./scripts/init_new_app.sh --clean
+#        ./scripts/init_new_app.sh --tailwind
 # ============================================================
 
 set -e
@@ -45,6 +46,6 @@ fi
 echo -e "${GREEN}✓ Python $PYTHON_VERSION détecté${NC}"
 echo ""
 
-# Lancer le script Python
+# Lancer le script Python (transmettre tous les arguments)
 cd "$PROJECT_ROOT"
-$PYTHON_CMD "$SCRIPT_DIR/init_new_app.py"
+$PYTHON_CMD "$SCRIPT_DIR/init_new_app.py" "$@"

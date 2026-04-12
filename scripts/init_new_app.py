@@ -13,6 +13,7 @@ Ce script transforme le template en une nouvelle application avec :
 Usage:
     python scripts/init_new_app.py              # Initialisation standard
     python scripts/init_new_app.py --clean      # + suppression du contenu de démo
+    python scripts/init_new_app.py --tailwind   # + clean + migration React/Tailwind
 
 Compatible Linux / Windows / macOS
 """
@@ -172,6 +173,15 @@ def collect_app_info() -> dict:
         error_msg="Le port doit être un nombre entre 1024 et 65535."
     )
     
+    # Option Tailwind (si pas déjà forcé par --tailwind)
+    use_tailwind = '--tailwind' in sys.argv
+    if not use_tailwind and '--clean' not in sys.argv:
+        print(f"\n{Colors.BOLD}🎨 Interface frontend{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Vous pouvez repartir sur une base React + Tailwind CSS propre.")
+        print(f"Les composants de messagerie/notifications du Hub seront conservés.{Colors.ENDC}\n")
+        tw_response = input(f"{Colors.CYAN}Migrer vers React + Tailwind CSS ? (o/N): {Colors.ENDC}").strip().lower()
+        use_tailwind = tw_response in ('o', 'oui', 'y', 'yes')
+    
     return {
         "APP_SLUG": app_slug,
         "APP_NAME": app_name,
@@ -181,6 +191,7 @@ def collect_app_info() -> dict:
         "HUB_HOST": hub_host,
         "HUB_API_PORT": hub_api_port,
         "HUB_FRONTEND_PORT": hub_frontend_port,
+        "USE_TAILWIND": use_tailwind,
     }
 
 
@@ -197,6 +208,8 @@ def confirm_settings(config: dict) -> bool:
     print(f"  HUB_HOST:         {Colors.GREEN}{config['HUB_HOST']}{Colors.ENDC}")
     print(f"  HUB_API_PORT:     {Colors.GREEN}{config['HUB_API_PORT']}{Colors.ENDC}")
     print(f"  HUB_FRONTEND_PORT:{Colors.GREEN}{config['HUB_FRONTEND_PORT']}{Colors.ENDC}")
+    if config.get('USE_TAILWIND'):
+        print(f"  TAILWIND CSS:     {Colors.GREEN}Oui (React + Tailwind){Colors.ENDC}")
     
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
     
@@ -1251,14 +1264,412 @@ Projet interne - Tous droits réservés.
         return False
 
 
+# ============================================================
+# MIGRATION TAILWIND CSS
+# ============================================================
+
+def setup_tailwind(root: Path, config: dict) -> bool:
+    """
+    Migre le frontend vers React + Tailwind CSS.
+    Conserve les composants de messagerie/notifications (MessageBanner, MessageArchive)
+    et leurs styles CSS dédiés pour garder l'homogénéité entre applications.
+    
+    Étapes :
+    1. Ajoute les dépendances Tailwind dans package.json
+    2. Crée tailwind.config.js et postcss.config.js
+    3. Réécrit index.css (directives Tailwind + styles messagerie conservés)
+    4. Réécrit App.jsx, Header.jsx, LoginPrompt.jsx avec classes Tailwind
+    5. Supprime les composants de démo
+    """
+    print(f"\n{Colors.BOLD}🎨 Migration vers React + Tailwind CSS...{Colors.ENDC}\n")
+    
+    success = True
+    
+    # 1. Ajouter dépendances Tailwind dans package.json
+    print(f"  {Colors.CYAN}Ajout des dépendances Tailwind...{Colors.ENDC}")
+    success &= _tailwind_update_package_json(root, config)
+    
+    # 2. Créer fichiers de config Tailwind
+    print(f"  {Colors.CYAN}Création tailwind.config.js & postcss.config.js...{Colors.ENDC}")
+    success &= _tailwind_create_configs(root)
+    
+    # 3. Réécrire index.css
+    print(f"  {Colors.CYAN}Réécriture index.css (Tailwind + styles messagerie)...{Colors.ENDC}")
+    success &= _tailwind_rewrite_css(root)
+    
+    # 4. Réécrire les composants avec Tailwind
+    print(f"  {Colors.CYAN}Réécriture composants (App, Header, LoginPrompt)...{Colors.ENDC}")
+    success &= _tailwind_rewrite_app_jsx(root)
+    success &= _tailwind_rewrite_header_jsx(root, config)
+    success &= _tailwind_rewrite_login_prompt_jsx(root)
+    
+    # 5. Supprimer composants de démo
+    print(f"  {Colors.CYAN}Suppression composants de démo...{Colors.ENDC}")
+    success &= _clean_frontend_components(root)
+    
+    if success:
+        print(f"\n  {Colors.GREEN}✅ Migration Tailwind terminée !{Colors.ENDC}")
+        print(f"  {Colors.YELLOW}💡 Pensez à exécuter 'npm install' dans le dossier frontend{Colors.ENDC}")
+    else:
+        print(f"\n  {Colors.YELLOW}⚠ Migration Tailwind terminée avec des avertissements{Colors.ENDC}")
+    
+    return success
+
+
+def _tailwind_update_package_json(root: Path, config: dict) -> bool:
+    """Ajoute les dépendances Tailwind et met à jour package.json."""
+    filepath = root / 'frontend' / 'package.json'
+    
+    try:
+        content = json.loads(filepath.read_text(encoding='utf-8'))
+        content['name'] = f'{config["APP_SLUG"]}-frontend'
+        content['version'] = '0.0.1'
+        
+        # Ajouter dépendances Tailwind en devDependencies
+        if 'devDependencies' not in content:
+            content['devDependencies'] = {}
+        content['devDependencies']['tailwindcss'] = '^4.1.0'
+        content['devDependencies']['@tailwindcss/vite'] = '^4.1.0'
+        
+        filepath.write_text(json.dumps(content, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ package.json mis à jour (Tailwind ajouté){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur package.json: {e}{Colors.ENDC}")
+        return False
+
+
+def _tailwind_create_configs(root: Path) -> bool:
+    """Crée les fichiers de configuration Tailwind et met à jour vite.config.js."""
+    frontend = root / 'frontend'
+    success = True
+
+    # vite.config.js — ajouter le plugin Tailwind v4
+    vite_config = """import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: {
+    host: '0.0.0.0',
+    port: 3000
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false
+  }
+})
+"""
+
+    try:
+        (frontend / 'vite.config.js').write_text(vite_config, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ vite.config.js mis à jour (plugin Tailwind){Colors.ENDC}")
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur vite.config.js: {e}{Colors.ENDC}")
+        success = False
+
+    return success
+
+
+def _tailwind_rewrite_css(root: Path) -> bool:
+    """Réécrit index.css : directives Tailwind + conservation des styles de messagerie."""
+    filepath = root / 'frontend' / 'src' / 'styles' / 'index.css'
+    
+    try:
+        original = filepath.read_text(encoding='utf-8')
+        
+        # Extraire les styles de messagerie (MessageBanner + MessageArchive)
+        # Ces styles doivent rester identiques entre toutes les applications
+        message_css = _extract_message_css(original)
+        
+        content = f"""@import "tailwindcss";
+
+/* ==========================================================================
+   Variables de thème (utilisées par les composants de messagerie du Hub)
+   Ces variables CSS doivent rester pour la compatibilité avec
+   MessageBanner et MessageArchive — composants partagés entre apps.
+   ========================================================================== */
+
+:root {{
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --accent: #4a90d9;
+  --success: #28a745;
+  --error: #dc3545;
+  --warning: #ffc107;
+  --border: #ddd;
+}}
+
+[data-theme="dark"] {{
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --text-primary: #eee;
+  --text-secondary: #aaa;
+  --accent: #4a90d9;
+  --border: #333;
+}}
+
+/* ==========================================================================
+   Styles de messagerie/notifications du Hub
+   ⚠️  NE PAS MODIFIER — ces styles sont partagés entre toutes les apps Hub
+   pour garantir une expérience homogène des notifications.
+   ========================================================================== */
+
+{message_css}
+"""
+        
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ index.css réécrit (Tailwind + styles messagerie conservés){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur index.css: {e}{Colors.ENDC}")
+        return False
+
+
+def _extract_message_css(css_content: str) -> str:
+    """Extrait les sections CSS de MessageBanner et MessageArchive depuis le CSS original."""
+    lines = css_content.split('\n')
+    result = []
+    in_message_section = False
+    brace_depth = 0
+    
+    for line in lines:
+        # Détecter le début des sections messagerie
+        if '/* ============ Message Banner' in line or '/* ============ Message Archive' in line:
+            in_message_section = True
+        
+        # Détecter les sélecteurs de messagerie individuels
+        if not in_message_section and ('.message-banner' in line or '.message-archive' in line):
+            # Commencer une section ponctuelle
+            in_message_section = True
+        
+        # Détecter les @keyframes liés aux messages
+        if not in_message_section and '@keyframes messageBanner' in line:
+            in_message_section = True
+        if not in_message_section and '@keyframes messageArchive' in line:
+            in_message_section = True
+        
+        if in_message_section:
+            result.append(line)
+            brace_depth += line.count('{') - line.count('}')
+            
+            # Si on sort d'un bloc et qu'on n'est plus dans un sélecteur message
+            if brace_depth <= 0:
+                brace_depth = 0
+                in_message_section = False
+    
+    return '\n'.join(result)
+
+
+def _tailwind_rewrite_app_jsx(root: Path) -> bool:
+    """Réécrit App.jsx avec Tailwind + messagerie conservée."""
+    filepath = root / 'frontend' / 'src' / 'App.jsx'
+    
+    content = '''import React, { useState, useEffect } from 'react'
+import { useConfig } from './context/ConfigContext'
+import { useAuth } from './context/AuthContext'
+import Header from './components/Header'
+import LoginPrompt from './components/LoginPrompt'
+import MessageBanner from './components/MessageBanner'
+import MessageArchive from './components/MessageArchive'
+
+function App() {
+  const [theme, setTheme] = useState(() => 
+    localStorage.getItem('theme') || 'light'
+  )
+  const config = useConfig()
+  const { isAuthenticated, user } = useAuth()
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }
+
+  if (!config.loaded) {
+    return (
+      <div className="flex items-center justify-center h-screen text-lg text-gray-500 dark:text-gray-400">
+        <p>Chargement de la configuration...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100 transition-colors">
+      <Header theme={theme} toggleTheme={toggleTheme} />
+      
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {!isAuthenticated ? (
+          <LoginPrompt />
+        ) : (
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
+              Bienvenue {user?.username} !
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300">
+              Votre application est prête. Commencez à développer ici.
+            </p>
+          </div>
+        )}
+      </main>
+
+      {/* Overlays messagerie Hub — composants partagés entre apps */}
+      <MessageBanner />
+      <MessageArchive />
+    </div>
+  )
+}
+
+export default App
+'''
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ App.jsx réécrit (Tailwind + messagerie){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur App.jsx: {e}{Colors.ENDC}")
+        return False
+
+
+def _tailwind_rewrite_header_jsx(root: Path, config: dict) -> bool:
+    """Réécrit Header.jsx avec Tailwind."""
+    filepath = root / 'frontend' / 'src' / 'components' / 'Header.jsx'
+    
+    content = f"""import React, {{ useState, useEffect }} from 'react'
+import {{ useConfig }} from '../context/ConfigContext'
+import {{ useAuth }} from '../context/AuthContext'
+
+function Header({{ theme, toggleTheme }}) {{
+  const config = useConfig()
+  const {{ isAuthenticated, login, logout }} = useAuth()
+  const [hubStatus, setHubStatus] = useState({{ online: false, checking: true }})
+
+  useEffect(() => {{
+    checkHubStatus()
+  }}, [config.hubApiUrl])
+
+  const checkHubStatus = async () => {{
+    try {{
+      const response = await fetch(`${{config.hubApiUrl}}/api/auth/public-key`)
+      setHubStatus({{ online: response.ok, checking: false }})
+    }} catch {{
+      setHubStatus({{ online: false, checking: false }})
+    }}
+  }}
+
+  return (
+    <header className="bg-white dark:bg-slate-800 shadow-sm px-4 sm:px-6 py-3 flex items-center justify-between">
+      <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">
+        \\uD83D\\uDD10 {config['APP_NAME']}
+      </h1>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <span className={{`w-2.5 h-2.5 rounded-full ${{
+            hubStatus.checking ? 'bg-gray-300' :
+            hubStatus.online ? 'bg-green-500' : 'bg-red-500'
+          }}`}} />
+          <span className="text-gray-600 dark:text-gray-300 hidden sm:inline">
+            {{hubStatus.checking ? 'Vérification...' : hubStatus.online ? 'Hub connecté' : 'Hub indisponible'}}
+          </span>
+        </div>
+        <button
+          className="text-2xl leading-none p-1 hover:opacity-75 transition-opacity"
+          onClick={{toggleTheme}}
+          title="Changer le thème"
+        >
+          \\uD83C\\uDF13
+        </button>
+        {{isAuthenticated ? (
+          <button
+            className="px-3 py-1.5 text-sm rounded-md bg-red-500 hover:bg-red-600 text-white transition-colors"
+            onClick={{logout}}
+          >
+            Déconnexion
+          </button>
+        ) : (
+          <button
+            className="px-3 py-1.5 text-sm rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+            onClick={{login}}
+          >
+            Connexion
+          </button>
+        )}}
+      </div>
+    </header>
+  )
+}}
+
+export default Header
+"""
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ Header.jsx réécrit (Tailwind){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur Header.jsx: {e}{Colors.ENDC}")
+        return False
+
+
+def _tailwind_rewrite_login_prompt_jsx(root: Path) -> bool:
+    """Réécrit LoginPrompt.jsx avec Tailwind."""
+    filepath = root / 'frontend' / 'src' / 'components' / 'LoginPrompt.jsx'
+    
+    content = """import React from 'react'
+import { useAuth } from '../context/AuthContext'
+
+function LoginPrompt() {
+  const { login } = useAuth()
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-8 text-center max-w-md mx-auto">
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
+        Bienvenue !
+      </h2>
+      <p className="text-gray-500 dark:text-gray-400 mb-6">
+        Connectez-vous via le Hub pour accéder à l'application.
+      </p>
+      <button
+        className="px-5 py-2.5 rounded-md bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
+        onClick={login}
+      >
+        Se connecter via le Hub
+      </button>
+    </div>
+  )
+}
+
+export default LoginPrompt
+"""
+    
+    try:
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ LoginPrompt.jsx réécrit (Tailwind){Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur LoginPrompt.jsx: {e}{Colors.ENDC}")
+        return False
+
+
 def main():
     """Point d'entrée principal."""
-    # Détecter le flag --clean
+    # Détecter les flags
     clean_mode = '--clean' in sys.argv
+    tailwind_mode = '--tailwind' in sys.argv
     
     print_header()
     
-    if clean_mode:
+    if tailwind_mode:
+        print(f"{Colors.YELLOW}🎨 Mode --tailwind activé : migration React + Tailwind CSS{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🧹 Le contenu de démonstration sera également supprimé{Colors.ENDC}\n")
+    elif clean_mode:
         print(f"{Colors.YELLOW}🧹 Mode --clean activé : le contenu de démonstration sera supprimé{Colors.ENDC}\n")
     
     # Vérifier qu'on est dans le bon répertoire
@@ -1334,9 +1745,14 @@ def main():
     print(f"{Colors.CYAN}[13/13] Nettoyage fichiers obsolètes{Colors.ENDC}")
     success &= cleanup_obsolete_files(root)
     
-    # Nettoyage du contenu de démo si --clean
-    if clean_mode:
+    # Nettoyage du contenu de démo si --clean (ou --tailwind qui implique --clean)
+    use_tailwind = config.get('USE_TAILWIND', False) or tailwind_mode
+    if use_tailwind or clean_mode:
         success &= clean_demo_content(root, config)
+    
+    # Migration Tailwind si demandé
+    if use_tailwind:
+        success &= setup_tailwind(root, config)
     
     # Résumé final
     print(f"\n{'═' * 60}")
@@ -1350,8 +1766,14 @@ def main():
      {Colors.CYAN}cat .env{Colors.ENDC}
 
   2. Lancer l'application :
-     {Colors.CYAN}docker-compose up -d{Colors.ENDC}
-
+     {Colors.CYAN}docker-compose up -d{Colors.ENDC}""")
+        
+        if use_tailwind:
+            print(f"""
+  💡 Pour le développement local (hors Docker) :
+     {Colors.CYAN}cd frontend && npm install{Colors.ENDC}""")
+        
+        print(f"""
   3. Accéder à l'application :
      • Frontend : {Colors.BLUE}http://localhost:{config['FRONTEND_PORT']}{Colors.ENDC}
      • API :      {Colors.BLUE}http://localhost:{config['API_PORT']}{Colors.ENDC}

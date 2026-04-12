@@ -3,7 +3,8 @@ REM ============================================================
 REM Script d'initialisation d'une nouvelle application HUB
 REM ============================================================
 REM Usage: scripts\init_new_app.bat
-REM        ou double-cliquer sur le fichier
+REM        scripts\init_new_app.bat --clean
+REM        scripts\init_new_app.bat --tailwind
 REM ============================================================
 
 setlocal enabledelayedexpansion
@@ -47,8 +48,8 @@ echo.
 REM Aller dans le répertoire du projet
 cd /d "%PROJECT_ROOT%"
 
-REM Lancer le script Python
-%PYTHON_CMD% "%SCRIPT_DIR%init_new_app.py"
+REM Lancer le script Python (transmettre tous les arguments)
+%PYTHON_CMD% "%SCRIPT_DIR%init_new_app.py" %*
 
 if %errorlevel% neq 0 (
     echo.
