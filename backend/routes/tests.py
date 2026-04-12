@@ -387,9 +387,9 @@ async def _test_backup_system(db: AsyncSession) -> ServiceTestResult:
             if token:
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
-                        # Tester l'endpoint qui liste les backups (GET)
+                        # Tester l'endpoint canonique qui liste les backups (GET)
                         response = await client.get(
-                            f"{settings.hub_api_url}/api/apps/{settings.APP_SLUG}/backup/list",
+                            f"{settings.hub_api_url}/api/apps/{settings.APP_SLUG}/backup",
                             headers={"Authorization": f"Bearer {token}"}
                         )
                         
