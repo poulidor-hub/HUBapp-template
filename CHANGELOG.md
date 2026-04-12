@@ -7,6 +7,122 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.4.0] - 12 avril 2026
+
+### ✨ Nouvelles fonctionnalités
+
+- **Nouveau** : Support des migrations SQL applicatives via `backend/migrations/` avec une première migration `001_fix_datetime_timezone.sql`
+- **Nouveau** : Endpoint `POST /api/tests/messages/send` pour envoyer un message de test via le compte M2M de l'application
+- **Nouveau** : Scripts `init_new_app.sh` et `init_new_app.bat` qui transmettent désormais les options au script Python (`--clean`, `--tailwind`)
+
+### 🔧 Modifications code
+
+- **Amélioration** : Reconnexion Hub et gestion du token M2M renforcées pour mieux supporter les resynchronisations et les services distants
+- **Amélioration** : Normalisation des datetimes en UTC timezone-aware avec migration des colonnes vers `TIMESTAMPTZ`
+- **Amélioration** : Synchronisation de `APP_VERSION` étendue à `.env` et `.env.example` dans `bump_version.py`
+- **Amélioration** : Limites mémoire Docker fixées à `512M` pour les services principaux dans `docker-compose.yml`
+- **Refactor** : Réorganisation backend/frontend pour améliorer la lisibilité et préparer l'intégration des évolutions de la branche `v2`
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `backend/database.py` | Initialisation de la base enrichie avec exécution des migrations SQL |
+| `backend/migrations/001_fix_datetime_timezone.sql` | Migration de correction des colonnes datetime vers un stockage timezone-aware |
+| `backend/hub_auth.py` | Fonctions utilitaires UTC et amélioration de la logique de reconnexion Hub |
+| `backend/hub_client.py` | Gestion M2M renforcée, normalisation des expirations de token et de la découverte de services |
+| `backend/routes/tests.py` | Nouvel endpoint `POST /api/tests/messages/send` pour l'envoi de messages de test via le Hub |
+| `backend/tests/test_services.py` | Couverture des nouveaux scénarios M2M et de l'envoi de message de test |
+| `scripts/bump_version.py` | Synchronisation de `APP_VERSION` dans `.env` et `.env.example` |
+| `scripts/init_new_app.py` | Gestion plus robuste des modes `--clean` et `--tailwind`, documentation d'initialisation mise à jour |
+| `scripts/init_new_app.sh` | Transmission de tous les arguments au script Python |
+| `scripts/init_new_app.bat` | Transmission de tous les arguments au script Python sur Windows |
+| `docker-compose.yml` | Limites mémoire ajoutées et alignement avec les évolutions d'infrastructure récentes |
+| `docs/API.md` / `docs/HUB_MESSAGES.md` / `docs/REMOTE_APPS.md` | Documentation mise à jour pour les messages Hub, les migrations et les applications distantes |
+
+---
+
+## [2.3.1] - 27 mars 2026
+
+### 🐛 Corrections
+
+- **Fix** : Synchronisation du port HTTPS avec `FRONTEND_PORT` dans la configuration, l'entrypoint frontend et le script d'initialisation
+- **Fix** : Documentation HTTPS et README réalignés sur le comportement réel des ports exposés
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `.env.example` | Calcul et exposition cohérents du port HTTPS |
+| `docker-compose.yml` | Ports HTTPS alignés avec la configuration frontend |
+| `frontend/docker-entrypoint.sh` | Gestion corrigée de la configuration des ports pour le frontend |
+| `scripts/init_new_app.py` | Génération des ports HTTPS synchronisée avec `FRONTEND_PORT` |
+| `README.md` / `docs/HTTPS.md` / `docs/API.md` | Documentation mise à jour pour refléter le mapping HTTPS réel |
+
+---
+
+## [2.3.0] - 1 mars 2026
+
+### ✨ Nouvelles fonctionnalités
+
+- **Nouveau** : Support HTTPS renforcé avec génération automatisée des certificats SSL
+- **Nouveau** : Documentation dédiée pour l'activation HTTPS et la génération de certificats locaux
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `scripts/generate-ssl.sh` | Génération automatisée des certificats de développement |
+| `ssl/openssl.cnf` | Configuration OpenSSL dédiée au template |
+| `nginx.conf` | Adaptations pour servir le frontend avec la configuration HTTPS |
+| `frontend/docker-entrypoint.sh` | Préparation du frontend au mode HTTPS |
+| `frontend/src/config.js` / `frontend/config.js` | Exposition de la configuration HTTPS côté frontend |
+| `backend/config.py` / `backend/hub_auth.py` | Lecture et utilisation des paramètres HTTPS côté backend |
+| `docs/HTTPS.md` / `docs/API.md` | Documentation de la mise en place HTTPS |
+| `Makefile` / `start.sh` | Commandes et démarrage local mis à jour |
+
+---
+
+## [2.2.2] - 24 février 2026
+
+### 🐛 Corrections
+
+- **Fix** : Suppression des rôles globaux du payload du token Hub afin de limiter les données exposées au frontend
+- **Fix** : Adaptation du contexte d'authentification, des schémas et des tests de services à la nouvelle structure de token
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `backend/hub_auth.py` | Payload du token épuré des rôles globaux |
+| `backend/schemas.py` | Schémas ajustés à la nouvelle structure d'authentification |
+| `backend/routes/tests.py` | Endpoints de tests adaptés au nouveau format de token |
+| `backend/tests/conftest.py` | Fixtures mises à jour pour refléter le payload simplifié |
+| `frontend/src/context/AuthContext.jsx` | Consommation frontend du token Hub alignée avec le nouveau payload |
+| `frontend/src/components/M2MTests.jsx` / `frontend/src/components/UserCard.jsx` | Affichage frontend ajusté |
+
+---
+
+## [2.2.1] - 23 février 2026
+
+### 🐛 Corrections
+
+- **Fix** : Gestion des datetimes backend rendue timezone-aware pour éviter les incohérences entre JWT, base de données et endpoints
+- **Fix** : Contraintes explicites ajoutées aux dépendances backend pour fiabiliser les installations
+
+### 📝 Modifications
+
+| Fichier | Modification |
+|---------|--------------|
+| `backend/database.py` | Alignement de l'initialisation base de données avec les datetimes timezone-aware |
+| `backend/hub_auth.py` / `backend/hub_client.py` | Calculs de dates et d'expiration normalisés |
+| `backend/main.py` | Intégration des ajustements de configuration et de version |
+| `backend/routes/items.py` / `backend/routes/m2m.py` / `backend/routes/preferences.py` / `backend/routes/test_data.py` | Ajustements transverses liés au nouveau traitement des dates |
+| `backend/requirements.txt` | Contraintes de versions explicites pour les dépendances backend |
+| `Dockerfile.backend` / `docker-compose.yml` / `.env.example` | Environnement aligné avec la nouvelle configuration |
+
+---
+
 ## [2.1.0] - 17 février 2026
 
 ### 🐛 Corrections critiques
