@@ -155,7 +155,9 @@ async def _test_hub_connection() -> ServiceTestResult:
     try:
         # Test 1: Le Hub est-il accessible ?
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{settings.hub_api_url}/api/health")
+            response = await client.get(
+                f"{settings.hub_api_internal_url}/api/health"
+            )
             hub_accessible = response.status_code == 200
         
         # Test 2: L'app est-elle enregistrée ?
@@ -177,6 +179,7 @@ async def _test_hub_connection() -> ServiceTestResult:
             message="Connexion au Hub opérationnelle" if success else "Problème de connexion au Hub",
             details={
                 "hub_url": settings.hub_api_url,
+                "hub_internal_url": settings.hub_api_internal_url,
                 "hub_accessible": hub_accessible,
                 "app_registered": is_registered,
                 "credentials_valid": credentials_valid,
@@ -190,7 +193,11 @@ async def _test_hub_connection() -> ServiceTestResult:
             success=False,
             duration_ms=duration,
             message=f"Erreur de connexion: {str(e)}",
-            details={"error": str(e), "hub_url": settings.hub_api_url}
+            details={
+                "error": str(e),
+                "hub_url": settings.hub_api_url,
+                "hub_internal_url": settings.hub_api_internal_url,
+            }
         )
 
 
@@ -310,7 +317,7 @@ async def _test_sse_connection() -> ServiceTestResult:
     """
     start = datetime.now(timezone.utc)
     try:
-        sse_url = f"{settings.hub_api_url}/api/events/stream"
+        sse_url = f"{settings.hub_api_internal_url}/api/events/stream"
         
         # Test de connexion au flux SSE (timeout court pour ne pas bloquer)
         sse_accessible = False
@@ -364,7 +371,10 @@ async def _test_sse_connection() -> ServiceTestResult:
             success=False,
             duration_ms=duration,
             message=f"Erreur test SSE: {str(e)}",
-            details={"error": str(e), "sse_url": f"{settings.hub_api_url}/api/events/stream"}
+            details={
+                "error": str(e),
+                "sse_url": f"{settings.hub_api_internal_url}/api/events/stream",
+            }
         )
 
 
@@ -389,7 +399,7 @@ async def _test_backup_system(db: AsyncSession) -> ServiceTestResult:
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         # Tester l'endpoint canonique qui liste les backups (GET)
                         response = await client.get(
-                            f"{settings.hub_api_url}/api/apps/{settings.APP_SLUG}/backup",
+                            f"{settings.hub_api_internal_url}/api/apps/{settings.APP_SLUG}/backup",
                             headers={"Authorization": f"Bearer {token}"}
                         )
                         

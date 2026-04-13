@@ -16,14 +16,26 @@ if [ -z "$APP_HOST" ]; then
     # Méthode 1 : Via la route par défaut (IP de sortie)
     DETECTED_IP=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'src \K\S+' || true)
     
-    # Méthode 2 : Si l'IP détectée est une IP Docker (172.x), utiliser HUB_HOST
+    # Méthode 2 : Si l'IP est une IP Docker interne (172.x ou réseau bridge custom),
+    # utiliser HUB_HOST car l'app est sur le même serveur
+    # On compare avec la gateway Docker pour détecter une IP de conteneur
+    DOCKER_GATEWAY=$(ip route 2>/dev/null | grep default | awk '{print $3}' || true)
+    IS_DOCKER_IP=false
     if [ -z "$DETECTED_IP" ] || [[ "$DETECTED_IP" == 172.* ]]; then
-        # Dans Docker, on utilise HUB_HOST comme fallback (même serveur)
-        if [ -n "$HUB_HOST" ]; then
-            export APP_HOST="$HUB_HOST"
-            echo -e "${GREEN}🌐 APP_HOST auto-détecté (même serveur que Hub): $APP_HOST${NC}"
+        IS_DOCKER_IP=true
+    elif [ -n "$DOCKER_GATEWAY" ] && [ -n "$DETECTED_IP" ]; then
+        # Si l'IP détectée est sur le même sous-réseau que la gateway Docker, c'est une IP conteneur
+        DETECTED_PREFIX=$(echo "$DETECTED_IP" | cut -d. -f1-3)
+        GATEWAY_PREFIX=$(echo "$DOCKER_GATEWAY" | cut -d. -f1-3)
+        if [ "$DETECTED_PREFIX" = "$GATEWAY_PREFIX" ]; then
+            IS_DOCKER_IP=true
         fi
-    else
+    fi
+
+    if [ "$IS_DOCKER_IP" = true ] && [ -n "$HUB_HOST" ]; then
+        export APP_HOST="$HUB_HOST"
+        echo -e "${GREEN}🌐 APP_HOST auto-détecté (même serveur que Hub): $APP_HOST${NC}"
+    elif [ -n "$DETECTED_IP" ]; then
         export APP_HOST="$DETECTED_IP"
         echo -e "${GREEN}🌐 APP_HOST auto-détecté: $APP_HOST${NC}"
     fi

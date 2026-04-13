@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     
     # Hub - Auto-détecté si non spécifié
     HUB_HOST: Optional[str] = None
+    HUB_INTERNAL_HOST: Optional[str] = None
     HUB_API_PORT: int = 8000
     HUB_FRONTEND_PORT: int = 80
     
@@ -146,7 +147,13 @@ class Settings(BaseSettings):
     # Environnement
     DEBUG: bool = False
     
-    @field_validator('APP_HOST', 'HUB_HOST', 'FRONTEND_HTTPS_PORT', mode='before')
+    @field_validator(
+        'APP_HOST',
+        'HUB_HOST',
+        'HUB_INTERNAL_HOST',
+        'FRONTEND_HTTPS_PORT',
+        mode='before'
+    )
     @classmethod
     def empty_str_to_none(cls, v):
         """Convertit les chaînes vides en None pour les chaînes optionnelles."""
@@ -168,11 +175,21 @@ class Settings(BaseSettings):
     def hub_host(self) -> str:
         """Host du Hub (auto-détecté si non spécifié)."""
         return self.HUB_HOST or self.local_ip
+
+    @property
+    def hub_internal_host(self) -> str:
+        """Host interne du Hub pour les appels backend."""
+        return self.HUB_INTERNAL_HOST or self.hub_host
     
     @property
     def hub_api_url(self) -> str:
         """URL complète de l'API Hub (HTTP)."""
         return f"http://{self.hub_host}:{self.HUB_API_PORT}"
+
+    @property
+    def hub_api_internal_url(self) -> str:
+        """URL interne de l'API Hub pour les appels backend."""
+        return f"http://{self.hub_internal_host}:{self.HUB_API_PORT}"
     
     @property
     def hub_frontend_url(self) -> str:

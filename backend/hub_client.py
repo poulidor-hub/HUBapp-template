@@ -158,6 +158,14 @@ class HubClient:
         except Exception as e:
             logger.debug(f"Pas de credentials en cache: {e}")
         return False
+
+    def _clear_cached_credentials(self) -> None:
+        """Supprime les credentials locaux devenus invalides."""
+        self._credentials = None
+        try:
+            os.remove(CREDENTIALS_FILE)
+        except OSError:
+            pass
     
     async def register(self) -> bool:
         """
@@ -235,7 +243,7 @@ class HubClient:
                 logger.info(f"📍 Application LOCALE : enregistrement avec custom_host={self.settings.app_host}")
             
             response = await client.post(
-                f"{self.settings.hub_api_url}/api/apps/register",
+                f"{self.settings.hub_api_internal_url}/api/apps/register",
                 json=payload
             )
             
@@ -267,7 +275,11 @@ class HubClient:
                 return False
                     
         except httpx.RequestError as e:
-            logger.error(f"❌ Impossible de contacter le Hub: {e}")
+            logger.error(
+                f"❌ Impossible de contacter le Hub via "
+                f"{self.settings.hub_api_internal_url}: "
+                f"{type(e).__name__}: {e!r}"
+            )
             return False
     
     async def _recover_credentials(self) -> bool:
@@ -281,7 +293,7 @@ class HubClient:
                 client = await self._get_client()
                 logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
                 response = await client.post(
-                    f"{self.settings.hub_api_url}/api/apps/me/regenerate-secret",
+                    f"{self.settings.hub_api_internal_url}/api/apps/me/regenerate-secret",
                     headers={"X-Slug": self.settings.APP_SLUG}
                 )
                 
@@ -298,11 +310,22 @@ class HubClient:
                     logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}' (resync #{self._resync_count})")
                     logger.debug(f"   Client ID: {self._credentials.client_id}")
                     return True
+                elif response.status_code == 404:
+                    logger.warning(
+                        f"⚠️ Application '{self.settings.APP_SLUG}' introuvable sur le Hub, "
+                        f"réinscription avec suppression du cache local"
+                    )
+                    self._clear_cached_credentials()
+                    return await self._do_register()
                 else:
                     logger.error(f"❌ Impossible de récupérer les credentials: {response.status_code} - {response.text}")
                     return False
             except httpx.RequestError as e:
-                logger.error(f"❌ Erreur récupération credentials: {e}")
+                logger.error(
+                    f"❌ Erreur récupération credentials via "
+                    f"{self.settings.hub_api_internal_url}: "
+                    f"{type(e).__name__}: {e!r}"
+                )
                 return False
             finally:
                 logger.debug(f"🔓 Lock libéré")
@@ -367,7 +390,7 @@ class HubClient:
         try:
             client = await self._get_client()
             response = await client.post(
-                f"{self.settings.hub_api_url}/api/auth/token",
+                f"{self.settings.hub_api_internal_url}/api/auth/token",
                 data={
                     "grant_type": "client_credentials",
                     "client_id": self._credentials.client_id,
@@ -417,11 +440,7 @@ class HubClient:
                 if _retry_count < MAX_RESYNC_ATTEMPTS:
                     logger.warning(f"⚠️ Erreur 403 - SA désactivé (tentative {_retry_count + 1}/{MAX_RESYNC_ATTEMPTS}), réenregistrement...")
                     # Invalider les credentials actuelles pour forcer un nouvel enregistrement
-                    self._credentials = None
-                    try:
-                        os.remove(CREDENTIALS_FILE)
-                    except OSError:
-                        pass
+                    self._clear_cached_credentials()
                     if await self.register():
                         backoff = 2 ** _retry_count
                         logger.info(f"🔄 Retry après réenregistrement (backoff {backoff}s)...")
@@ -437,7 +456,11 @@ class HubClient:
                 return None
                     
         except httpx.RequestError as e:
-            logger.error(f"❌ Erreur obtention token M2M: {e}")
+            logger.error(
+                f"❌ Erreur obtention token M2M via "
+                f"{self.settings.hub_api_internal_url}: "
+                f"{type(e).__name__}: {e!r}"
+            )
             return None
     
     async def ensure_valid_credentials(self) -> bool:
@@ -462,7 +485,7 @@ class HubClient:
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
+                f"{self.settings.hub_api_internal_url}/api/auth/.well-known/jwks.json"
             )
             
             if response.status_code == 200:
@@ -474,7 +497,11 @@ class HubClient:
                 return None
                     
         except httpx.RequestError as e:
-            logger.error(f"❌ Erreur récupération JWKS: {e}")
+            logger.error(
+                f"❌ Erreur récupération JWKS via "
+                f"{self.settings.hub_api_internal_url}: "
+                f"{type(e).__name__}: {e!r}"
+            )
             return None
     
     async def fetch_public_key(self) -> Optional[str]:
@@ -487,7 +514,7 @@ class HubClient:
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.settings.hub_api_url}/api/auth/public-key"
+                f"{self.settings.hub_api_internal_url}/api/auth/public-key"
             )
             
             if response.status_code == 200:
@@ -500,7 +527,11 @@ class HubClient:
                 return None
                     
         except httpx.RequestError as e:
-            logger.error(f"❌ Erreur récupération clé publique: {e}")
+            logger.error(
+                f"❌ Erreur récupération clé publique via "
+                f"{self.settings.hub_api_internal_url}: "
+                f"{type(e).__name__}: {e!r}"
+            )
             return None
 
     async def discover_services(self, force_refresh: bool = False) -> Dict[str, DiscoveredService]:
@@ -534,7 +565,7 @@ class HubClient:
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.settings.hub_api_url}/api/apps/discover",
+                f"{self.settings.hub_api_internal_url}/api/apps/discover",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Slug": self.settings.APP_SLUG
@@ -808,7 +839,7 @@ class HubClient:
             logger.error(f"❌ Impossible d'obtenir un token M2M pour appeler le Hub")
             return None
         
-        url = f"{self.settings.hub_api_url.rstrip('/')}{endpoint}"
+        url = f"{self.settings.hub_api_internal_url.rstrip('/')}{endpoint}"
         logger.debug(f"📡 Appel Hub: {method} {url}")
         
         try:

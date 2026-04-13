@@ -163,7 +163,7 @@ class HubAuth:
             cache_data = {
                 "keys": keys_data,
                 "cached_at": utcnow().isoformat(),
-                "hub_url": self.settings.hub_api_url,
+                "hub_url": self.settings.hub_api_internal_url,
             }
             
             with open(JWKS_PERSISTENT_CACHE_PATH, "w") as f:
@@ -201,7 +201,7 @@ class HubAuth:
                 return None
             
             # Vérifier que c'est le bon Hub
-            if cache_data.get("hub_url") != self.settings.hub_api_url:
+            if cache_data.get("hub_url") != self.settings.hub_api_internal_url:
                 logger.warning("⚠️ Cache JWKS persistant provient d'un Hub différent")
                 return None
             
@@ -273,7 +273,7 @@ class HubAuth:
         """
         # Tentative 1: JWKS (méthode recommandée - standard OIDC)
         try:
-            jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
+            jwks_url = f"{self.settings.hub_api_internal_url}/api/auth/.well-known/jwks.json"
             self._jwk_client = PyJWKClient(
                 jwks_url,
                 cache_keys=True,
@@ -331,7 +331,7 @@ class HubAuth:
         
         # Réinitialiser et tenter de récupérer les clés
         try:
-            jwks_url = f"{self.settings.hub_api_url}/api/auth/.well-known/jwks.json"
+            jwks_url = f"{self.settings.hub_api_internal_url}/api/auth/.well-known/jwks.json"
             self._jwk_client = PyJWKClient(
                 jwks_url,
                 cache_keys=True,
