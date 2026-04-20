@@ -86,7 +86,15 @@ async def send_user_message(
     action_url: str = None,
     action_label: str = None,
     expires_at: str = None,
+    is_resend: bool = False,
+    original_hub_message_id: int = None,
 ) -> Optional[dict]:
+```
+
+Pour un usage avec payload brut (renvoi ou champs custom), le raccourci `send_message` est aussi disponible :
+
+```python
+async def send_message(self, payload: dict) -> Optional[dict]:
 ```
 
 Cette methode construit le payload puis appelle directement le Hub via :
@@ -107,6 +115,8 @@ Cette methode construit le payload puis appelle directement le Hub via :
 | `action_url` | `str` | Non | Lien cliquable dans l'UI |
 | `action_label` | `str` | Non | Libelle du bouton d'action |
 | `expires_at` | `str` | Non | Date ISO 8601 d'expiration |
+| `is_resend` | `bool` | Non | Marquer comme renvoi (le Hub prefixe le titre avec `[Renvoi]`) |
+| `original_hub_message_id` | `int` | Non | ID du message original cote Hub (tracabilite du renvoi) |
 
 Exemple du JSON envoye :
 
@@ -139,6 +149,32 @@ async def notifier_validation(target_usernames: list[str], dossier_id: int) -> d
         action_url=f"https://mon-app.exemple.fr/dossiers/{dossier_id}",
         action_label="Ouvrir",
     )
+```
+
+### Exemple de renvoi (resend)
+
+Pour renvoyer un ancien message a de nouveaux destinataires, utiliser les champs `is_resend` et `original_hub_message_id`. Le Hub prefixera automatiquement le titre avec `[Renvoi]`.
+
+```python
+# Avec les parametres nommes
+await hub_client.send_user_message(
+    target_usernames=["charlie"],
+    title="Validation requise",
+    body="Le dossier 1842 attend votre validation.",
+    priority="warning",
+    is_resend=True,
+    original_hub_message_id=42,
+)
+
+# Ou avec un payload brut via send_message()
+await hub_client.send_message({
+    "title": "Validation requise",
+    "target_usernames": ["charlie"],
+    "priority": "warning",
+    "body": "Le dossier 1842 attend votre validation.",
+    "is_resend": True,
+    "original_hub_message_id": 42,
+})
 ```
 
 ### Endpoint de demonstration deja disponible dans le template

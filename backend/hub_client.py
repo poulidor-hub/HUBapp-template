@@ -767,7 +767,9 @@ class HubClient:
         priority: str = "info",
         action_url: Optional[str] = None,
         action_label: Optional[str] = None,
-        expires_at: Optional[str] = None
+        expires_at: Optional[str] = None,
+        is_resend: bool = False,
+        original_hub_message_id: Optional[int] = None
     ) -> Optional[dict]:
         """
         Envoie un message à des utilisateurs via le Hub (M2M).
@@ -780,6 +782,8 @@ class HubClient:
             action_url: URL d'action optionnelle (lien cliquable)
             action_label: Libellé du bouton d'action (optionnel)
             expires_at: Date d'expiration ISO (optionnel)
+            is_resend: Marquer comme renvoi (le Hub préfixe le titre avec [Renvoi])
+            original_hub_message_id: ID du message original côté Hub (traçabilité)
         
         Returns:
             Réponse JSON du Hub ou None si erreur
@@ -797,6 +801,10 @@ class HubClient:
             payload["action_label"] = action_label
         if expires_at:
             payload["expires_at"] = expires_at
+        if is_resend:
+            payload["is_resend"] = True
+        if original_hub_message_id is not None:
+            payload["original_hub_message_id"] = original_hub_message_id
 
         result = await self.call_hub_endpoint(
             "/api/messages/m2m/send",
@@ -808,6 +816,25 @@ class HubClient:
         else:
             logger.error(f"❌ Erreur envoi message: {result}")
         return result
+
+    async def send_message(self, payload: dict) -> Optional[dict]:
+        """
+        Envoie un message via le Hub M2M avec un payload brut.
+        
+        Raccourci pour call_hub_endpoint("/api/messages/m2m/send", ...).
+        Utile quand le payload est déjà construit (ex: renvoi avec champs custom).
+        
+        Args:
+            payload: Dict contenant au minimum title et target_usernames
+        
+        Returns:
+            Réponse JSON du Hub ou None si erreur
+        """
+        return await self.call_hub_endpoint(
+            "/api/messages/m2m/send",
+            method="POST",
+            json=payload
+        )
 
     async def call_hub_endpoint(
         self,
