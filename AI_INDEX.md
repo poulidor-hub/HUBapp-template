@@ -64,26 +64,58 @@
   - [Ligne 310] Fonction : def generate_changelog_template()
   - [Ligne 341] Fonction : def main()
 
+### ⚛️ `frontend/src/config.js`
+  - [Ligne 8] Composant : APP_VERSION
+
+### ⚛️ `frontend/src/App.jsx`
+  - [Ligne 14] Composant : App
+
+### ⚛️ `frontend/src/components/M2MTests.jsx`
+  - [Ligne 6] Composant : AVAILABLE_ENDPOINTS
+  - [Ligne 105] Composant : ENDPOINT_CATEGORIES
+  - [Ligne 107] Composant : M2MTests
+
+### ⚛️ `frontend/src/components/LoginPrompt.jsx`
+  - [Ligne 4] Composant : LoginPrompt
+
+### ⚛️ `frontend/src/components/MessageBanner.jsx`
+  - [Ligne 11] Composant : MessageBanner
+
+### ⚛️ `frontend/src/components/TokenCard.jsx`
+  - [Ligne 4] Composant : TokenCard
+
+### ⚛️ `frontend/src/components/UserCard.jsx`
+  - [Ligne 5] Composant : UserCard
+
+### ⚛️ `frontend/src/components/EndpointTests.jsx`
+  - [Ligne 5] Composant : ENDPOINTS
+  - [Ligne 16] Composant : EndpointTests
+
+### ⚛️ `frontend/src/components/DataTable.jsx`
+  - [Ligne 7] Composant : CATEGORIES
+  - [Ligne 9] Composant : DataTable
+
+### ⚛️ `frontend/src/components/Header.jsx`
+  - [Ligne 6] Composant : Header
+
+### ⚛️ `frontend/src/components/MessageArchive.jsx`
+  - [Ligne 9] Composant : MessageArchive
+
+### ⚛️ `frontend/src/context/ConfigContext.jsx`
+  - [Ligne 4] Composant : ConfigContext
+  - [Ligne 6] Composant : ConfigProvider
+
+### ⚛️ `frontend/src/context/AuthContext.jsx`
+  - [Ligne 5] Composant : AuthContext
+  - [Ligne 69] Composant : AuthProvider
+
 ### 📄 `backend/storage.py`
   - [Ligne 23] Classe : class StorageManager
 
-### 📄 `backend/models.py`
-  - [Ligne 11] Classe : class Item
-  - [Ligne 40] Classe : class UserPreference
-  - [Ligne 66] Classe : class UploadedFile
-  - [Ligne 133] Classe : class TestData
-
-### 📄 `backend/config.py`
-  - [Ligne 13] Fonction : def get_app_version()
-  - [Ligne 29] Fonction : def get_docker_host_ip()
-  - [Ligne 72] Fonction : def is_running_in_docker()
-  - [Ligne 86] Fonction : def get_local_ip()
-  - [Ligne 108] Classe : class Settings
-  - [Ligne 226] Fonction : def get_settings()
-
-### 📄 `backend/database.py`
-  - [Ligne 16] Classe : class Base
-  - [Ligne 78] Fonction : def _strip_sql_comments()
+### 📄 `backend/hub_client.py`
+  - [Ligne 54] Classe : class DiscoveredService
+  - [Ligne 76] Classe : class HubCredentials
+  - [Ligne 84] Classe : class HubClient
 
 ### 📄 `backend/hub_auth.py`
   - [Ligne 39] Classe : class RoleLevel
@@ -94,11 +126,6 @@
   - [Ligne 675] Fonction : def require_role()
   - [Ligne 709] Fonction : def require_any_role()
   - [Ligne 738] Fonction : def require_service_account()
-
-### 📄 `backend/hub_client.py`
-  - [Ligne 54] Classe : class DiscoveredService
-  - [Ligne 76] Classe : class HubCredentials
-  - [Ligne 84] Classe : class HubClient
 
 ### 📄 `backend/schemas.py`
   - [Ligne 11] Classe : class ItemBase
@@ -131,9 +158,45 @@
   - [Ligne 278] Classe : class TestDataResponse
   - [Ligne 289] Classe : class TestDataListResponse
 
+### 📄 `backend/models.py`
+  - [Ligne 11] Classe : class Item
+  - [Ligne 40] Classe : class UserPreference
+  - [Ligne 66] Classe : class UploadedFile
+  - [Ligne 133] Classe : class TestData
+
 ### 📄 `backend/utils.py`
   - [Ligne 6] Fonction : def human_readable_size()
   - [Ligne 15] Fonction : def human_readable_duration()
+
+### 📄 `backend/database.py`
+  - [Ligne 16] Classe : class Base
+  - [Ligne 78] Fonction : def _strip_sql_comments()
+
+### 📄 `backend/config.py`
+  - [Ligne 13] Fonction : def get_app_version()
+  - [Ligne 29] Fonction : def get_docker_host_ip()
+  - [Ligne 72] Fonction : def is_running_in_docker()
+  - [Ligne 86] Fonction : def get_local_ip()
+  - [Ligne 108] Classe : class Settings
+  - [Ligne 243] Fonction : def get_settings()
+
+### 📄 `backend/tests/test_items.py`
+  - [Ligne 8] Classe : class TestItemsCRUD
+  - [Ligne 147] Classe : class TestItemsValidation
+
+### 📄 `backend/tests/test_preferences.py`
+  - [Ligne 8] Classe : class TestPreferences
+
+### 📄 `backend/tests/test_auth.py`
+  - [Ligne 8] Classe : class TestPublicEndpoints
+  - [Ligne 42] Classe : class TestProtectedEndpoints
+  - [Ligne 72] Classe : class TestRoleEndpoints
+
+### 📄 `backend/tests/test_m2m.py`
+  - [Ligne 14] Classe : class TestM2MAuthentication
+  - [Ligne 45] Classe : class TestM2MServiceDiscovery
+  - [Ligne 66] Classe : class TestM2MEndpoints
+  - [Ligne 91] Classe : class TestCrossServiceCommunication
 
 ### 📄 `backend/tests/test_backup.py`
   - [Ligne 28] Fonction : def temp_uploads_dir()
@@ -150,33 +213,6 @@
   - [Ligne 652] Classe : class TestBackupRestoreIntegration
   - [Ligne 686] Classe : class TestUploadedFileModel
 
-### 📄 `backend/tests/conftest.py`
-  - [Ligne 30] Fonction : def event_loop()
-  - [Ligne 38] Fonction : def settings()
-  - [Ligne 81] Fonction : def mock_hub_client()
-  - [Ligne 92] Fonction : def mock_hub_auth()
-  - [Ligne 100] Fonction : def create_mock_token()
-  - [Ligne 202] Fonction : def mock_m2m_token()
-  - [Ligne 226] Fonction : def mock_hub_client_with_m2m()
-
-### 📄 `backend/tests/test_preferences.py`
-  - [Ligne 8] Classe : class TestPreferences
-
-### 📄 `backend/tests/test_m2m.py`
-  - [Ligne 14] Classe : class TestM2MAuthentication
-  - [Ligne 45] Classe : class TestM2MServiceDiscovery
-  - [Ligne 66] Classe : class TestM2MEndpoints
-  - [Ligne 91] Classe : class TestCrossServiceCommunication
-
-### 📄 `backend/tests/test_items.py`
-  - [Ligne 8] Classe : class TestItemsCRUD
-  - [Ligne 147] Classe : class TestItemsValidation
-
-### 📄 `backend/tests/test_auth.py`
-  - [Ligne 8] Classe : class TestPublicEndpoints
-  - [Ligne 42] Classe : class TestProtectedEndpoints
-  - [Ligne 72] Classe : class TestRoleEndpoints
-
 ### 📄 `backend/tests/test_services.py`
   - [Ligne 14] Classe : class TestAllServicesEndpoint
   - [Ligne 70] Classe : class TestHubConnectionEndpoint
@@ -187,15 +223,14 @@
   - [Ligne 206] Classe : class TestSendTestMessageEndpoint
   - [Ligne 296] Classe : class TestSSEDemoEndpoint
 
-### 📄 `backend/routes/docs.py`
-  - [Ligne 16] Fonction : def get_changelog_path()
-  - [Ligne 38] Fonction : def parse_changelog_versions()
-  - [Ligne 62] Fonction : def extract_version_content()
-
-### 📄 `backend/routes/backup.py`
-  - [Ligne 67] Fonction : def _compute_checksum()
-  - [Ligne 72] Fonction : def _serialize_value()
-  - [Ligne 95] Fonction : def _deserialize_value()
+### 📄 `backend/tests/conftest.py`
+  - [Ligne 30] Fonction : def event_loop()
+  - [Ligne 38] Fonction : def settings()
+  - [Ligne 81] Fonction : def mock_hub_client()
+  - [Ligne 92] Fonction : def mock_hub_auth()
+  - [Ligne 100] Fonction : def create_mock_token()
+  - [Ligne 202] Fonction : def mock_m2m_token()
+  - [Ligne 226] Fonction : def mock_hub_client_with_m2m()
 
 ### 📄 `backend/routes/tests.py`
   - [Ligne 39] Classe : class ServiceTestResult
@@ -205,48 +240,13 @@
   - [Ligne 121] Fonction : def _normalize_optional_text()
   - [Ligne 130] Fonction : def _normalize_target_usernames()
 
-### ⚛️ `frontend/src/config.js`
-  - [Ligne 8] Composant : APP_VERSION
+### 📄 `backend/routes/backup.py`
+  - [Ligne 67] Fonction : def _compute_checksum()
+  - [Ligne 72] Fonction : def _serialize_value()
+  - [Ligne 95] Fonction : def _deserialize_value()
 
-### ⚛️ `frontend/src/App.jsx`
-  - [Ligne 14] Composant : App
-
-### ⚛️ `frontend/src/components/EndpointTests.jsx`
-  - [Ligne 5] Composant : ENDPOINTS
-  - [Ligne 16] Composant : EndpointTests
-
-### ⚛️ `frontend/src/components/Header.jsx`
-  - [Ligne 6] Composant : Header
-
-### ⚛️ `frontend/src/components/TokenCard.jsx`
-  - [Ligne 4] Composant : TokenCard
-
-### ⚛️ `frontend/src/components/MessageArchive.jsx`
-  - [Ligne 9] Composant : MessageArchive
-
-### ⚛️ `frontend/src/components/M2MTests.jsx`
-  - [Ligne 6] Composant : AVAILABLE_ENDPOINTS
-  - [Ligne 105] Composant : ENDPOINT_CATEGORIES
-  - [Ligne 107] Composant : M2MTests
-
-### ⚛️ `frontend/src/components/DataTable.jsx`
-  - [Ligne 7] Composant : CATEGORIES
-  - [Ligne 9] Composant : DataTable
-
-### ⚛️ `frontend/src/components/UserCard.jsx`
-  - [Ligne 5] Composant : UserCard
-
-### ⚛️ `frontend/src/components/MessageBanner.jsx`
-  - [Ligne 11] Composant : MessageBanner
-
-### ⚛️ `frontend/src/components/LoginPrompt.jsx`
-  - [Ligne 4] Composant : LoginPrompt
-
-### ⚛️ `frontend/src/context/ConfigContext.jsx`
-  - [Ligne 4] Composant : ConfigContext
-  - [Ligne 6] Composant : ConfigProvider
-
-### ⚛️ `frontend/src/context/AuthContext.jsx`
-  - [Ligne 5] Composant : AuthContext
-  - [Ligne 69] Composant : AuthProvider
+### 📄 `backend/routes/docs.py`
+  - [Ligne 16] Fonction : def get_changelog_path()
+  - [Ligne 38] Fonction : def parse_changelog_versions()
+  - [Ligne 62] Fonction : def extract_version_content()
 
