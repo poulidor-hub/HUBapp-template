@@ -7,7 +7,7 @@ Le point cle est le suivant :
 - l'envoi d'un message se fait cote backend, avec le service account M2M de l'application ;
 - la reception, l'affichage et l'accuse de lecture se font cote frontend, avec le token utilisateur Hub.
 
-Autrement dit, le systeme de messages du template n'est pas un simple bloc M2M. C'est un assemblage backend + frontend + proxy HTTPS.
+Autrement dit, le systeme de messages du template n'est pas un simple bloc M2M. C'est un assemblage backend + frontend + proxy nginx `/hub/`.
 
 ## Resume executif
 
@@ -22,7 +22,7 @@ alors il suffit generalement d'ajouter :
 1. un helper backend qui appelle l'endpoint Hub `/api/messages/m2m/send` ;
 2. la logique frontend qui ecoute `/api/events/stream` et charge `/api/messages/me` ;
 3. les composants d'interface de messages ;
-4. le proxy `/hub/` si l'application tourne en HTTPS.
+4. le proxy `/hub/` si l'application tourne derriere nginx ; en HTTPS il devient obligatoire.
 
 ## Architecture reelle du template
 
@@ -49,7 +49,7 @@ Consequences importantes :
 - il n'expose pas d'endpoint local `/api/messages/*` ;
 - la source de verite des messages est le Hub ;
 - le backend sert surtout a envoyer des messages via M2M ;
-- le frontend parle directement au Hub pour lire les messages et ouvrir le flux SSE.
+- le frontend parle au Hub via `hubApiUrl` : acces direct en Vite dev, proxy same-origin `/hub` derriere nginx.
 
 ## Fichiers du template concernes
 
@@ -57,10 +57,13 @@ Consequences importantes :
 |------|---------|------|------------------------------------|
 | Backend | `backend/hub_client.py` | Obtention du token M2M, appel direct au Hub, helper `send_user_message` | Oui |
 | Backend | `backend/main.py` | Expose `/api/config` avec `hub_api_url` et `hub_frontend_url` | Oui |
+| Backend | `backend/routes/tests.py` | Endpoint smoke test `POST /api/tests/messages/send` | Optionnel |
 | Backend | `backend/routes/m2m.py` | Diagnostics admin M2M (`status`, `discover`, `call`) | Optionnel |
-| Frontend | `frontend/src/config.js` | Construction des URLs Hub/locales selon HTTP ou HTTPS | Oui |
-| Frontend | `frontend/src/context/ConfigContext.jsx` | Charge la config backend et bascule vers `/hub` en HTTPS | Oui |
+| Frontend | `frontend/src/config.js` | Construction des URLs Hub/locales selon le mode Vite dev ou nginx same-origin | Oui |
+| Frontend | `frontend/src/context/ConfigContext.jsx` | Charge `/api/config`, garde l'acces direct en Vite dev et force `/hub` derriere nginx | Oui |
 | Frontend | `frontend/src/context/AuthContext.jsx` | Token utilisateur, refresh, SSE, chargement des messages, accusés de lecture | Oui |
+| Frontend | `frontend/src/main.jsx` | Monte `ConfigProvider`, `AuthProvider` et `QueryClientProvider` | Optionnel |
+| Frontend | `frontend/src/lib/queryClient.js` | Configuration TanStack Query globale ; non utilisee directement par le flux messages | Non |
 | Frontend | `frontend/src/components/MessageBanner.jsx` | Notifications flottantes actives | Oui |
 | Frontend | `frontend/src/components/MessageArchive.jsx` | Historique et badge de messages | Oui |
 | Frontend | `frontend/src/styles/index.css` | Styles `message-banner*` et `message-archive*` | Oui |
@@ -189,6 +192,7 @@ Caracteristiques :
 
 - acces reserve aux admins ;
 - si `target_usernames` est absent ou vide, le message part vers l'utilisateur courant ;
+- les usernames sont nettoyes et dedupliques, et les champs texte vides sont ignores ;
 - l'endpoint appelle directement `hub_client.send_user_message(...)` ;
 - si le Hub refuse ou ne confirme pas l'envoi, la route retourne `502`.
 
@@ -254,17 +258,21 @@ Le frontend depend de `/api/config`, expose par `backend/main.py`, qui retourne 
 
 Cette reponse est chargee par `frontend/src/context/ConfigContext.jsx`.
 
-En HTTPS, `ConfigContext` et `frontend/src/config.js` remplacent automatiquement `hub_api_url` par :
+Le comportement reel du template est le suivant :
+
+- en Vite dev (port `3000`), le frontend utilise les URLs directes du backend et du Hub ;
+- derriere nginx, en HTTP comme en HTTPS, `frontend/src/config.js` et `frontend/src/context/ConfigContext.jsx` forcent les appels navigateur vers le meme origin :
 
 ```text
-https://<origin-app>/hub
+apiUrl = <origin-app>
+hubApiUrl = <origin-app>/hub
 ```
 
-Ce point est indispensable pour eviter le mixed content et pour faire passer le SSE via le proxy nginx.
+En pratique, `hub_api_url` retourne par `/api/config` sert surtout de fallback et de mode dev. En mode nginx, le refresh token, le SSE et les appels `/api/messages/*` passent par `/hub/*`. En HTTPS, ce point est indispensable pour eviter le mixed content.
 
 ### 2. Endpoints Hub utilises par le frontend
 
-Le frontend du template appelle directement les endpoints Hub suivants :
+Le frontend du template appelle les endpoints Hub suivants, directement en Vite dev et via `/hub/*` derriere nginx :
 
 | Endpoint Hub | Methode | Usage |
 |--------------|---------|-------|
@@ -281,6 +289,18 @@ Tous les appels HTTP ci-dessus, sauf le SSE, sont faits avec :
 Authorization: Bearer <token_utilisateur>
 ```
 
+### 2 bis. Pourquoi la messagerie ne passe pas par TanStack Query
+
+Le template embarque maintenant `QueryClientProvider`, `useApiQuery` et `useApiMutation` pour les appels a l'API locale.
+
+La brique messages reste volontairement dans `frontend/src/context/AuthContext.jsx` avec des `fetch` directs et un `EventSource` natif, pour trois raisons :
+
+- elle cible les endpoints Hub et non l'API metier locale ;
+- elle depend de l'etat d'authentification Hub et du refresh token ;
+- le SSE navigateur repose sur `EventSource`, qui ne rentre pas proprement dans les hooks CRUD generiques du template.
+
+Autrement dit, l'ajout de TanStack Query dans le repo ne remplace pas la logique messages actuelle.
+
 ### 3. Gestion du flux SSE
 
 Dans `frontend/src/context/AuthContext.jsx`, la connexion est ouverte avec :
@@ -289,6 +309,8 @@ Dans `frontend/src/context/AuthContext.jsx`, la connexion est ouverte avec :
 const sseUrl = `${hubApiUrl}/api/events/stream`
 const eventSource = new EventSource(sseUrl)
 ```
+
+Dans le template actuel, `hubApiUrl` vaut l'URL Hub directe en Vite dev et `${window.location.origin}/hub` des que le frontend tourne derriere nginx.
 
 Le code actuel traite les evenements suivants :
 
@@ -397,11 +419,15 @@ Si vous reprenez `MessageBanner.jsx` tel quel, l'application doit avoir :
 - `react`
 - `react-dom`
 
-## HTTPS et proxy `/hub/`
+## Proxy `/hub/`, HTTP et HTTPS
 
-### Pourquoi le proxy est obligatoire en HTTPS
+### Pourquoi le proxy est utilise derriere nginx, et obligatoire en HTTPS
 
-Quand le frontend tourne en HTTPS, le Hub reste appele en HTTP interne dans ce template. Sans proxy, le navigateur bloquera :
+Quand le frontend tourne derriere nginx, le template fait passer les appels Hub navigateur par `/hub/`.
+
+En HTTP, cela permet de rester en same-origin et d'eviter d'introduire une logique CORS/SSE specifique dans le frontend.
+
+En HTTPS, le Hub reste appele en HTTP interne dans ce template. Sans proxy, le navigateur bloquera :
 
 - les appels fetch vers le Hub ;
 - le flux SSE ;
@@ -418,7 +444,12 @@ Le proxy `/hub/` doit au minimum :
 - desactiver le cache ;
 - autoriser une longue lecture (`proxy_read_timeout` eleve).
 
-Le template le fait deja, y compris dans la configuration SSL.
+Le template le fait deja :
+
+- en HTTP, `nginx.conf` desactive `proxy_buffering`, desactive le cache et garde un `proxy_read_timeout` de 24h ;
+- en HTTPS, `nginx-ssl.conf` ajoute en plus `proxy_set_header Connection ''` et `chunked_transfer_encoding off` pour fiabiliser le SSE.
+
+Exception : en Vite dev, ce proxy n'existe pas et le frontend appelle directement le Hub par port.
 
 ## Procedure de retrofit pour une ancienne application deja M2M
 
@@ -435,7 +466,7 @@ Dans ce cas, reprendre seulement :
 
 1. l'equivalent de `send_user_message()` cote backend ;
 2. l'exposition de `hub_api_url` et `hub_frontend_url` dans `/api/config` ;
-3. la logique message de `AuthContext` :
+3. la logique message de `AuthContext` (direct `fetch` + `EventSource`, hors hooks TanStack Query generiques) :
    - `unreadMessages`
    - `unreadCount`
    - `activeMessages`
@@ -444,7 +475,7 @@ Dans ce cas, reprendre seulement :
    - ecoute SSE `user_message`
 4. les composants `MessageBanner` et `MessageArchive` ;
 5. les styles CSS associes ;
-6. le proxy `/hub/` en HTTPS.
+6. le proxy `/hub/` en deploiement nginx, obligatoire en HTTPS.
 
 ### Option B : reprise large des briques du template
 
@@ -455,6 +486,7 @@ Dans ce cas, reprendre presque tels quels :
 - `frontend/src/config.js`
 - `frontend/src/context/ConfigContext.jsx`
 - les parties message de `frontend/src/context/AuthContext.jsx`
+- eventuellement `frontend/src/main.jsx` si vous avez besoin d'aligner l'ordre des providers ;
 - `frontend/src/components/MessageBanner.jsx`
 - `frontend/src/components/MessageArchive.jsx`
 - les styles correspondants
@@ -473,6 +505,7 @@ Pour la brique messages, le noyau utile reste :
 
 - un envoi backend vers `/api/messages/m2m/send` ;
 - une lecture frontend via `/api/messages/*` et `/api/events/stream` ;
+- un routage navigateur via `hubApiUrl` : direct en dev, `/hub` derriere nginx ;
 - l'UI de consultation et de fermeture.
 
 ## Check-list de migration
@@ -488,18 +521,20 @@ Pour la brique messages, le noyau utile reste :
 ### Frontend
 
 - [ ] Le frontend connait `hubApiUrl` et `hubFrontendUrl`.
+- [ ] En mode nginx, `hubApiUrl` pointe vers `${window.location.origin}/hub` ; en Vite dev, il peut rester direct.
 - [ ] Le frontend possede un token utilisateur et un refresh token Hub.
 - [ ] Le frontend charge `GET /api/messages/me/unread-count` au login.
 - [ ] Le frontend charge `GET /api/messages/me` au login.
 - [ ] Le frontend ouvre `EventSource(${hubApiUrl}/api/events/stream)`.
 - [ ] Le frontend sait appeler `POST /api/messages/{id}/read`.
 - [ ] Le frontend sait appeler `POST /api/messages/read-all`.
+- [ ] La logique messages reste dans le contexte d'auth et ne depend pas des hooks CRUD TanStack Query.
 - [ ] `MessageBanner` et `MessageArchive` sont montes dans l'application.
 - [ ] Les styles des deux composants sont presents.
 
 ### Infra
 
-- [ ] En HTTPS, le proxy `/hub/` est configure.
+- [ ] En deploiement derriere nginx, le proxy `/hub/` est configure ; en HTTPS il est obligatoire.
 - [ ] Le proxy SSE desactive le buffering.
 - [ ] Le timeout de lecture SSE est suffisamment long.
 
@@ -512,7 +547,7 @@ Pour la brique messages, le noyau utile reste :
 5. Verifier que le badge de `MessageArchive` augmente.
 6. Verifier que "Fermer" marque le message comme lu.
 7. Verifier que "Tout fermer" ou "tout marquer comme lu" remet le compteur a zero.
-8. Verifier qu'en HTTPS il n'y a ni mixed content, ni blocage du SSE.
+8. Verifier qu'en deploiement nginx, le SSE passe bien par `/hub/api/events/stream`, et qu'en HTTPS il n'y a ni mixed content, ni blocage du SSE.
 
 ## Points d'attention
 
@@ -524,7 +559,13 @@ Avant retrofit, verifier donc que votre mode d'auth SSE cote Hub est compatible 
 
 ### L'UI de messages ne depend pas du backend metier local
 
-Le backend local n'est pas sollicite pour lire ou marquer les messages. Si vous supprimez le proxy `/hub/` ou l'exposition de `hub_api_url`, l'interface de messages cessera de fonctionner meme si le M2M backend reste operationnel.
+Le backend local n'est pas sollicite pour lire ou marquer les messages. Si vous cassez la resolution de `hubApiUrl` ou le proxy `/hub/`, l'interface de messages cessera de fonctionner meme si le M2M backend reste operationnel.
+
+### TanStack Query n'est pas le moteur des messages
+
+Le repo utilise maintenant TanStack Query pour les appels API metier, mais le flux messages Hub reste branche sur `AuthContext` avec `fetch` et `EventSource`.
+
+Ne forcez pas cette brique dans `useApiQuery` ou `useApiMutation` sans repenser tout le cycle auth + SSE. Aujourd'hui, le comportement documente et implemente est un flux direct vers le Hub, pilote par `hubApiUrl`.
 
 ### Les routes admin M2M ne font pas partie du systeme de messages
 
@@ -537,8 +578,8 @@ Pour une application existante qui a deja le M2M, la meilleure approche est en g
 1. conserver le client M2M existant ;
 2. lui ajouter un helper `send_user_message()` compatible avec le contrat du template ;
 3. exposer les URLs Hub via `/api/config` ;
-4. greffer la logique frontend messages/SSE ;
+4. greffer la logique frontend messages/SSE dans le contexte d'auth existant ;
 5. reprendre l'UI et les styles du template ;
-6. valider le comportement en HTTPS avec le proxy `/hub/`.
+6. valider le comportement en mode nginx, avec le proxy `/hub/` ; en HTTPS, verifier explicitement le mixed content et le SSE.
 
 Cette approche limite le risque de regression, tout en recuperant exactement la logique et l'interface de messages du template.

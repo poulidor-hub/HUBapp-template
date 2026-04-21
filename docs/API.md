@@ -7,9 +7,9 @@ Cette documentation décrit tous les endpoints de l'API REST du template HUBapp.
 
 L'API propose une documentation Swagger/OpenAPI interactive :
 
-- **Swagger UI** : `http://localhost:8000/api/docs`
-- **ReDoc** : `http://localhost:8000/api/redoc`
-- **OpenAPI JSON** : `http://localhost:8000/api/openapi.json`
+- **Swagger UI** : `http://localhost:9045/api/docs`
+- **ReDoc** : `http://localhost:9045/api/redoc`
+- **OpenAPI JSON** : `http://localhost:9045/api/openapi.json`
 
 ---
 
@@ -91,9 +91,9 @@ Retourne la configuration publique pour le frontend.
 {
   "app_slug": "myapp",
   "app_name": "Mon Application",
-  "hub_frontend_url": "http://hub.example.com",
-  "hub_api_url": "http://hub.example.com/api",
-  "api_url": "http://localhost:8000/api"
+  "hub_frontend_url": "http://hub.example.com:80",
+  "hub_api_url": "http://hub.example.com:8000",
+  "api_url": "http://localhost:9045"
 }
 ```
 
@@ -1015,32 +1015,32 @@ Pour les erreurs de validation (422) :
 
 ```bash
 # Obtenir la config (sans auth)
-curl http://localhost:8000/api/config
+curl http://localhost:9045/api/config
 
 # Accéder à un endpoint protégé
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/me
+curl -H "Authorization: Bearer $TOKEN" http://localhost:9045/api/me
 ```
 
 ### CRUD Items
 
 ```bash
 # Lister les items (page 2, 10 par page)
-curl "http://localhost:8000/api/items?page=2&per_page=10"
+curl "http://localhost:9045/api/items?page=2&per_page=10"
 
 # Créer un item
-curl -X POST http://localhost:8000/api/items \
+curl -X POST http://localhost:9045/api/items \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title": "Mon Item", "description": "Test", "is_public": true}'
 
 # Modifier un item
-curl -X PUT http://localhost:8000/api/items/42 \
+curl -X PUT http://localhost:9045/api/items/42 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title": "Nouveau titre"}'
 
 # Supprimer un item
-curl -X DELETE http://localhost:8000/api/items/42 \
+curl -X DELETE http://localhost:9045/api/items/42 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -1048,10 +1048,10 @@ curl -X DELETE http://localhost:8000/api/items/42 \
 
 ```bash
 # Récupérer les préférences
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/preferences
+curl -H "Authorization: Bearer $TOKEN" http://localhost:9045/api/preferences
 
 # Modifier les préférences
-curl -X PUT http://localhost:8000/api/preferences \
+curl -X PUT http://localhost:9045/api/preferences \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"theme": "dark", "items_per_page": 50}'

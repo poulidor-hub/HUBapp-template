@@ -67,6 +67,8 @@ const { data } = useApiQuery({
 })
 ```
 
+En pratique, `useApiQuery` attend aussi que `config.apiUrl` soit disponible via `ConfigContext`. Tant que `/api/config` n'a pas été chargé, la query reste désactivée même si `auth` vaut `false`.
+
 **Paramètres :**
 
 | Paramètre | Type | Requis | Description |
@@ -76,6 +78,12 @@ const { data } = useApiQuery({
 | `params` | `object` | | Query parameters ajoutés à l'URL |
 | `auth` | `boolean` | | Si `true`, désactive la query quand il n'y a pas de token |
 | `...options` | | | Toute option valide de `useQuery` (staleTime, refetchInterval, enabled, etc.) |
+
+Note d'execution : le hook active la query seulement si `config.apiUrl` est defini, puis applique la condition d'authentification. Le comportement reel est donc :
+
+```jsx
+enabled: Boolean(config.apiUrl) && (!auth || Boolean(token))
+```
 
 ### `useApiMutation` — Mutations (POST/PUT/DELETE)
 

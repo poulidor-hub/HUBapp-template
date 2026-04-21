@@ -477,13 +477,13 @@ Chaque entrée contient :
 
 ```bash
 # Voir tout le changelog
-curl http://localhost:8000/api/docs/changelog
+curl http://localhost:9045/api/docs/changelog
 
 # Liste des versions
-curl http://localhost:8000/api/docs/changelog/versions
+curl http://localhost:9045/api/docs/changelog/versions
 
 # Détail d'une version
-curl http://localhost:8000/api/docs/changelog/1.5.0
+curl http://localhost:9045/api/docs/changelog/1.5.0
 ```
 
 ### Format des réponses
