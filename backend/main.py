@@ -55,8 +55,8 @@ async def hub_reconnection_loop():
     """
     Boucle de reconnexion automatique au Hub.
     Tourne en arrière-plan et tente de se reconnecter périodiquement
-    si l'application n'est pas enregistrée, si le token M2M est indisponible,
-    ou si l'auth Hub est indisponible.
+    si l'application n'est pas enregistrée, si le token M2M est indisponible
+    pour une app partagée, ou si l'auth Hub est indisponible.
     """
     RECONNECT_INTERVAL = 15  # secondes entre les tentatives
     
@@ -72,9 +72,11 @@ async def hub_reconnection_loop():
                     logger.info("✅ Enregistrement Hub réussi!")
                     await hub_auth.initialize()
             
-            # Cas 2: Token M2M indisponible (SA peut-être désactivé puis approuvé)
-            if hub_client.is_registered:
+            # Cas 2: Token M2M indisponible pour les apps partagées.
+            m2m_ok = True
+            if settings.IS_SHARED and hub_client.is_registered:
                 token = await hub_client.get_m2m_token()
+                m2m_ok = token is not None
                 if token:
                     logger.info("✅ Token M2M disponible, boucle de reconnexion terminée")
                     break
@@ -85,6 +87,15 @@ async def hub_reconnection_loop():
                 await hub_auth.initialize()
                 if hub_auth._jwks_available:
                     logger.info("✅ Connexion JWKS restaurée!")
+            
+            if (
+                hub_client.is_registered
+                and hub_auth._jwks_available
+                and hub_auth._hub_reachable
+                and m2m_ok
+            ):
+                logger.info("✅ Connexion Hub disponible, boucle de reconnexion terminée")
+                break
             
         except asyncio.CancelledError:
             logger.info("🛑 Arrêt de la boucle de reconnexion Hub")
@@ -122,8 +133,8 @@ async def lifespan(app: FastAPI):
     
     # 4. Découverte des services partagés (si IS_SHARED actif)
     discovered_count = 0
-    m2m_ok = False
-    if registered:
+    m2m_ok = not settings.IS_SHARED
+    if registered and settings.IS_SHARED:
         try:
             services = await hub_client.discover_services()
             discovered_count = len(services)
@@ -134,6 +145,8 @@ async def lifespan(app: FastAPI):
                 logger.info("🔍 Aucun service partagé découvert (IS_SHARED non activé ou aucun service disponible)")
         except Exception as e:
             logger.warning(f"⚠️ Erreur découverte services: {e}")
+    elif registered:
+        logger.info("🔍 Découverte M2M ignorée (IS_SHARED=false)")
     
     # 5. Stocker les infos de démarrage dans app.state
     app.state.startup_time = startup_time
@@ -234,16 +247,19 @@ async def health_check_detailed():
     
     # État de la connexion Hub
     hub_registered = hub_client.is_registered
-    hub_can_authenticate = False
-    if hub_registered:
+    hub_can_authenticate = bool(hub_auth._jwks_available)
+    m2m_token_available = None
+    if settings.IS_SHARED and hub_registered:
         try:
             token = await hub_client.get_m2m_token()
-            hub_can_authenticate = token is not None
+            m2m_token_available = token is not None
         except Exception:
             pass
     
     # Services découverts
-    discovered_services = await hub_client.list_discovered_services()
+    discovered_services = []
+    if settings.IS_SHARED:
+        discovered_services = await hub_client.list_discovered_services()
     services_cache_age = None
     if hub_client._discovered_services_fetched_at:
         services_cache_age = (now - hub_client._discovered_services_fetched_at).total_seconds()
@@ -263,6 +279,7 @@ async def health_check_detailed():
         "hub": {
             "connected": hub_registered,
             "can_authenticate": hub_can_authenticate,
+            "m2m_token_available": m2m_token_available,
             "api_url": settings.hub_api_url,
         },
         "services": {

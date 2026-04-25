@@ -525,9 +525,9 @@ def clean_demo_content(root: Path, config: dict) -> bool:
     Supprime :
     - Modèles de démo (Item, TestData) dans models.py
     - Schémas de démo dans schemas.py
-    - Endpoints de démo dans main.py (~400 lignes)
+    - Endpoints et routeurs de démo dans main.py et backend/routes
     - Composants frontend de démo
-    - Tests de démo (test_auth.py, test_items.py)
+    - Tests de démo (test_auth.py, test_items.py, test_backup.py)
     - Endpoint SSRF /api/m2m/test-call
     """
     print(f"\n{Colors.BOLD}🧹 Nettoyage du contenu de démonstration...{Colors.ENDC}\n")
@@ -546,15 +546,23 @@ def clean_demo_content(root: Path, config: dict) -> bool:
     print(f"  {Colors.CYAN}Nettoyage backend/main.py...{Colors.ENDC}")
     success &= _clean_main(root, config)
     
-    # 4. Supprimer composants frontend de démo
+    # 4. Supprimer les routeurs backend de démo
+    print(f"  {Colors.CYAN}Nettoyage routeurs backend de démo...{Colors.ENDC}")
+    success &= _clean_demo_routes(root)
+    
+    # 5. Nettoyer les diagnostics backend qui référencent les modèles de démo
+    print(f"  {Colors.CYAN}Nettoyage diagnostics backend...{Colors.ENDC}")
+    success &= _clean_service_test_route(root)
+    
+    # 6. Supprimer composants frontend de démo
     print(f"  {Colors.CYAN}Nettoyage composants frontend...{Colors.ENDC}")
     success &= _clean_frontend_components(root)
     
-    # 5. Nettoyer App.jsx
+    # 7. Nettoyer App.jsx
     print(f"  {Colors.CYAN}Réécriture App.jsx (squelette minimal)...{Colors.ENDC}")
     success &= _clean_app_jsx(root)
     
-    # 6. Supprimer tests de démo
+    # 8. Supprimer tests de démo
     print(f"  {Colors.CYAN}Nettoyage tests de démo...{Colors.ENDC}")
     success &= _clean_demo_tests(root)
     
@@ -908,6 +916,16 @@ def _clean_main(root: Path, config: dict) -> bool:
     try:
         content = filepath.read_text(encoding='utf-8')
         
+        # Supprimer les routeurs modulaires de démo (architecture récente)
+        demo_router_lines = [
+            'from routes.items import router as items_router\n',
+            'from routes.test_data import router as test_data_router\n',
+            'app.include_router(items_router)\n',
+            'app.include_router(test_data_router)\n',
+        ]
+        for line in demo_router_lines:
+            content = content.replace(line, '')
+        
         # Remplacer les imports de démo
         content = content.replace(
             'from models import Item, UserPreference, TestData',
@@ -952,6 +970,27 @@ def _clean_main(root: Path, config: dict) -> bool:
             content,
             flags=re.DOTALL
         )
+        content = re.sub(
+            r'\n# ={5,}\n# ENDPOINTS PAR RÔLE.*?(?=\n# ={5,}\n# POINT D\'ENTRÉE)',
+            '\n',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Le schéma clean UserInfo expose aussi la liste des rôles applicatifs.
+        content = content.replace(
+            '''    return UserInfo(
+        username=user.sub,
+        app_role=user.get_app_role(settings.APP_SLUG),
+        is_service_account=user.is_service_account()
+    )''',
+            '''    return UserInfo(
+        username=user.sub,
+        roles=sorted(set(user.apps.values())),
+        app_role=user.get_app_role(settings.APP_SLUG),
+        is_service_account=user.is_service_account()
+    )'''
+        )
         
         # Supprimer endpoint /api/m2m/test-call (SSRF)
         content = re.sub(
@@ -985,6 +1024,75 @@ def _clean_main(root: Path, config: dict) -> bool:
         return True
     except Exception as e:
         print(f"    {Colors.RED}✗ Erreur main.py: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_demo_routes(root: Path) -> bool:
+    """Supprime les routeurs backend qui dépendent des modèles de démonstration."""
+    demo_routes = [
+        'items.py',
+        'test_data.py',
+    ]
+    
+    routes_dir = root / 'backend' / 'routes'
+    success = True
+    
+    for route_file in demo_routes:
+        filepath = routes_dir / route_file
+        if filepath.exists():
+            try:
+                filepath.unlink()
+                print(f"    {Colors.GREEN}✓ Supprimé routes/{route_file}{Colors.ENDC}")
+            except Exception as e:
+                print(f"    {Colors.RED}✗ Erreur routes/{route_file}: {e}{Colors.ENDC}")
+                success = False
+    
+    return success
+
+
+def _clean_service_test_route(root: Path) -> bool:
+    """Adapte le diagnostic backup aux modèles conservés en mode clean."""
+    filepath = root / 'backend' / 'routes' / 'tests.py'
+    
+    try:
+        content = filepath.read_text(encoding='utf-8')
+        old = '''        # Test 3: Vérifier que les tables de backup existent localement
+        from models import Item, UserPreference, TestData
+        from sqlalchemy import select, func
+        
+        items_count = await db.scalar(select(func.count(Item.id))) or 0
+        prefs_count = await db.scalar(select(func.count(UserPreference.username))) or 0
+        testdata_count = await db.scalar(select(func.count(TestData.id))) or 0
+        
+        has_data_to_backup = items_count > 0 or prefs_count > 0 or testdata_count > 0'''
+        new = '''        # Test 3: Vérifier que les tables de backup existent localement.
+        # Le mode --clean retire les modèles de démonstration Item/TestData.
+        from models import UserPreference, UploadedFile
+        from sqlalchemy import select, func
+        
+        prefs_count = await db.scalar(select(func.count(UserPreference.username))) or 0
+        files_count = await db.scalar(select(func.count(UploadedFile.id))) or 0
+        
+        has_data_to_backup = prefs_count > 0 or files_count > 0'''
+        content = content.replace(old, new)
+        content = content.replace(
+            '''                "local_data": {
+                    "items_count": items_count,
+                    "preferences_count": prefs_count,
+                    "test_data_count": testdata_count,
+                    "has_data_to_backup": has_data_to_backup
+                },''',
+            '''                "local_data": {
+                    "preferences_count": prefs_count,
+                    "files_count": files_count,
+                    "has_data_to_backup": has_data_to_backup
+                },'''
+        )
+        filepath.write_text(content, encoding='utf-8')
+        print(f"    {Colors.GREEN}✓ routes/tests.py adapté au mode clean{Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur routes/tests.py: {e}{Colors.ENDC}")
         return False
 
 
@@ -1057,7 +1165,7 @@ function App() {
           <LoginPrompt />
         ) : (
           <div className="card">
-            <h2>Bienvenue {user?.username} !</h2>
+            <h2>Bienvenue {user?.username || user?.sub} !</h2>
             <p>Votre application est prête. Commencez à développer ici.</p>
           </div>
         )}
@@ -1083,6 +1191,7 @@ def _clean_demo_tests(root: Path) -> bool:
     demo_tests = [
         'test_auth.py',
         'test_items.py',
+        'test_backup.py',
     ]
     
     tests_dir = root / 'backend' / 'tests'
@@ -1384,6 +1493,7 @@ def _tailwind_rewrite_css(root: Path) -> bool:
         message_css = _extract_message_css(original)
         
         content = f"""@import "tailwindcss";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ==========================================================================
    Variables de thème (utilisées par les composants de messagerie du Hub)
@@ -1510,7 +1620,7 @@ function App() {
         ) : (
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
-              Bienvenue {user?.username} !
+              Bienvenue {user?.username || user?.sub} !
             </h2>
             <p className="text-gray-600 dark:text-gray-300">
               Votre application est prête. Commencez à développer ici.
@@ -1567,7 +1677,7 @@ function Header({{ theme, toggleTheme }}) {{
   return (
     <header className="bg-white dark:bg-slate-800 shadow-sm px-4 sm:px-6 py-3 flex items-center justify-between">
       <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">
-        \\uD83D\\uDD10 {config['APP_NAME']}
+        🔐 {config['APP_NAME']}
       </h1>
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-sm">
@@ -1584,7 +1694,7 @@ function Header({{ theme, toggleTheme }}) {{
           onClick={{toggleTheme}}
           title="Changer le thème"
         >
-          \\uD83C\\uDF13
+          🌓
         </button>
         {{isAuthenticated ? (
           <button

@@ -15,13 +15,14 @@ class TestM2MAuthentication:
     """Tests de l'authentification M2M."""
     
     @pytest.mark.asyncio
-    async def test_m2m_token_access_protected_endpoint(self, m2m_client: AsyncClient):
-        """Un token M2M valide peut accéder aux endpoints protégés."""
-        response = await m2m_client.get("/api/protected")
+    async def test_m2m_token_access_service_endpoint(self, m2m_client: AsyncClient):
+        """Un token M2M valide peut accéder aux endpoints service account."""
+        response = await m2m_client.get("/api/service-only")
         
         assert response.status_code == 200
         data = response.json()
-        assert "user" in data
+        assert data["token_type"] == "m2m"
+        assert "service" in data
     
     @pytest.mark.asyncio
     async def test_m2m_token_is_identified_as_service(self, m2m_client: AsyncClient):
