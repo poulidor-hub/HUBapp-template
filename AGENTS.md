@@ -14,6 +14,10 @@
   - `make up`, `make dev`, `make down` for the default Docker workflow
   - `make test` (host, fast SQLite) and `make test-docker` (inside the api container, runtime image) for backend verification
   - `cd frontend && npm run build` when validating frontend-only changes
+- Lifecycle scripts under [ACTIONS](ACTIONS) wrap the same Compose flow for end users:
+  - Bootstrap (template only): [ACTIONS/PYTHON/INITIALISE.py](ACTIONS/PYTHON/INITIALISE.py) — generates the rest and self-deletes
+  - After init: `START`, `STOP`, `RESTART`, `LOGS`, `STATUS`, `UPDATE`, `BACKUP_DB`, `DELETE_DATA`, `SHELL_API`, `SHELL_DB`, `TEST`, `COMMIT` under `ACTIONS/{PYTHON,LINUX,WINDOWS}/`
+  - `COMMIT` stages changes, increments `VERSION` (patch by default), updates `CHANGELOG.md` from the final commit message, runs `scripts/bump_version.py`, then creates the Git commit. It accepts `-m`, `AI_COMMIT_MESSAGE`, or `AI_COMMIT_CMD` for AI-generated messages.
 - Tests run with pytest from [backend/pytest.ini](backend/pytest.ini); the suite uses async fixtures and an in-memory SQLite database.
 - **After any non-trivial change**, follow the standardized cycle in [.github/skills/verify-feature/SKILL.md](.github/skills/verify-feature/SKILL.md): rebuild → boot logs → `make test-docker` → API call → runtime logs.
 
@@ -22,6 +26,7 @@
 - Reuse existing auth and dependency helpers instead of re-implementing role or token logic. The main entry points are in [backend/hub_auth.py](backend/hub_auth.py) and [backend/database.py](backend/database.py).
 - Use [AI_INDEX.md](AI_INDEX.md) to jump to relevant symbols before broad code searches.
 - `VERSION` is the source of truth for released version numbers. Synchronization flows through [scripts/bump_version.py](scripts/bump_version.py), [scripts/install-hooks.sh](scripts/install-hooks.sh), and `make sync-env`.
+- App initialization lives in [ACTIONS/PYTHON/INITIALISE.py](ACTIONS/PYTHON/INITIALISE.py); [scripts/init_new_app.py](scripts/init_new_app.py) is a deprecated stub that re-execs it.
 - Two environment details are easy to miss:
   - leaving `APP_HOST` empty means the app falls back through `APP_HOST -> HUB_HOST -> detected local IP`
   - `FRONTEND_HTTPS_PORT` must remain `FRONTEND_PORT + 1`

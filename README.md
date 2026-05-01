@@ -57,22 +57,45 @@ nano .env
 
 ### 2. Lancement avec Docker
 
-**Méthode recommandée** (utiliser le script d'initialisation) :
+**Méthode recommandée** (utiliser le script d'initialisation sous `ACTIONS/`) :
 
 ```bash
-# Initialiser le projet (configurer slug, ports, etc.)
-python scripts/init_new_app.py
+# Linux / macOS
+bash ACTIONS/LINUX/INITIALISE.sh
+bash ACTIONS/LINUX/INITIALISE.sh --clean       # + nettoyage démo
+bash ACTIONS/LINUX/INITIALISE.sh --tailwind    # + clean + Tailwind CSS
 
-# Ou avec nettoyage du contenu de démo
-python scripts/init_new_app.py --clean
+# Windows
+ACTIONS\WINDOWS\INITIALISE.bat
+
+# Cross-platform
+python ACTIONS/PYTHON/INITIALISE.py
 ```
+
+Une fois l'init réussie, `INITIALISE.{py,sh,bat}` s'auto-supprime et tous
+les scripts d'action (START, STOP, LOGS, STATUS, BACKUP_DB, COMMIT, etc.) sont
+générés sous `ACTIONS/PYTHON/`, `ACTIONS/LINUX/`, `ACTIONS/WINDOWS/`.
 
 Puis lancer l'application :
 
 ```bash
-make sync-env
-docker compose up -d
+bash ACTIONS/LINUX/START.sh        # Linux/macOS
+ACTIONS\WINDOWS\START.bat          # Windows
 ```
+
+Pour créer un commit versionné avec changelog alimenté par le message Git :
+
+```bash
+# Message fourni par l'IA / l'utilisateur
+bash ACTIONS/LINUX/COMMIT.sh -m "feat: add action scripts"
+
+# Ou génération via une commande IA externe recevant le diff staged sur stdin
+AI_COMMIT_CMD='votre-commande-ia' bash ACTIONS/LINUX/COMMIT.sh
+```
+
+`COMMIT` fait par défaut : `git add -A`, bump `patch`, entrée `CHANGELOG.md`,
+synchronisation via `scripts/bump_version.py`, puis `git commit`. Options utiles :
+`--minor`, `--major`, `--no-bump`, `--no-stage`, `--no-ai`, `--dry-run`.
 
 > Important: après toute modification de `FRONTEND_PORT` dans `.env`, relancez `make sync-env` pour conserver `FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1`.
 

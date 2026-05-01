@@ -98,3 +98,6 @@ ssl/server.*
 # Docker volumes locaux
 postgres_data/
 uploads/
+
+# Backups générés par ACTIONS/.../BACKUP_DB
+backups/

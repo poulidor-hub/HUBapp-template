@@ -145,8 +145,8 @@ clean-all: clean ## Nettoyage complet (+ images Docker)
 
 # === INITIALISATION ===
 
-init: ## Initialiser une nouvelle app depuis le template
-	python scripts/init_new_app.py
+init: ## Initialiser une nouvelle app depuis le template (déprécié : utilisez ACTIONS/PYTHON/INITIALISE.py)
+	python ACTIONS/PYTHON/INITIALISE.py
 
 ai-index: ## Régénérer AI_INDEX.md (carte symboles pour assistants IA)
 	python scripts/generate_ai_index.py
