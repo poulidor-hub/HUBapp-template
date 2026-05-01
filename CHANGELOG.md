@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [Unreleased]
+
+### ✨ Nouvelles fonctionnalités
+
+- **Nouveau** : Skill `.github/skills/verify-feature/SKILL.md` qui normalise le cycle de vérification post-implémentation (rebuild → logs boot → pytest in-Docker → appel API → logs runtime)
+- **Nouveau** : Cibles Make `test-docker` / `test-docker-cov` qui lancent pytest dans le conteneur `api` (image runtime, env Postgres réel)
+- **Nouveau** : Cible Make `ai-index` qui régénère `AI_INDEX.md` via `scripts/generate_ai_index.py`
+
+### 🔧 Modifications code
+
+- **Refactor** : `index_Test.py` (racine) déplacé vers `scripts/generate_ai_index.py` ; chemin de sortie résolu par rapport au script (peu importe le cwd)
+- **Doc** : `AGENTS.md` pointe désormais vers la skill `verify-feature` pour toute validation post-changement
+- **Doc** : `docs/HTTPS.md` ne référence plus `make start` / `start.sh` ; remplacé par `make dev`
+
+### 🗑️ Suppression
+
+- **Suppression** : `presentation.html` (démo non utilisée par le template)
+- **Suppression** : `start.sh` (redondant avec `make dev` / `make up` qui appellent déjà `sync-env` et la génération SSL)
+
+---
+
 ## [2.4.0] - 12 avril 2026
 
 ### ✨ Nouvelles fonctionnalités

@@ -104,11 +104,17 @@ logs-db: ## Voir les logs de PostgreSQL
 
 # === TESTS ===
 
-test: ## Lancer les tests pytest
+test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
 	cd backend && python -m pytest -v
 
-test-cov: ## Lancer les tests avec couverture
+test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python -m pytest --cov=. --cov-report=html -v
+
+test-docker: ## Lancer pytest dans le conteneur api (env Docker, image runtime)
+	docker compose exec api python -m pytest -v
+
+test-docker-cov: ## Pytest + couverture dans le conteneur api
+	docker compose exec api python -m pytest --cov=. --cov-report=term-missing -v
 
 # === SANTÉ ===
 
@@ -141,6 +147,9 @@ clean-all: clean ## Nettoyage complet (+ images Docker)
 
 init: ## Initialiser une nouvelle app depuis le template
 	python scripts/init_new_app.py
+
+ai-index: ## Régénérer AI_INDEX.md (carte symboles pour assistants IA)
+	python scripts/generate_ai_index.py
 
 # === VERSION ===
 

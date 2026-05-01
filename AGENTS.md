@@ -12,9 +12,10 @@
 - Preferred commands:
   - `make sync-env` after changing `.env`, ports, or `VERSION`
   - `make up`, `make dev`, `make down` for the default Docker workflow
-  - `make test` or `make test-cov` for backend verification
+  - `make test` (host, fast SQLite) and `make test-docker` (inside the api container, runtime image) for backend verification
   - `cd frontend && npm run build` when validating frontend-only changes
 - Tests run with pytest from [backend/pytest.ini](backend/pytest.ini); the suite uses async fixtures and an in-memory SQLite database.
+- **After any non-trivial change**, follow the standardized cycle in [.github/skills/verify-feature/SKILL.md](.github/skills/verify-feature/SKILL.md): rebuild → boot logs → `make test-docker` → API call → runtime logs.
 
 ## Conventions
 

@@ -80,7 +80,9 @@ def generate_index(root_path, output_filename="AI_INDEX.md"):
                         out_file.write("\n")
 
 if __name__ == "__main__":
-    project_root = "." 
+    # Toujours générer à la racine du repo, peu importe le cwd d'invocation.
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    output_path = os.path.join(project_root, "AI_INDEX.md")
     print("🚀 Démarrage de la génération de l'index...")
-    generate_index(project_root)
-    print("✅ Terminé ! Le fichier AI_INDEX.md est à jour.")
+    generate_index(project_root, output_filename=output_path)
+    print(f"✅ Terminé ! {output_path} est à jour.")

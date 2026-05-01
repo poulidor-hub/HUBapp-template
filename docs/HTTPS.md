@@ -59,7 +59,7 @@ make up         # Démarre (génère aussi les certs si absents)
 Ou en une commande :
 
 ```bash
-make start      # ./start.sh : génère les certs si HTTPS + démarre
+make dev        # sync-env + génère les certs (si HTTPS) + up + logs
 ```
 
 ### 3. Accéder à l'application
