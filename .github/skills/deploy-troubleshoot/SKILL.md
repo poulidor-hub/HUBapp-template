@@ -8,6 +8,8 @@ argument-hint: 'Deployment task, for example: enable HTTPS, deploy on remote ser
 
 Use this skill when the task involves deploying a Hub-connected app, switching to HTTPS, deploying on a remote server, or diagnosing connectivity issues with the Hub. References: [docs/HTTPS.md](../../../docs/HTTPS.md) and [docs/REMOTE_APPS.md](../../../docs/REMOTE_APPS.md).
 
+For SPA cache headers, stale frontend bundles, or production cache-busting rules, also use the [cache-busting-deployment](../cache-busting-deployment/SKILL.md) skill.
+
 ## What This Repository Uses
 
 - Orchestration: [docker-compose.yml](../../../docker-compose.yml), [Makefile](../../../Makefile).
