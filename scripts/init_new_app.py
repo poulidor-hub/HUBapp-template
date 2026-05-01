@@ -254,52 +254,47 @@ def update_file(filepath: Path, replacements: list, description: str) -> bool:
 
 
 def create_env_file(root: Path, config: dict) -> bool:
-    """Crée le fichier .env à partir de la configuration."""
-    env_content = f"""# ============================================================
-# Configuration de l'application {config['APP_NAME']}
-# ============================================================
-# Généré automatiquement le {datetime.now().strftime('%d/%m/%Y à %H:%M')}
+    """Génère .env à partir de .env.example pour rester en phase avec toutes les clés.
 
-# === IDENTIFICATION APPLICATION ===
-APP_SLUG={config['APP_SLUG']}
-APP_NAME={config['APP_NAME']}
-APP_DESCRIPTION={config['APP_DESCRIPTION']}
+    Toutes les variables documentées dans .env.example sont reportées (HTTPS_ENABLED,
+    HUB_INTERNAL_HOST, CORS_ORIGINS, etc.) avec leurs commentaires. Les valeurs
+    spécifiques à l'init sont surchargées : slug, ports, host, version=0.0.1,
+    FRONTEND_HTTPS_PORT calculé, en-tête horodaté.
+    """
+    example_path = root / '.env.example'
+    env_path = root / '.env'
 
-# === VERSION ===
-# Source de vérité: fichier VERSION
-APP_VERSION=0.0.1
-
-# === PORTS ===
-API_PORT={config['API_PORT']}
-FRONTEND_PORT={config['FRONTEND_PORT']}
-FRONTEND_HTTPS_PORT={int(config['FRONTEND_PORT']) + 1}
-
-# === HOST DE CETTE APPLICATION ===
-# Laisser vide si l'app est sur le même serveur que le Hub
-APP_HOST=
-
-# === HUB ===
-HUB_HOST={config['HUB_HOST']}
-HUB_API_PORT={config['HUB_API_PORT']}
-HUB_FRONTEND_PORT={config['HUB_FRONTEND_PORT']}
-
-# === BASE DE DONNÉES ===
-POSTGRES_HOST={config['APP_SLUG']}-postgres
-POSTGRES_PORT=5432
-POSTGRES_USER=app_user
-POSTGRES_PASSWORD=app_password_secure_123
-POSTGRES_DB=app_db
-
-# === ENVIRONNEMENT ===
-DEBUG=false
-
-# === M2M (MACHINE-TO-MACHINE) ===
-IS_SHARED=false
-"""
-    
     try:
-        env_path = root / '.env'
-        env_path.write_text(env_content, encoding='utf-8')
+        content = example_path.read_text(encoding='utf-8')
+
+        frontend_port = int(config['FRONTEND_PORT'])
+        replacements = [
+            ('APP_SLUG=mon-app', f'APP_SLUG={config["APP_SLUG"]}'),
+            ('APP_NAME=Mon Application', f'APP_NAME={config["APP_NAME"]}'),
+            ('APP_DESCRIPTION=Application template avec authentification Hub',
+             f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}'),
+            ('API_PORT=9045', f'API_PORT={config["API_PORT"]}'),
+            ('FRONTEND_PORT=4250', f'FRONTEND_PORT={frontend_port}'),
+            ('FRONTEND_HTTPS_PORT=4251', f'FRONTEND_HTTPS_PORT={frontend_port + 1}'),
+            ('HUB_HOST=192.0.2.11', f'HUB_HOST={config["HUB_HOST"]}'),
+            ('HUB_API_PORT=8000', f'HUB_API_PORT={config["HUB_API_PORT"]}'),
+            ('HUB_FRONTEND_PORT=80', f'HUB_FRONTEND_PORT={config["HUB_FRONTEND_PORT"]}'),
+            ('POSTGRES_HOST=mon-app-postgres',
+             f'POSTGRES_HOST={config["APP_SLUG"]}-postgres'),
+            ('# Configuration de l\'application Template Hub',
+             f'# Configuration de l\'application {config["APP_NAME"]} '
+             f'(généré le {datetime.now().strftime("%d/%m/%Y à %H:%M")})'),
+            ('# Copier ce fichier vers .env et adapter les valeurs',
+             '# Fichier généré automatiquement par scripts/init_new_app.py'),
+        ]
+        for old, new in replacements:
+            content = content.replace(old, new)
+
+        # APP_VERSION : démarre à 0.0.1 pour une nouvelle app
+        content = re.sub(r'^APP_VERSION=.*$', 'APP_VERSION=0.0.1',
+                         content, flags=re.MULTILINE)
+
+        env_path.write_text(content, encoding='utf-8')
         print(f"  {Colors.GREEN}✓ Fichier .env créé{Colors.ENDC}")
         return True
     except Exception as e:
