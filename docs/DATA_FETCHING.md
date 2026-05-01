@@ -87,14 +87,28 @@ enabled: Boolean(config.apiUrl) && (!auth || Boolean(token))
 
 ### `useApiMutation` — Mutations (POST/PUT/DELETE)
 
+> **Norme du projet** : toute mutation qui modifie une liste/objet déjà affiché doit utiliser le pattern **optimistic update + rollback automatique** via `optimisticUpdate` (ou `optimisticUpdates`).
+> L'invalidation seule via `invalidateKeys` reste autorisée uniquement quand l'UI ne dépend pas de la donnée à jour (ex : action déclenchant un job, seed dont la forme côté serveur n'est pas connue).
+
 ```jsx
 import { useApiMutation } from '../hooks/useApiMutation'
 
-// Création (endpoint statique)
+const listQueryKey = ['items', filter]
+
+// Création — ajoute immédiatement un item temporaire en cache, rollback si erreur
 const createMutation = useApiMutation({
   endpoint: '/api/items',
   method: 'POST',
-  invalidateKeys: [['items']],
+  optimisticUpdate: {
+    queryKey: listQueryKey,
+    updater: (old, payload) => ({
+      ...(old || {}),
+      items: [
+        ...(old?.items || []),
+        { id: `__tmp_${Date.now()}`, ...payload, __optimistic: true },
+      ],
+    }),
+  },
 })
 // Usage : createMutation.mutate({ name: 'Mon item', value: '42' })
 
@@ -102,25 +116,63 @@ const createMutation = useApiMutation({
 const updateMutation = useApiMutation({
   endpoint: ({ id }) => `/api/items/${id}`,
   method: 'PUT',
-  invalidateKeys: [['items']],
+  optimisticUpdate: {
+    queryKey: listQueryKey,
+    updater: (old, { id, body }) => ({
+      ...(old || {}),
+      items: (old?.items || []).map((item) =>
+        item.id === id ? { ...item, ...body } : item
+      ),
+    }),
+  },
 })
 // Usage : updateMutation.mutate({ id: 5, body: { name: 'Nouveau nom' } })
 
-// Suppression (endpoint dynamique, pas de body)
+// Suppression
 const deleteMutation = useApiMutation({
   endpoint: ({ id }) => `/api/items/${id}`,
   method: 'DELETE',
-  invalidateKeys: [['items']],
+  optimisticUpdate: {
+    queryKey: listQueryKey,
+    updater: (old, { id }) => ({
+      ...(old || {}),
+      items: (old?.items || []).filter((item) => item.id !== id),
+    }),
+  },
 })
 // Usage : deleteMutation.mutate({ id: 5 })
 
-// Action sans body (ex: seed)
+// Action sans état affiché (seed, job, etc.) — simple invalidation acceptée
 const seedMutation = useApiMutation({
   endpoint: '/api/test-data/seed',
   method: 'POST',
   invalidateKeys: [['test-data']],
 })
-// Usage : seedMutation.mutate(null)
+```
+
+**Comportement automatique du hook :**
+
+1. `onMutate` : annule les fetchs en cours, snapshot l'état du cache, applique l'`updater`.
+2. `onError` : restaure le snapshot (rollback automatique).
+3. `onSettled` (succès OU échec) : invalide les `queryKey` patchées **et** les `invalidateKeys` pour resynchroniser avec le serveur.
+
+**Règles pour l'`updater` :**
+
+- Doit retourner une **nouvelle référence** (spread, `map`, `filter`) — jamais muter `old`.
+- Doit accepter un `old` potentiellement `undefined` (si la query n'a pas encore chargé).
+- Reçoit le payload exact passé à `mutate(...)` (donc `{ id, body }` pour les endpoints dynamiques).
+
+**Pour patcher plusieurs caches dans la même mutation :**
+
+```jsx
+useApiMutation({
+  endpoint: ({ id }) => `/api/items/${id}`,
+  method: 'PUT',
+  optimisticUpdates: [
+    { queryKey: ['items'], updater: (old, { id, body }) => /* ... */ },
+    { queryKey: ['items', id], updater: (old, { body }) => ({ ...old, ...body }) },
+  ],
+})
 ```
 
 **Paramètres :**
@@ -129,8 +181,10 @@ const seedMutation = useApiMutation({
 |-----------|------|--------|-------------|
 | `endpoint` | `string \| Function` | ✅ | Statique (`'/api/items'`) ou dynamique (`({ id }) => '/api/items/' + id`) |
 | `method` | `string` | | `'POST'` par défaut. Aussi `'PUT'`, `'DELETE'`, `'PATCH'` |
-| `invalidateKeys` | `string[][]` | | Liste de queryKeys à rafraîchir après succès |
-| `...options` | | | Toute option valide de `useMutation` |
+| `optimisticUpdate` | `{ queryKey, updater }` | | Patch optimiste sur une queryKey (norme). `updater(old, payload)` doit retourner une nouvelle référence immuable. Rollback automatique en cas d'erreur. |
+| `optimisticUpdates` | `Array<{ queryKey, updater }>` | | Même chose pour plusieurs caches en parallèle. |
+| `invalidateKeys` | `string[][]` | | Invalidations supplémentaires à déclencher en fin de mutation (succès OU échec). Les `queryKey` des updates optimistes sont déjà invalidées automatiquement. |
+| `...options` | | | Toute option valide de `useMutation` (`onSuccess`, `onError`, `onSettled`, etc.) |
 
 **Convention endpoint dynamique :**
 - Quand `endpoint` est une **fonction**, elle reçoit le payload complet passé à `mutate()`
@@ -199,26 +253,42 @@ import { useApiMutation } from '../hooks/useApiMutation'
 
 function ItemList() {
   const [page, setPage] = useState(1)
+  const listQueryKey = ['items', page]
 
   // Lecture avec pagination
   const { data, isLoading, error } = useApiQuery({
-    queryKey: ['items', page],
+    queryKey: listQueryKey,
     endpoint: '/api/items',
     params: { page, per_page: 20 },
   })
 
-  // Mutation de création
+  // Création optimiste
   const createMutation = useApiMutation({
     endpoint: '/api/items',
     method: 'POST',
-    invalidateKeys: [['items']],  // Rafraîchit toutes les pages
+    optimisticUpdate: {
+      queryKey: listQueryKey,
+      updater: (old, payload) => ({
+        ...(old || {}),
+        items: [
+          ...(old?.items || []),
+          { id: `__tmp_${Date.now()}`, ...payload, __optimistic: true },
+        ],
+      }),
+    },
   })
 
-  // Mutation de suppression (endpoint dynamique)
+  // Suppression optimiste (endpoint dynamique)
   const deleteMutation = useApiMutation({
     endpoint: ({ id }) => `/api/items/${id}`,
     method: 'DELETE',
-    invalidateKeys: [['items']],
+    optimisticUpdate: {
+      queryKey: listQueryKey,
+      updater: (old, { id }) => ({
+        ...(old || {}),
+        items: (old?.items || []).filter((item) => item.id !== id),
+      }),
+    },
   })
 
   if (isLoading) return <p>Chargement...</p>
@@ -227,11 +297,11 @@ function ItemList() {
   return (
     <div>
       {data.items.map(item => (
-        <div key={item.id}>
+        <div key={item.id} style={{ opacity: item.__optimistic ? 0.6 : 1 }}>
           {item.name}
           <button
             onClick={() => deleteMutation.mutate({ id: item.id })}
-            disabled={deleteMutation.isPending}
+            disabled={deleteMutation.isPending || item.__optimistic}
           >
             Supprimer
           </button>
@@ -277,18 +347,43 @@ const { data, isLoading } = useApiQuery({
 const mutation = useApiMutation({
   endpoint: '/api/items',
   method: 'POST',
-  // invalidateKeys manquant !
+  // ni optimisticUpdate ni invalidateKeys !
 })
 ```
 
-### ✅ Toujours invalider les queryKeys pertinentes
+### ✅ Toujours préférer un `optimisticUpdate` (norme), `invalidateKeys` en repli
 
 ```jsx
-// ✅ CORRECT — la liste se rafraîchit automatiquement
+// ✅ CORRECT — UI mise à jour instantanément, rollback automatique si erreur
 const mutation = useApiMutation({
   endpoint: '/api/items',
   method: 'POST',
-  invalidateKeys: [['items']],
+  optimisticUpdate: {
+    queryKey: ['items'],
+    updater: (old, payload) => ({
+      ...(old || {}),
+      items: [...(old?.items || []), { id: `__tmp_${Date.now()}`, ...payload }],
+    }),
+  },
+})
+```
+
+### ❌ Ne pas muter `old` dans un updater optimiste
+
+```jsx
+// ❌ PROBLÈME — modifie le cache en place, React ne re-rendra pas
+updater: (old, { id }) => {
+  old.items.splice(old.items.findIndex(i => i.id === id), 1)
+  return old
+}
+```
+
+### ✅ Toujours retourner une nouvelle référence immuable
+
+```jsx
+updater: (old, { id }) => ({
+  ...(old || {}),
+  items: (old?.items || []).filter(item => item.id !== id),
 })
 ```
 

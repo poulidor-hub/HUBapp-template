@@ -33,7 +33,9 @@ This skill covers the frontend only. For the backend endpoint side, use the prom
 3. Implement writes with `useApiMutation`.
    - Static endpoint: `endpoint: '/api/<resource>'` with `method: 'POST'`; `mutate(body)` sends the body as JSON.
    - Dynamic endpoint: `endpoint: ({ id }) => '/api/<resource>/' + id`; `mutate({ id, body: {...} })` for PUT, `mutate({ id })` for DELETE.
-   - Always set `invalidateKeys` to the matching list keys so the UI refreshes automatically.
+   - **Default to optimistic updates with rollback** via `optimisticUpdate: { queryKey, updater }`. The `updater(old, payload)` must return a new immutable value. The hook handles snapshot, rollback on error, and invalidation in `onSettled` automatically.
+   - Use `invalidateKeys` alone only for fire-and-forget actions whose result is not displayed (seed, job trigger, action without list state).
+   - For multiple caches in one mutation, use `optimisticUpdates: [{ queryKey, updater }, ...]`.
    - Use `mutation.isPending`, `isError`, `error`, `isSuccess`, and per-call `onSuccess` / `onError` callbacks for UX feedback.
 
 4. Wire the UI.
@@ -49,7 +51,9 @@ This skill covers the frontend only. For the backend endpoint side, use the prom
 ## Anti-Patterns To Avoid
 
 - `fetch + useState + useEffect` for data loading; always go through `useApiQuery`.
-- Mutations without `invalidateKeys`; the UI will silently go stale.
+- Mutations with neither `optimisticUpdate` nor `invalidateKeys`; the UI will silently go stale.
+- Falling back to `invalidateKeys` alone when an `optimisticUpdate` would give a snappier UX (default to optimistic).
+- Mutating `old` inside an `updater` (e.g. `old.items.push(...)`); always return a new array/object.
 - Variables (filters, page, id) outside the queryKey; the cache will return stale data.
 - Bypassing `ConfigContext` or `AuthContext` to hardcode URLs or tokens.
 

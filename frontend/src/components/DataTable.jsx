@@ -30,25 +30,59 @@ function DataTable() {
   const data = queryData?.items || []
   const error = queryError?.message || null
 
-  // Mutations CRUD — chaque mutation invalide le cache 'test-data'
+  // QueryKey courante (incluant le filtre) pour cibler les patchs optimistes
+  const listQueryKey = ['test-data', filterCategory]
+
+  // Mutations CRUD — pattern norme du projet : update optimiste + rollback automatique.
+  // useApiMutation invalide aussi le cache à la fin (succès OU échec) pour resynchroniser.
   const createMutation = useApiMutation({
     endpoint: '/api/test-data',
     method: 'POST',
-    invalidateKeys: [['test-data']],
+    optimisticUpdate: {
+      queryKey: listQueryKey,
+      updater: (old, payload) => {
+        const optimisticItem = {
+          id: `__tmp_${Date.now()}`,
+          name: payload.name,
+          value: payload.value,
+          category: payload.category,
+          last_modified_by: 'vous',
+          updated_at: new Date().toISOString(),
+          __optimistic: true,
+        }
+        return { ...(old || {}), items: [...(old?.items || []), optimisticItem] }
+      },
+    },
   })
 
   const updateMutation = useApiMutation({
     endpoint: ({ id }) => `/api/test-data/${id}`,
     method: 'PUT',
-    invalidateKeys: [['test-data']],
+    optimisticUpdate: {
+      queryKey: listQueryKey,
+      updater: (old, { id, body }) => ({
+        ...(old || {}),
+        items: (old?.items || []).map((item) =>
+          item.id === id ? { ...item, ...body, updated_at: new Date().toISOString() } : item
+        ),
+      }),
+    },
   })
 
   const deleteMutation = useApiMutation({
     endpoint: ({ id }) => `/api/test-data/${id}`,
     method: 'DELETE',
-    invalidateKeys: [['test-data']],
+    optimisticUpdate: {
+      queryKey: listQueryKey,
+      updater: (old, { id }) => ({
+        ...(old || {}),
+        items: (old?.items || []).filter((item) => item.id !== id),
+      }),
+    },
   })
 
+  // Pas d'optimistic ici : seed crée des données côté serveur dont on ne connaît pas la forme.
+  // On laisse la simple invalidation rafraîchir la liste.
   const seedMutation = useApiMutation({
     endpoint: '/api/test-data/seed',
     method: 'POST',

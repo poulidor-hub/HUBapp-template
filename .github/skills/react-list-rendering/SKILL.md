@@ -83,30 +83,41 @@ Guidelines:
 
 ## Interaction With TanStack Query
 
-This repo invalidates queries instead of patching local arrays after a mutation. Prefer that pattern; it avoids both pitfalls at once.
+In this repo the default mutation pattern is **optimistic update + automatic rollback**, exposed by `useApiMutation` via `optimisticUpdate` / `optimisticUpdates`. The hook snapshots the cache before the request, applies your `updater` immediately, restores the snapshot on error, and invalidates the affected keys in `onSettled` (so the server state always wins eventually).
 
 ```js
-const { data: items = [] } = useApiQuery({ queryKey: ['items'], endpoint: '/api/items' });
+const { data: items = [] } = useApiQuery({ queryKey: ['items'], endpoint: '/api/items' })
 
+// Suppression instantanée dans l'UI, rollback si l'API répond une erreur
 const deleteItem = useApiMutation({
   endpoint: ({ id }) => `/api/items/${id}`,
   method: 'DELETE',
-  invalidateKeys: [['items']],
-});
+  optimisticUpdate: {
+    queryKey: ['items'],
+    updater: (old, { id }) => (old || []).filter((item) => item.id !== id),
+  },
+})
 ```
 
-Do **not** mutate `data` returned by `useApiQuery` — the cache hands you the same reference on subsequent renders, and a mutation would corrupt other consumers. If you need a local derived view (sorted, filtered), build a new array with `useMemo`:
+Rules for the `updater`:
+
+- Must return a **new reference** (`[...arr]`, `arr.map`, `arr.filter`, `{ ...obj }`). Never mutate `old`.
+- Must accept `old` being `undefined` (the query may not have loaded yet).
+- Receives the exact payload passed to `mutate(...)` (so `{ id, body }` for dynamic endpoints).
+
+Do **not** mutate `data` returned by `useApiQuery` outside of an `updater` either — the cache hands you the same reference on subsequent renders, and a mutation would corrupt other consumers. If you need a local derived view (sorted, filtered), build a new array with `useMemo`:
 
 ```js
-const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
+const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items])
 ```
 
-Only do an optimistic local update via `queryClient.setQueryData(key, (old) => ...)` returning a **new** array/object, and pair it with `invalidateKeys` so the server state wins eventually.
+`invalidateKeys` (without `optimisticUpdate`) is only acceptable for fire-and-forget actions whose result is not on screen (seed, job trigger).
 
 ## Quick Checklist Before Submitting
 
 - No `push`, `pop`, `shift`, `unshift`, `splice`, in-place `sort`/`reverse` on values held in `useState` or returned by `useApiQuery`.
 - Every `.map(...)` that renders elements has a `key` from a stable unique id, not the index.
 - No `key={Math.random()}` or `key={Date.now()}` in render.
-- Mutations either call `invalidateKeys` or use `setQueryData` with an immutable updater.
+- Mutations use `optimisticUpdate` with an immutable `updater` by default; `invalidateKeys` alone only for fire-and-forget actions.
+- Optimistic items are flagged (e.g. `__optimistic: true`) when the UI needs to disable actions or dim them while pending.
 - For non-trivial changes, run `cd frontend && npm run build`.
