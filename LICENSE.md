@@ -5,7 +5,7 @@ Ce code source, incluant le socle technique ("Hub"), les modèles ("Templates") 
 
 ## 1. Droits accordés (Licence d'utilisation)
 
-L'accès à ce code source est accordé exclusivement à la fédération exemple de la Manche (ci-après "le Bénéficiaire"), conformément à l'accord de mise à disposition validé le 09/05/2026.
+L'accès à ce code source est accordé exclusivement à la fédération exemple de la Manche (ci-après "le Bénéficiaire"), conformément à l'accord de mise à disposition validé le **DATE EN ATTENTE PAR MFBL**
 
 Le Bénéficiaire titulaire de la licence est autorisé à :
 
