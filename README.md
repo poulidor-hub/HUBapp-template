@@ -17,6 +17,9 @@ Template d'application avec authentification Hub pour le développement rapide d
 
 ```
 HUBapp_TEMPLATE/
+├── INITIALISE.py       # Lanceur visible à la racine (cross-platform)
+├── INITIALISE.sh       # Lanceur Linux / macOS
+├── INITIALISE.bat      # Lanceur Windows / drag-and-drop
 ├── backend/
 │   ├── main.py           # Application FastAPI
 │   ├── config.py         # Configuration avec auto-détection IP
@@ -45,38 +48,75 @@ HUBapp_TEMPLATE/
 
 ## 🚀 Démarrage rapide
 
-### 1. Configuration
+### 1. Choisir un mode d'initialisation
 
-```bash
-# Copier la configuration
-cp .env.example .env
+Le bootstrap prend désormais en charge 3 modes :
 
-# Éditer les valeurs (surtout APP_SLUG)
-nano .env
-```
+- **application client** : import d'une fiche client JSON ou saisie assistée
+- **application outil** : configuration guidée d'un outil interne
+- **application autre** : saisie manuelle complète
 
-### 2. Lancement avec Docker
+Exemple de fiche client : [docs/client-profile.example.json](docs/client-profile.example.json)
 
-**Méthode recommandée** (utiliser le script d'initialisation sous `ACTIONS/`) :
+### 2. Lancer l'initialisation
+
+**Méthode recommandée** : utiliser le lanceur visible à la racine.
 
 ```bash
 # Linux / macOS
-bash ACTIONS/LINUX/INITIALISE.sh
-bash ACTIONS/LINUX/INITIALISE.sh --clean       # + nettoyage démo
-bash ACTIONS/LINUX/INITIALISE.sh --tailwind    # + clean + Tailwind CSS
+bash INITIALISE.sh
+bash INITIALISE.sh --clean
+bash INITIALISE.sh --tailwind
+bash INITIALISE.sh --profile docs/client-profile.example.json
 
 # Windows
-ACTIONS\WINDOWS\INITIALISE.bat
+INITIALISE.bat
+INITIALISE.bat docs\client-profile.example.json
 
 # Cross-platform
-python ACTIONS/PYTHON/INITIALISE.py
+python INITIALISE.py
+python INITIALISE.py client.json
 ```
 
-Une fois l'init réussie, `INITIALISE.{py,sh,bat}` s'auto-supprime et tous
+Si votre OS le permet, vous pouvez aussi déposer une fiche client JSON directement
+sur `INITIALISE.bat` ou `INITIALISE.py` : le chemin du fichier sera transmis au bootstrap.
+
+Une fois l'init réussie, `INITIALISE.{py,sh,bat}` à la racine et sous `ACTIONS/` s'auto-suppriment, et tous
 les scripts d'action (START, STOP, LOGS, STATUS, BACKUP_DB, COMMIT, etc.) sont
 générés sous `ACTIONS/PYTHON/`, `ACTIONS/LINUX/`, `ACTIONS/WINDOWS/`.
 
-Puis lancer l'application :
+### 3. Format attendu pour une fiche client JSON
+
+Le format minimal attendu est :
+
+```json
+{
+  "format_version": "1.0",
+  "app": {
+    "slug": "mon-client",
+    "name": "Mon Client",
+    "description": "Application métier HUB"
+  },
+  "client": {
+    "name": "Nom du client"
+  },
+  "license": {
+    "quote_number": "DEVIS-2026-0001",
+    "quote_date": "2026-05-10"
+  },
+  "hub": {
+    "host": "192.0.2.11",
+    "api_port": 8000,
+    "frontend_port": 80
+  },
+  "ports": {
+    "api": 9045,
+    "frontend": 4250
+  }
+}
+```
+
+### 4. Lancer l'application
 
 ```bash
 bash ACTIONS/LINUX/START.sh        # Linux/macOS
@@ -99,7 +139,7 @@ synchronisation via `scripts/bump_version.py`, puis `git commit`. Options utiles
 
 > Important: après toute modification de `FRONTEND_PORT` dans `.env`, relancez `make sync-env` pour conserver `FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1`.
 
-### 3. Accès
+### 5. Accès
 
 - **Frontend** : http://localhost:4250
 - **API Docs** : http://localhost:9045/api/docs

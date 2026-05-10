@@ -46,6 +46,6 @@ fi
 echo -e "${GREEN}✓ Python $PYTHON_VERSION détecté${NC}"
 echo ""
 
-# Lancer le script Python (transmettre tous les arguments)
+# Déléguer vers le nouveau lanceur racine
 cd "$PROJECT_ROOT"
-$PYTHON_CMD "$SCRIPT_DIR/init_new_app.py" "$@"
+$PYTHON_CMD "$PROJECT_ROOT/INITIALISE.py" "$@"

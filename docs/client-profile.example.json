@@ -1,0 +1,31 @@
+{
+  "format_version": "1.0",
+  "app": {
+    "slug": "acme-atelier",
+    "name": "Acme Atelier",
+    "description": "Application métier HUB pour le client Acme Atelier"
+  },
+  "client": {
+    "name": "ACME Atelier",
+    "contact_name": "Camille Martin",
+    "contact_email": "camille.martin@acme.test"
+  },
+  "license": {
+    "quote_number": "DEVIS-2026-0042",
+    "quote_date": "2026-05-10",
+    "notice_year": "2026"
+  },
+  "hub": {
+    "host": "192.0.2.11",
+    "api_port": 8000,
+    "frontend_port": 80
+  },
+  "ports": {
+    "api": 9045,
+    "frontend": 4250
+  },
+  "options": {
+    "clean_demo": true,
+    "tailwind": false
+  }
+}

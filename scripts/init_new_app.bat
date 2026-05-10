@@ -48,8 +48,8 @@ echo.
 REM Aller dans le répertoire du projet
 cd /d "%PROJECT_ROOT%"
 
-REM Lancer le script Python (transmettre tous les arguments)
-%PYTHON_CMD% "%SCRIPT_DIR%init_new_app.py" %*
+REM Deleguer vers le nouveau lanceur racine
+%PYTHON_CMD% "%PROJECT_ROOT%\INITIALISE.py" %*
 
 if %errorlevel% neq 0 (
     echo.

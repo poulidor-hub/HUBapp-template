@@ -19,6 +19,7 @@ Usage :
     python ACTIONS/PYTHON/INITIALISE.py
     python ACTIONS/PYTHON/INITIALISE.py --clean
     python ACTIONS/PYTHON/INITIALISE.py --tailwind
+    python ACTIONS/PYTHON/INITIALISE.py --profile client.json
 
 Compatible Linux / Windows / macOS.
 """
@@ -30,6 +31,17 @@ import json
 import stat
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
+
+
+APP_KIND_CLIENT = "client"
+APP_KIND_TOOL = "tool"
+APP_KIND_OTHER = "other"
+APP_KIND_LABELS = {
+    APP_KIND_CLIENT: "Application client",
+    APP_KIND_TOOL: "Application outil",
+    APP_KIND_OTHER: "Application autre",
+}
 
 
 # ============================================================
@@ -92,6 +104,180 @@ def validate_port(port_str: str) -> bool:
         return False
 
 
+def validate_date(date_str: str) -> bool:
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+def parse_cli_options(argv: List[str]) -> dict:
+    profile_path = None
+    filtered_args = []
+    skip_next = False
+
+    for index, arg in enumerate(argv):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--profile":
+            if index + 1 >= len(argv):
+                raise ValueError("L'option --profile attend un chemin de fichier JSON.")
+            profile_path = Path(argv[index + 1]).expanduser().resolve()
+            skip_next = True
+            continue
+        if arg.lower().endswith(".json") and profile_path is None:
+            candidate = Path(arg).expanduser()
+            if candidate.exists():
+                profile_path = candidate.resolve()
+                continue
+        filtered_args.append(arg)
+
+    return {
+        "args": filtered_args,
+        "profile_path": profile_path,
+    }
+
+
+def prompt_yes_no(prompt: str, default: bool = False) -> bool:
+    suffix = "[O/n]" if default else "[o/N]"
+    while True:
+        response = input(f"{Colors.CYAN}{prompt} {suffix}: {Colors.ENDC}").strip().lower()
+        if not response:
+            return default
+        if response in ('o', 'oui', 'y', 'yes'):
+            return True
+        if response in ('n', 'non', 'no'):
+            return False
+        print(f"{Colors.RED}✗ Réponse attendue: o/oui ou n/non.{Colors.ENDC}")
+
+
+def prompt_choice(prompt: str, choices: Dict[str, str], default: str) -> str:
+    options = ", ".join(
+        f"{key}{' (défaut)' if key == default else ''} = {label}"
+        for key, label in choices.items()
+    )
+    while True:
+        response = input(f"{Colors.CYAN}{prompt} [{options}]: {Colors.ENDC}").strip().lower()
+        if not response:
+            return default
+        if response in choices:
+            return response
+        print(f"{Colors.RED}✗ Choix invalide. Valeurs possibles: {', '.join(choices)}.{Colors.ENDC}")
+
+
+def load_client_profile(profile_path: Path) -> dict:
+    if not profile_path.exists():
+        raise FileNotFoundError(f"Fiche client introuvable: {profile_path}")
+    try:
+        data = json.loads(profile_path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON invalide dans {profile_path}: {exc}") from exc
+
+    required_paths = [
+        ("app.slug", ["app", "slug"]),
+        ("app.name", ["app", "name"]),
+        ("app.description", ["app", "description"]),
+        ("client.name", ["client", "name"]),
+        ("license.quote_number", ["license", "quote_number"]),
+        ("license.quote_date", ["license", "quote_date"]),
+        ("hub.host", ["hub", "host"]),
+        ("hub.api_port", ["hub", "api_port"]),
+        ("hub.frontend_port", ["hub", "frontend_port"]),
+        ("ports.api", ["ports", "api"]),
+        ("ports.frontend", ["ports", "frontend"]),
+    ]
+    for label, parts in required_paths:
+        current = data
+        for part in parts:
+            if not isinstance(current, dict) or part not in current:
+                raise ValueError(f"Champ requis absent dans la fiche client: {label}")
+            current = current[part]
+
+    if not validate_slug(str(data['app']['slug'])):
+        raise ValueError("app.slug doit respecter le format de slug attendu.")
+    if not validate_date(str(data['license']['quote_date'])):
+        raise ValueError("license.quote_date doit être au format YYYY-MM-DD.")
+
+    for label, value in {
+        'hub.api_port': data['hub']['api_port'],
+        'hub.frontend_port': data['hub']['frontend_port'],
+        'ports.api': data['ports']['api'],
+        'ports.frontend': data['ports']['frontend'],
+    }.items():
+        if not validate_port(str(value)) and str(value) != '80':
+            raise ValueError(f"{label} doit être un port valide.")
+
+    return data
+
+
+def build_config_from_profile(profile: dict, profile_path: Path) -> dict:
+    options = profile.get('options', {})
+    license_info = profile.get('license', {})
+    return {
+        'APP_KIND': APP_KIND_CLIENT,
+        'APP_KIND_LABEL': APP_KIND_LABELS[APP_KIND_CLIENT],
+        'APP_PROFILE_PATH': str(profile_path),
+        'APP_SLUG': profile['app']['slug'],
+        'APP_NAME': profile['app']['name'],
+        'APP_DESCRIPTION': profile['app']['description'],
+        'API_PORT': str(profile['ports']['api']),
+        'FRONTEND_PORT': str(profile['ports']['frontend']),
+        'HUB_HOST': str(profile['hub']['host']),
+        'HUB_API_PORT': str(profile['hub']['api_port']),
+        'HUB_FRONTEND_PORT': str(profile['hub']['frontend_port']),
+        'USE_TAILWIND': bool(options.get('tailwind', False)),
+        'CLEAN_DEMO': bool(options.get('clean_demo', False)),
+        'CLIENT_NAME': profile['client']['name'],
+        'CLIENT_CONTACT_NAME': profile.get('client', {}).get('contact_name', ''),
+        'CLIENT_CONTACT_EMAIL': profile.get('client', {}).get('contact_email', ''),
+        'LICENSE_QUOTE_NUMBER': str(license_info['quote_number']),
+        'LICENSE_QUOTE_DATE': str(license_info['quote_date']),
+        'LICENSE_NOTICE_YEAR': str(license_info.get('notice_year') or datetime.now().year),
+    }
+
+
+def collect_license_info(app_kind: str) -> dict:
+    if app_kind != APP_KIND_CLIENT:
+        return {
+            'CLIENT_NAME': '',
+            'CLIENT_CONTACT_NAME': '',
+            'CLIENT_CONTACT_EMAIL': '',
+            'LICENSE_QUOTE_NUMBER': '',
+            'LICENSE_QUOTE_DATE': '',
+            'LICENSE_NOTICE_YEAR': str(datetime.now().year),
+        }
+
+    print(f"\n{Colors.BOLD}📄 Informations de licence client{Colors.ENDC}\n")
+    return {
+        'CLIENT_NAME': prompt_input(
+            'Nom du client',
+            validator=lambda value: bool(value.strip()),
+            error_msg='Le nom du client est obligatoire.'
+        ),
+        'CLIENT_CONTACT_NAME': prompt_input('Nom du contact client', default=''),
+        'CLIENT_CONTACT_EMAIL': prompt_input('Email du contact client', default=''),
+        'LICENSE_QUOTE_NUMBER': prompt_input(
+            'Numéro du devis',
+            validator=lambda value: bool(value.strip()),
+            error_msg='Le numéro du devis est obligatoire.'
+        ),
+        'LICENSE_QUOTE_DATE': prompt_input(
+            'Date du devis (YYYY-MM-DD)',
+            default=datetime.now().strftime('%Y-%m-%d'),
+            validator=validate_date,
+            error_msg='Format attendu: YYYY-MM-DD.'
+        ),
+        'LICENSE_NOTICE_YEAR': prompt_input(
+            'Année de copyright',
+            default=str(datetime.now().year),
+            validator=lambda value: value.isdigit() and len(value) == 4,
+            error_msg='Entrez une année sur 4 chiffres.'
+        ),
+    }
+
+
 def prompt_input(prompt: str, default: str = "", validator=None, error_msg: str = "") -> str:
     while True:
         if default:
@@ -105,8 +291,33 @@ def prompt_input(prompt: str, default: str = "", validator=None, error_msg: str 
         print(f"{Colors.RED}✗ {error_msg}{Colors.ENDC}")
 
 
-def collect_app_info() -> dict:
+def collect_app_info(parsed_options: dict) -> dict:
     print(f"\n{Colors.BOLD}📝 Configuration de votre nouvelle application{Colors.ENDC}\n")
+
+    app_kind = prompt_choice(
+        "Type d'application",
+        {
+            APP_KIND_CLIENT: APP_KIND_LABELS[APP_KIND_CLIENT],
+            APP_KIND_TOOL: APP_KIND_LABELS[APP_KIND_TOOL],
+            APP_KIND_OTHER: APP_KIND_LABELS[APP_KIND_OTHER],
+        },
+        default=APP_KIND_CLIENT,
+    )
+
+    profile_path = parsed_options.get('profile_path')
+    if app_kind == APP_KIND_CLIENT:
+        if profile_path is None and prompt_yes_no("Importer une fiche client JSON", default=True):
+            profile_path = Path(
+                prompt_input(
+                    'Chemin vers la fiche client JSON',
+                    validator=lambda value: Path(value).expanduser().exists(),
+                    error_msg='Le fichier JSON indiqué est introuvable.'
+                )
+            ).expanduser().resolve()
+        if profile_path is not None:
+            config = build_config_from_profile(load_client_profile(profile_path), profile_path)
+            print(f"{Colors.GREEN}✓ Fiche client importée: {profile_path}{Colors.ENDC}")
+            return config
 
     print(f"{Colors.YELLOW}Le slug est l'identifiant unique de l'application.")
     print(f"Format: minuscules, chiffres et tirets uniquement (ex: mon-app, gestion-stock){Colors.ENDC}")
@@ -144,15 +355,18 @@ def collect_app_info() -> dict:
                                      validator=lambda x: validate_port(x) or x == "80",
                                      error_msg="Port entre 1024 et 65535.")
 
-    use_tailwind = '--tailwind' in sys.argv
-    if not use_tailwind and '--clean' not in sys.argv:
+    use_tailwind = '--tailwind' in parsed_options['args']
+    clean_demo = '--clean' in parsed_options['args']
+    if not use_tailwind and not clean_demo:
         print(f"\n{Colors.BOLD}🎨 Interface frontend{Colors.ENDC}")
         print(f"{Colors.YELLOW}Vous pouvez repartir sur une base React + Tailwind CSS propre.")
         print(f"Les composants de messagerie/notifications du Hub seront conservés.{Colors.ENDC}\n")
-        tw_response = input(f"{Colors.CYAN}Migrer vers React + Tailwind CSS ? (o/N): {Colors.ENDC}").strip().lower()
-        use_tailwind = tw_response in ('o', 'oui', 'y', 'yes')
+        use_tailwind = prompt_yes_no("Migrer vers React + Tailwind CSS", default=False)
 
-    return {
+    config = {
+        'APP_KIND': app_kind,
+        'APP_KIND_LABEL': APP_KIND_LABELS[app_kind],
+        'APP_PROFILE_PATH': '',
         "APP_SLUG": app_slug,
         "APP_NAME": app_name,
         "APP_DESCRIPTION": app_description,
@@ -162,12 +376,16 @@ def collect_app_info() -> dict:
         "HUB_API_PORT": hub_api_port,
         "HUB_FRONTEND_PORT": hub_frontend_port,
         "USE_TAILWIND": use_tailwind,
+        'CLEAN_DEMO': clean_demo,
     }
+    config.update(collect_license_info(app_kind))
+    return config
 
 
 def confirm_settings(config: dict) -> bool:
     print(f"\n{Colors.BOLD}📋 Récapitulatif de la configuration{Colors.ENDC}")
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
+    print(f"  TYPE:             {Colors.GREEN}{config['APP_KIND_LABEL']}{Colors.ENDC}")
     print(f"  APP_SLUG:         {Colors.GREEN}{config['APP_SLUG']}{Colors.ENDC}")
     print(f"  APP_NAME:         {Colors.GREEN}{config['APP_NAME']}{Colors.ENDC}")
     print(f"  APP_DESCRIPTION:  {Colors.GREEN}{config['APP_DESCRIPTION']}{Colors.ENDC}")
@@ -176,8 +394,15 @@ def confirm_settings(config: dict) -> bool:
     print(f"  HUB_HOST:         {Colors.GREEN}{config['HUB_HOST']}{Colors.ENDC}")
     print(f"  HUB_API_PORT:     {Colors.GREEN}{config['HUB_API_PORT']}{Colors.ENDC}")
     print(f"  HUB_FRONTEND_PORT:{Colors.GREEN}{config['HUB_FRONTEND_PORT']}{Colors.ENDC}")
+    if config.get('APP_PROFILE_PATH'):
+        print(f"  FICHE CLIENT:     {Colors.GREEN}{config['APP_PROFILE_PATH']}{Colors.ENDC}")
+    if config['APP_KIND'] == APP_KIND_CLIENT:
+        print(f"  CLIENT:           {Colors.GREEN}{config['CLIENT_NAME']}{Colors.ENDC}")
+        print(f"  DEVIS:            {Colors.GREEN}{config['LICENSE_QUOTE_NUMBER']} ({config['LICENSE_QUOTE_DATE']}){Colors.ENDC}")
     if config.get('USE_TAILWIND'):
         print(f"  TAILWIND CSS:     {Colors.GREEN}Oui (React + Tailwind){Colors.ENDC}")
+    if config.get('CLEAN_DEMO'):
+        print(f"  NETTOYAGE DEMO:   {Colors.GREEN}Oui{Colors.ENDC}")
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
     response = input(f"\n{Colors.YELLOW}Confirmer ces paramètres ? (O/n): {Colors.ENDC}").strip().lower()
     return response in ('', 'o', 'oui', 'y', 'yes')
@@ -943,6 +1168,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 - Création du projet à partir de HUBapp_TEMPLATE
 - Configuration initiale : `{config['APP_SLUG']}`
+- Type d'application : {config['APP_KIND_LABEL']}
 - Intégration authentification Hub
 
 ---
@@ -957,9 +1183,29 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 
 def create_readme(root: Path, config: dict) -> bool:
+    mode_summary = {
+        APP_KIND_CLIENT: "Initialisée pour un client final, avec prise en charge d'une fiche client JSON ou d'une saisie assistée.",
+        APP_KIND_TOOL: "Initialisée comme outil interne avec configuration guidée.",
+        APP_KIND_OTHER: "Initialisée en mode libre avec saisie manuelle complète.",
+    }[config['APP_KIND']]
+    client_block = ""
+    if config['APP_KIND'] == APP_KIND_CLIENT:
+        client_block = f"""
+
+## 🧾 Informations client
+
+| Champ | Valeur |
+|-------|--------|
+| `Client` | `{config['CLIENT_NAME']}` |
+| `Devis` | `{config['LICENSE_QUOTE_NUMBER']}` |
+| `Date du devis` | `{config['LICENSE_QUOTE_DATE']}` |
+"""
+
     content = f"""# {config['APP_NAME']}
 
 {config['APP_DESCRIPTION']}
+
+{mode_summary}
 
 ## 🚀 Démarrage rapide
 
@@ -1015,6 +1261,7 @@ Cette application utilise le système d'authentification centralisé du Hub.
 | `API_PORT` | `{config['API_PORT']}` |
 | `FRONTEND_PORT` | `{config['FRONTEND_PORT']}` |
 | `HUB_HOST` | `{config['HUB_HOST']}` |
+{client_block}
 """
     try:
         (root / 'README.md').write_text(content, encoding='utf-8')
@@ -1022,6 +1269,57 @@ Cette application utilise le système d'authentification centralisé du Hub.
         return True
     except Exception as e:
         print(f"  {Colors.RED}✗ Erreur README.md: {e}{Colors.ENDC}")
+        return False
+
+
+def create_license_file(root: Path, config: dict) -> bool:
+    if config['APP_KIND'] == APP_KIND_CLIENT:
+        content = f"""# LICENCE PROPRIÉTAIRE ET COMMERCIALE
+**Copyright (c) {config['LICENSE_NOTICE_YEAR']} POULIDOR Audit & Développement. Tous droits réservés.**
+
+Ce code source, incluant le socle technique (\"Hub\"), les modèles et les applications spécifiques développées, est la propriété intellectuelle exclusive de Valerian POULIDOR (POULIDOR Audit & Développement).
+
+## 1. Droits accordés (Licence d'utilisation)
+L'accès à ce code source est accordé exclusivement à l'entreprise **{config['CLIENT_NAME']}** (ci-après \"le Client\"), conformément au devis **{config['LICENSE_QUOTE_NUMBER']}** validé le **{config['LICENSE_QUOTE_DATE']}**, et sous réserve du paiement intégral des prestations.
+
+Le Client titulaire de la licence est autorisé à :
+- Utiliser le logiciel pour les besoins internes de son entreprise, sans limite de durée.
+- Étudier, modifier et adapter le code source pour son usage interne exclusif.
+- Permettre à ses employés ou prestataires techniques d'accéder au code uniquement dans le but de le maintenir ou de le développer pour le compte du Client.
+
+## 2. Restrictions strictes
+Il est STRICTEMENT INTERDIT, sans l'accord écrit, préalable et exprès de POULIDOR Audit & Développement, de :
+- Vendre, revendre, louer ou sous-licencier le présent logiciel, son code source ou toute partie de celui-ci.
+- Distribuer, publier ou rendre public le code source sur internet ou à des tiers non autorisés.
+- Utiliser le code source, modifié ou non, pour créer un produit commercialisé sous une autre marque.
+- Retirer, modifier ou masquer la présente mention de copyright et de licence.
+
+Toute violation de ces conditions entraînera la révocation immédiate de la licence d'utilisation accordée à **{config['CLIENT_NAME']}** et des poursuites judiciaires.
+"""
+    else:
+        content = f"""# LICENCE PROPRIÉTAIRE ET COMMERCIALE
+**Copyright (c) {datetime.now().year} POULIDOR Audit & Développement. Tous droits réservés.**
+
+Ce code source, incluant le socle technique (\"Hub\"), les modèles et les applications spécifiques développées, est la propriété intellectuelle exclusive de Valerian POULIDOR (POULIDOR Audit & Développement).
+
+## 1. Droits accordés (Licence d'utilisation)
+Cette application a été initialisée en mode **{config['APP_KIND_LABEL']}**.
+
+Les droits d'utilisation finaux, les engagements de maintenance et les conditions de diffusion doivent être formalisés avant toute livraison à un tiers.
+
+## 2. Restrictions strictes
+Il est STRICTEMENT INTERDIT, sans l'accord écrit, préalable et exprès de POULIDOR Audit & Développement, de :
+- Vendre, revendre, louer ou sous-licencier le présent logiciel, son code source ou toute partie de celui-ci.
+- Distribuer, publier ou rendre public le code source sur internet ou à des tiers non autorisés.
+- Utiliser le code source, modifié ou non, pour créer un produit commercialisé sous une autre marque.
+- Retirer, modifier ou masquer la présente mention de copyright et de licence.
+"""
+    try:
+        (root / 'LICENSE.md').write_text(content, encoding='utf-8')
+        print(f"  {Colors.GREEN}✓ LICENSE.md généré pour le mode {config['APP_KIND']}{Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"  {Colors.RED}✗ Erreur LICENSE.md: {e}{Colors.ENDC}")
         return False
 
 
@@ -2189,6 +2487,9 @@ def _generate_action_scripts(root: Path) -> bool:
 def _self_destruct(root: Path) -> None:
     print(f"\n{Colors.YELLOW}🗑️  Auto-suppression du script d'initialisation...{Colors.ENDC}")
     targets = [
+        root / "INITIALISE.py",
+        root / "INITIALISE.sh",
+        root / "INITIALISE.bat",
         root / "ACTIONS" / "LINUX" / "INITIALISE.sh",
         root / "ACTIONS" / "WINDOWS" / "INITIALISE.bat",
         root / "ACTIONS" / "PYTHON" / "INITIALISE.py",
@@ -2208,8 +2509,14 @@ def _self_destruct(root: Path) -> None:
 # ============================================================
 
 def main():
-    clean_mode = '--clean' in sys.argv
-    tailwind_mode = '--tailwind' in sys.argv
+    try:
+        parsed_options = parse_cli_options(sys.argv[1:])
+    except ValueError as exc:
+        print(f"{Colors.RED}✗ {exc}{Colors.ENDC}")
+        return 1
+
+    clean_mode = '--clean' in parsed_options['args']
+    tailwind_mode = '--tailwind' in parsed_options['args']
 
     print_header()
 
@@ -2224,7 +2531,10 @@ def main():
         print(f"{Colors.RED}✗ Erreur: docker-compose.yml introuvable depuis {root}{Colors.ENDC}")
         sys.exit(1)
 
-    config = collect_app_info()
+    config = collect_app_info(parsed_options)
+
+    clean_mode = clean_mode or config.get('CLEAN_DEMO', False)
+    tailwind_mode = tailwind_mode or config.get('USE_TAILWIND', False)
 
     if not confirm_settings(config):
         print(f"\n{Colors.YELLOW}Opération annulée.{Colors.ENDC}")
@@ -2233,33 +2543,35 @@ def main():
     print(f"\n{Colors.BOLD}🔄 Application des modifications...{Colors.ENDC}\n")
 
     success = True
-    print(f"{Colors.CYAN}[1/13] Création .env{Colors.ENDC}")
+    print(f"{Colors.CYAN}[1/14] Création .env{Colors.ENDC}")
     success &= create_env_file(root, config)
-    print(f"{Colors.CYAN}[2/13] Mise à jour .env.example{Colors.ENDC}")
+    print(f"{Colors.CYAN}[2/14] Mise à jour .env.example{Colors.ENDC}")
     success &= update_env_example(root, config)
-    print(f"{Colors.CYAN}[3/13] Mise à jour docker-compose.yml{Colors.ENDC}")
+    print(f"{Colors.CYAN}[3/14] Mise à jour docker-compose.yml{Colors.ENDC}")
     success &= update_docker_compose(root, config)
-    print(f"{Colors.CYAN}[4/13] Mise à jour backend/config.py{Colors.ENDC}")
+    print(f"{Colors.CYAN}[4/14] Mise à jour backend/config.py{Colors.ENDC}")
     success &= update_backend_config(root, config)
-    print(f"{Colors.CYAN}[5/13] Mise à jour Dockerfile.frontend{Colors.ENDC}")
+    print(f"{Colors.CYAN}[5/14] Mise à jour Dockerfile.frontend{Colors.ENDC}")
     success &= update_dockerfile_frontend(root, config)
-    print(f"{Colors.CYAN}[6/13] Mise à jour frontend/index.html{Colors.ENDC}")
+    print(f"{Colors.CYAN}[6/14] Mise à jour frontend/index.html{Colors.ENDC}")
     success &= update_frontend_index(root, config)
-    print(f"{Colors.CYAN}[7/13] Mise à jour frontend/Header.jsx{Colors.ENDC}")
+    print(f"{Colors.CYAN}[7/14] Mise à jour frontend/Header.jsx{Colors.ENDC}")
     success &= update_frontend_header(root, config)
-    print(f"{Colors.CYAN}[8/13] Mise à jour frontend/package.json{Colors.ENDC}")
+    print(f"{Colors.CYAN}[8/14] Mise à jour frontend/package.json{Colors.ENDC}")
     success &= update_frontend_package_json(root, config)
-    print(f"{Colors.CYAN}[9/13] Mise à jour frontend/src/config.js{Colors.ENDC}")
+    print(f"{Colors.CYAN}[9/14] Mise à jour frontend/src/config.js{Colors.ENDC}")
     success &= update_frontend_config_js(root, config)
-    print(f"{Colors.CYAN}[10/13] Mise à jour fixtures de test{Colors.ENDC}")
+    print(f"{Colors.CYAN}[10/14] Mise à jour fixtures de test{Colors.ENDC}")
     success &= update_test_fixtures(root, config)
-    print(f"{Colors.CYAN}[11/13] Réinitialisation VERSION{Colors.ENDC}")
+    print(f"{Colors.CYAN}[11/14] Réinitialisation VERSION{Colors.ENDC}")
     success &= create_version_file(root)
-    print(f"{Colors.CYAN}[12/13] Réinitialisation documentation{Colors.ENDC}")
+    print(f"{Colors.CYAN}[12/14] Réinitialisation documentation{Colors.ENDC}")
     success &= create_changelog(root, config)
     success &= create_readme(root, config)
-    print(f"{Colors.CYAN}[13/13] Nettoyage fichiers obsolètes{Colors.ENDC}")
+    print(f"{Colors.CYAN}[13/14] Nettoyage fichiers obsolètes{Colors.ENDC}")
     success &= cleanup_obsolete_files(root)
+    print(f"{Colors.CYAN}[14/14] Génération LICENSE.md{Colors.ENDC}")
+    success &= create_license_file(root, config)
 
     use_tailwind = config.get('USE_TAILWIND', False) or tailwind_mode
     if use_tailwind or clean_mode:
