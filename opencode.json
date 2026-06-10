@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "hub": {
+      "command": "python",
+      "args": ["-m", "hub_mcp.server"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
