@@ -335,14 +335,10 @@ def collect_app_info(parsed_options: dict) -> dict:
     app_description = prompt_input("APP_DESCRIPTION", default=f"Application {app_name}")
 
     print(f"\n{Colors.BOLD}🔌 Configuration des ports{Colors.ENDC}")
-    print(f"{Colors.YELLOW}Choisissez des ports non utilisés sur votre système.{Colors.ENDC}\n")
+    print(f"{Colors.YELLOW}💡 Laissez vide pour que le Hub attribue automatiquement le port (recommandé).{Colors.ENDC}\n")
 
-    api_port = prompt_input("API_PORT (port backend)", default="9045",
-                            validator=validate_port,
-                            error_msg="Port entre 1024 et 65535.")
-    frontend_port = prompt_input("FRONTEND_PORT (port frontend)", default="4250",
-                                 validator=validate_port,
-                                 error_msg="Port entre 1024 et 65535.")
+    api_port = prompt_input("API_PORT (port backend, vide = Hub)", default="")
+    frontend_port = prompt_input("FRONTEND_PORT (port frontend, vide = Hub)", default="")
 
     print(f"\n{Colors.BOLD}🔗 Configuration du Hub{Colors.ENDC}")
     print(f"{Colors.YELLOW}Adresse du serveur Hub auquel cette app se connectera.{Colors.ENDC}\n")
@@ -437,15 +433,11 @@ def create_env_file(root: Path, config: dict) -> bool:
     env_path = root / '.env'
     try:
         content = example_path.read_text(encoding='utf-8')
-        frontend_port = int(config['FRONTEND_PORT'])
         replacements = [
             ('APP_SLUG=mon-app', f'APP_SLUG={config["APP_SLUG"]}'),
             ('APP_NAME=Mon Application', f'APP_NAME={config["APP_NAME"]}'),
             ('APP_DESCRIPTION=Application template avec authentification Hub',
              f'APP_DESCRIPTION={config["APP_DESCRIPTION"]}'),
-            ('API_PORT=9045', f'API_PORT={config["API_PORT"]}'),
-            ('FRONTEND_PORT=4250', f'FRONTEND_PORT={frontend_port}'),
-            ('FRONTEND_HTTPS_PORT=4251', f'FRONTEND_HTTPS_PORT={frontend_port + 1}'),
             ('HUB_HOST=192.0.2.11', f'HUB_HOST={config["HUB_HOST"]}'),
             ('HUB_API_PORT=8000', f'HUB_API_PORT={config["HUB_API_PORT"]}'),
             ('HUB_FRONTEND_PORT=80', f'HUB_FRONTEND_PORT={config["HUB_FRONTEND_PORT"]}'),
@@ -460,6 +452,12 @@ def create_env_file(root: Path, config: dict) -> bool:
         for old, new in replacements:
             content = content.replace(old, new)
         content = re.sub(r'^APP_VERSION=.*$', 'APP_VERSION=0.0.1', content, flags=re.MULTILINE)
+        api_port_val = config['API_PORT'].strip()
+        frontend_port_val = config['FRONTEND_PORT'].strip()
+        https_val = str(int(frontend_port_val) + 1) if frontend_port_val else ""
+        content = re.sub(r'^API_PORT=.*$', f'API_PORT={api_port_val}', content, flags=re.MULTILINE)
+        content = re.sub(r'^FRONTEND_PORT=.*$', f'FRONTEND_PORT={frontend_port_val}', content, flags=re.MULTILINE)
+        content = re.sub(r'^FRONTEND_HTTPS_PORT=.*$', f'FRONTEND_HTTPS_PORT={https_val}', content, flags=re.MULTILINE)
         env_path.write_text(content, encoding='utf-8')
         print(f"  {Colors.GREEN}✓ Fichier .env créé{Colors.ENDC}")
         return True
