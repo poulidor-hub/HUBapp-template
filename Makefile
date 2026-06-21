@@ -30,7 +30,8 @@ help: ## Afficher cette aide
 
 # === SSL / HTTPS ===
 
-sync-env: ## Synchroniser FRONTEND_HTTPS_PORT et APP_VERSION dans .env
+sync-env: ## Allouer les ports via le Hub si absents, puis synchroniser FRONTEND_HTTPS_PORT et APP_VERSION
+	@python3 ACTIONS/PYTHON/allocate_ports.py || { echo "❌ Allocation des ports échouée"; exit 1; }
 	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
 	if ! echo "$$frontend_port" | grep -Eq '^[0-9]+$$'; then \
 		echo "❌ FRONTEND_PORT invalide dans .env: '$$frontend_port'"; \
