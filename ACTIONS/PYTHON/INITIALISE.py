@@ -507,11 +507,15 @@ def update_docker_compose(root: Path, config: dict) -> bool:
         ('# Docker Compose - Application Template Hub',
          f'# Docker Compose - {config["APP_NAME"]}'),
         ('${APP_SLUG:-mon-app}', f'${{APP_SLUG:-{config["APP_SLUG"]}}}'),
-        ('${API_PORT:-9045}', f'${{API_PORT:-{config["API_PORT"]}}}'),
-        ('${FRONTEND_PORT:-4250}', f'${{FRONTEND_PORT:-{config["FRONTEND_PORT"]}}}'),
         ('${HUB_API_PORT:-8000}', f'${{HUB_API_PORT:-{config["HUB_API_PORT"]}}}'),
         ('${HUB_FRONTEND_PORT:-80}', f'${{HUB_FRONTEND_PORT:-{config["HUB_FRONTEND_PORT"]}}}'),
     ]
+    # Ports : ne réécrire le fallback que si l'utilisateur a saisi un port.
+    # Vide = allocation dynamique par le Hub → on garde les défauts (:-9045/:-4250).
+    if config["API_PORT"].strip():
+        replacements.append(('${API_PORT:-9045}', f'${{API_PORT:-{config["API_PORT"]}}}'))
+    if config["FRONTEND_PORT"].strip():
+        replacements.append(('${FRONTEND_PORT:-4250}', f'${{FRONTEND_PORT:-{config["FRONTEND_PORT"]}}}'))
     return update_file(filepath, replacements, "Configuration Docker mise à jour")
 
 
@@ -522,22 +526,28 @@ def update_backend_config(root: Path, config: dict) -> bool:
         ('APP_NAME: str = "Mon Application"', f'APP_NAME: str = "{config["APP_NAME"]}"'),
         ("APP_DESCRIPTION: str = \"Template d'application avec authentification Hub\"",
          f'APP_DESCRIPTION: str = "{config["APP_DESCRIPTION"]}"'),
-        ('API_PORT: int = 9045', f'API_PORT: int = {config["API_PORT"]}'),
-        ('FRONTEND_PORT: int = 4250', f'FRONTEND_PORT: int = {config["FRONTEND_PORT"]}'),
         ('HUB_API_PORT: int = 8000', f'HUB_API_PORT: int = {config["HUB_API_PORT"]}'),
         ('HUB_FRONTEND_PORT: int = 80', f'HUB_FRONTEND_PORT: int = {config["HUB_FRONTEND_PORT"]}'),
     ]
+    # Ports : ne réécrire la valeur par défaut Python que si un port a été saisi.
+    # Vide = allocation dynamique → on garde 9045/4250 (surchargés au runtime par .env).
+    if config["API_PORT"].strip():
+        replacements.append(('API_PORT: int = 9045', f'API_PORT: int = {config["API_PORT"]}'))
+    if config["FRONTEND_PORT"].strip():
+        replacements.append(('FRONTEND_PORT: int = 4250', f'FRONTEND_PORT: int = {config["FRONTEND_PORT"]}'))
     return update_file(filepath, replacements, "Config backend mise à jour")
 
 
 def update_dockerfile_frontend(root: Path, config: dict) -> bool:
     filepath = root / 'Dockerfile.frontend'
     replacements = [
-        ('ARG VITE_API_PORT=9045', f'ARG VITE_API_PORT={config["API_PORT"]}'),
         ('ARG VITE_HUB_API_PORT=8000', f'ARG VITE_HUB_API_PORT={config["HUB_API_PORT"]}'),
         ('ARG VITE_HUB_FRONTEND_PORT=80', f'ARG VITE_HUB_FRONTEND_PORT={config["HUB_FRONTEND_PORT"]}'),
         ('ARG VITE_APP_SLUG=mon-app', f'ARG VITE_APP_SLUG={config["APP_SLUG"]}'),
     ]
+    # Vide = allocation dynamique → on garde ARG VITE_API_PORT=9045 (défaut de build).
+    if config["API_PORT"].strip():
+        replacements.append(('ARG VITE_API_PORT=9045', f'ARG VITE_API_PORT={config["API_PORT"]}'))
     return update_file(filepath, replacements, "Dockerfile frontend mis à jour")
 
 
