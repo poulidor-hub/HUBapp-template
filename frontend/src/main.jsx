@@ -7,7 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { ConfigProvider } from './context/ConfigContext'
 import { AuthProvider } from './context/AuthContext'
 import { queryClient } from './lib/queryClient'
-import './styles/index.css'
+import './styles/app.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
