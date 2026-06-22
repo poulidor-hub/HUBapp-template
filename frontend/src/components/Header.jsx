@@ -18,8 +18,8 @@ function Header({ theme, toggleTheme }) {
 
   return (
     <header>
-      <h1 className="inline-flex items-center gap-2">
-        <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+      <h1 className="app-title">
+        <ShieldCheck className="hub-icon" aria-hidden="true" />
         <span>Template App - Hub Auth</span>
       </h1>
       <div className="header-actions">
@@ -28,15 +28,15 @@ function Header({ theme, toggleTheme }) {
           <span>{checking ? 'Vérification...' : online ? 'Hub connecté' : 'Hub indisponible'}</span>
         </div>
         <button
-          className="theme-toggle inline-flex items-center justify-center"
+          className="theme-toggle"
           onClick={toggleTheme}
           title="Changer le thème"
           aria-label="Changer le thème"
         >
           {theme === 'dark' ? (
-            <SunMedium className="h-5 w-5" aria-hidden="true" />
+            <SunMedium className="hub-icon" aria-hidden="true" />
           ) : (
-            <MoonStar className="h-5 w-5" aria-hidden="true" />
+            <MoonStar className="hub-icon" aria-hidden="true" />
           )}
         </button>
         {isAuthenticated ? (
