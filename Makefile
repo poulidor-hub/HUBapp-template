@@ -11,7 +11,7 @@
 #   make logs          Voir les logs
 # ============================================================
 
-.PHONY: help dev build up down restart logs test lint clean
+.PHONY: help dev build up down restart logs test lint clean refresh-design-seed
 
 # Charger les variables .env si le fichier existe
 ifneq (,$(wildcard ./.env))
@@ -162,3 +162,19 @@ bump-minor: ## Incrémenter la version minor (x.Y.0)
 
 bump-major: ## Incrémenter la version major (X.0.0)
 	python scripts/bump_version.py major
+
+# === DESIGN SYSTEM (HUBCSS seed) ===
+
+HUBCSS_DIR ?= ../HUBCSS
+DESIGN_SEED := frontend/public/design-system/current
+
+refresh-design-seed: ## Régénérer le seed HUBCSS local depuis $(HUBCSS_DIR)/dist
+	@test -f "$(HUBCSS_DIR)/dist/global.css" || { echo "❌ $(HUBCSS_DIR)/dist introuvable. Lancez 'npm run build' dans HUBCSS."; exit 1; }
+	@mkdir -p "$(DESIGN_SEED)/bootstrap-icons/fonts" "$(DESIGN_SEED)/icons"
+	@cp "$(HUBCSS_DIR)/dist/global.css" "$(DESIGN_SEED)/global.css"
+	@cp "$(HUBCSS_DIR)/dist/fonts.css" "$(DESIGN_SEED)/fonts.css"
+	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/bootstrap-icons.css" "$(DESIGN_SEED)/bootstrap-icons/bootstrap-icons.css"
+	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/fonts/bootstrap-icons.woff" "$(DESIGN_SEED)/bootstrap-icons/fonts/bootstrap-icons.woff"
+	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/fonts/bootstrap-icons.woff2" "$(DESIGN_SEED)/bootstrap-icons/fonts/bootstrap-icons.woff2"
+	@cp "$(HUBCSS_DIR)/dist/icons/lucide.svg" "$(DESIGN_SEED)/icons/lucide.svg"
+	@echo "✅ Seed HUBCSS rafraîchi dans $(DESIGN_SEED)"
