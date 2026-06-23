@@ -11,7 +11,7 @@
 #   make logs          Voir les logs
 # ============================================================
 
-.PHONY: help dev build up down restart logs test lint clean refresh-design-seed
+.PHONY: help dev build up down restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
 
 # Charger les variables .env si le fichier existe
 ifneq (,$(wildcard ./.env))
@@ -178,3 +178,23 @@ refresh-design-seed: ## Régénérer le seed HUBCSS local depuis $(HUBCSS_DIR)/d
 	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/fonts/bootstrap-icons.woff2" "$(DESIGN_SEED)/bootstrap-icons/fonts/bootstrap-icons.woff2"
 	@cp "$(HUBCSS_DIR)/dist/icons/lucide.svg" "$(DESIGN_SEED)/icons/lucide.svg"
 	@echo "✅ Seed HUBCSS rafraîchi dans $(DESIGN_SEED)"
+
+# === OUTILLAGE HUB (MCP + plugin opencode) ===
+
+HUB_STACK_DIR ?= ..
+
+sync-hub-tooling: ## Resynchroniser hub_mcp + plugin opencode depuis $(HUB_STACK_DIR) (source de vérité)
+	@test -f "$(HUB_STACK_DIR)/hub_mcp/server.py" || { echo "❌ $(HUB_STACK_DIR)/hub_mcp introuvable"; exit 1; }
+	@test -f "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" || { echo "❌ $(HUB_STACK_DIR)/.opencode/plugin/hub.ts introuvable"; exit 1; }
+	@mkdir -p hub_mcp/tests .opencode/plugin
+	@cp "$(HUB_STACK_DIR)/hub_mcp/"*.py hub_mcp/
+	@cp "$(HUB_STACK_DIR)/hub_mcp/tests/"*.py hub_mcp/tests/
+	@cp "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" .opencode/plugin/hub.ts
+	@find hub_mcp -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	@echo "✅ Outillage Hub synchronisé depuis $(HUB_STACK_DIR)"
+
+sync-hub-tooling-check: ## Vérifier que la copie hub_mcp + plugin est synchro avec $(HUB_STACK_DIR) (CI)
+	@diff -r -x __pycache__ -x .pytest_cache "$(HUB_STACK_DIR)/hub_mcp" hub_mcp >/dev/null 2>&1 \
+		&& diff "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" .opencode/plugin/hub.ts >/dev/null 2>&1 \
+		&& echo "✅ Outillage Hub synchronisé" \
+		|| { echo "❌ Dérive détectée — lancez 'make sync-hub-tooling'"; exit 1; }
