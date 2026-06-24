@@ -187,16 +187,16 @@ HUB_MCP_SRC ?= ../hub-mcp/hub_mcp
 
 sync-hub-tooling: ## Resynchroniser hub_mcp (depuis $(HUB_MCP_SRC)) + plugin opencode (depuis $(HUB_STACK_DIR))
 	@test -f "$(HUB_MCP_SRC)/server.py" || { echo "❌ $(HUB_MCP_SRC) introuvable (dépôt hub-mcp)"; exit 1; }
-	@test -f "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" || { echo "❌ $(HUB_STACK_DIR)/.opencode/plugin/hub.ts introuvable"; exit 1; }
-	@mkdir -p hub_mcp/tests .opencode/plugin
+	@test -f "$(HUB_STACK_DIR)/.opencode/plugins/hub.ts" || { echo "❌ $(HUB_STACK_DIR)/.opencode/plugins/hub.ts introuvable"; exit 1; }
+	@mkdir -p hub_mcp/tests .opencode/plugins
 	@cp "$(HUB_MCP_SRC)/"*.py hub_mcp/
 	@cp "$(HUB_MCP_SRC)/tests/"*.py hub_mcp/tests/
-	@cp "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" .opencode/plugin/hub.ts
+	@cp "$(HUB_STACK_DIR)/.opencode/plugins/hub.ts" .opencode/plugins/hub.ts
 	@find hub_mcp -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ Outillage Hub synchronisé (MCP: $(HUB_MCP_SRC), plugin: $(HUB_STACK_DIR))"
 
 sync-hub-tooling-check: ## Vérifier que la copie hub_mcp + plugin est synchro avec les sources (CI)
 	@diff -r -x __pycache__ -x .pytest_cache "$(HUB_MCP_SRC)" hub_mcp >/dev/null 2>&1 \
-		&& diff "$(HUB_STACK_DIR)/.opencode/plugin/hub.ts" .opencode/plugin/hub.ts >/dev/null 2>&1 \
+		&& diff "$(HUB_STACK_DIR)/.opencode/plugins/hub.ts" .opencode/plugins/hub.ts >/dev/null 2>&1 \
 		&& echo "✅ Outillage Hub synchronisé" \
 		|| { echo "❌ Dérive détectée — lancez 'make sync-hub-tooling'"; exit 1; }
