@@ -11,13 +11,13 @@
 #   make logs          Voir les logs
 # ============================================================
 
-.PHONY: help dev build up down restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
-
 # Charger les variables .env si le fichier existe
 ifneq (,$(wildcard ./.env))
 	include .env
 	export
 endif
+
+.PHONY: help dev build up down restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
 
 APP_SLUG ?= mon-app
 
