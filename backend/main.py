@@ -211,11 +211,13 @@ app.add_middleware(
 # Inclusion des routeurs
 app.include_router(docs_router)
 app.include_router(backup_router)
-app.include_router(tests_router)
+if settings.ENABLE_DEMO_ENDPOINTS:
+    app.include_router(tests_router)
+    app.include_router(test_data_router)
+    logger.info("🧪 Endpoints démo activés (ENABLE_DEMO_ENDPOINTS=true)")
 app.include_router(items_router)
 app.include_router(preferences_router)
 app.include_router(m2m_router)
-app.include_router(test_data_router)
 
 
 # ============================================================

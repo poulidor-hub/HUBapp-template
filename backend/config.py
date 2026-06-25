@@ -146,6 +146,9 @@ class Settings(BaseSettings):
     
     # Environnement
     DEBUG: bool = False
+
+    # Endpoints de demo/test — desactiver en production
+    ENABLE_DEMO_ENDPOINTS: bool = False
     
     @field_validator(
         'APP_HOST',
