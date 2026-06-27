@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 
-from config import get_settings
+from config import get_settings, APP_VERSION
 from pathlib import Path
 from outbox import outbox_service
 
@@ -230,6 +230,7 @@ class HubClient:
                 "api_port": self.settings.API_PORT,
                 "frontend_port": self.settings.FRONTEND_PORT,
                 "is_shared": self.settings.IS_SHARED,  # Service partagé M2M
+                "version": APP_VERSION,  # Version de l'app (fichier VERSION), capturée par le Hub à l'enregistrement
             }
             # Envoyer le port HTTPS si HTTPS est activé
             if self.settings.HTTPS_ENABLED and self.settings.FRONTEND_HTTPS_PORT:
