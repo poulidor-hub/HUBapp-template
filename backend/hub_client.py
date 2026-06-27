@@ -27,6 +27,7 @@ import logging
 
 from config import get_settings
 from pathlib import Path
+from outbox import outbox_service
 
 logger = logging.getLogger(__name__)
 
@@ -740,10 +741,35 @@ class HubClient:
                 )
             else:
                 logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
+                if response.status_code >= 500:
+                    try:
+                        msg_id = await outbox_service.enqueue(
+                            target_url=url,
+                            method=method,
+                            headers=kwargs.get("headers", {}),
+                            payload=kwargs.get("json"),
+                            target_slug=service_slug,
+                            auth_context={"type": "m2m", "slug": service_slug},
+                        )
+                        logger.info(f"📦 Message outbox #{msg_id} créé (HTTP {response.status_code})")
+                    except Exception as outbox_err:
+                        logger.error(f"❌ Outbox enqueue failed: {outbox_err}")
                 return None
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur appel service {service_slug}: {e}")
+            try:
+                msg_id = await outbox_service.enqueue(
+                    target_url=url,
+                    method=method,
+                    headers=kwargs.get("headers", {}),
+                    payload=kwargs.get("json"),
+                    target_slug=service_slug,
+                    auth_context={"type": "m2m", "slug": service_slug},
+                )
+                logger.info(f"📦 Message outbox #{msg_id} créé pour {service_slug}{endpoint}")
+            except Exception as outbox_err:
+                logger.error(f"❌ Outbox enqueue failed: {outbox_err}")
             return None
     
     async def list_discovered_services(self, force_refresh: bool = False) -> List[DiscoveredService]:
@@ -905,11 +931,111 @@ class HubClient:
             else:
                 error_text = response.text[:200] if response.text else "(pas de contenu)"
                 logger.error(f"❌ Erreur appel Hub: {response.status_code} - {error_text}")
+                if response.status_code >= 500:
+                    try:
+                        msg_id = await outbox_service.enqueue(
+                            target_url=url,
+                            method=method,
+                            headers=kwargs.get("headers", {}),
+                            payload=kwargs.get("json"),
+                            target_slug="hub",
+                            auth_context={"type": "m2m", "slug": "hub"},
+                        )
+                        logger.info(f"📦 Message outbox #{msg_id} créé (HTTP {response.status_code})")
+                    except Exception as outbox_err:
+                        logger.error(f"❌ Outbox enqueue failed: {outbox_err}")
                 return {"error": error_text, "status_code": response.status_code}
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur réseau appel Hub: {e}")
+            try:
+                msg_id = await outbox_service.enqueue(
+                    target_url=url,
+                    method=method,
+                    headers=kwargs.get("headers", {}),
+                    payload=kwargs.get("json"),
+                    target_slug="hub",
+                    auth_context={"type": "m2m", "slug": "hub"},
+                )
+                logger.info(f"📦 Message outbox #{msg_id} créé pour Hub{endpoint}")
+            except Exception as outbox_err:
+                logger.error(f"❌ Outbox enqueue failed: {outbox_err}")
             return None
+
+    async def call_discovered_service_with_guarantee(
+        self,
+        service_slug: str,
+        endpoint: str,
+        method: str = "POST",
+        payload: Optional[dict] = None,
+        max_retries: int = 10,
+    ) -> Optional[int]:
+        """
+        Appelle un service avec garantie de livraison via outbox.
+
+        Contrairement à call_discovered_service, cette méthode écrit directement
+        dans l'outbox pour une livraison asynchrone garantie.
+
+        Returns:
+            ID du message outbox, ou None si erreur avant enqueue
+        """
+        service = await self.get_service_by_slug(service_slug)
+        if not service:
+            service = await self.get_service_by_slug(service_slug, force_refresh=True)
+        if not service or not service.api_url:
+            logger.error(f"❌ Cannot enqueue: service '{service_slug}' not found")
+            return None
+
+        token = await self.get_m2m_token()
+        if not token:
+            logger.error(f"❌ Cannot enqueue: no M2M token for {service_slug}")
+            return None
+
+        url = f"{service.api_url.rstrip('/')}{endpoint}"
+        headers = {"X-Slug": service_slug}
+        auth_context = {"type": "m2m", "slug": service_slug}
+
+        return await outbox_service.enqueue(
+            target_url=url,
+            method=method,
+            headers=headers,
+            payload=payload,
+            target_slug=service_slug,
+            auth_context=auth_context,
+            max_retries=max_retries,
+        )
+
+    async def call_hub_endpoint_with_guarantee(
+        self,
+        endpoint: str,
+        method: str = "POST",
+        payload: Optional[dict] = None,
+        max_retries: int = 10,
+    ) -> Optional[int]:
+        """
+        Appelle un endpoint Hub avec garantie de livraison via outbox.
+
+        Returns:
+            ID du message outbox, ou None si erreur avant enqueue
+        """
+        token = await self.get_m2m_token()
+        if not token:
+            logger.error(f"❌ Cannot enqueue hub endpoint: no M2M token")
+            return None
+
+        url = f"{self.settings.hub_api_internal_url.rstrip('/')}{endpoint}"
+        headers = {"X-Slug": self.settings.APP_SLUG}
+        auth_context = {"type": "m2m", "slug": "hub"}
+
+        return await outbox_service.enqueue(
+            target_url=url,
+            method=method,
+            headers=headers,
+            payload=payload,
+            target_slug="hub",
+            auth_context=auth_context,
+            max_retries=max_retries,
+        )
 
 
 # Instance singleton
