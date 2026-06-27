@@ -2,7 +2,7 @@
 Modèles SQLAlchemy pour l'application.
 Exemple de modèle Item pour démonstration.
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger, Index, JSON
 from datetime import datetime, timezone
 
 from database import Base
@@ -166,4 +166,29 @@ class TestData(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class OutboxMessage(Base):
+    """Message en attente de livraison différée (Transactional Outbox)."""
+    __tablename__ = "outbox"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    target_url = Column(Text, nullable=False)
+    target_slug = Column(String(100), nullable=True)
+    method = Column(String(10), nullable=False, default="POST")
+    headers = Column(JSON, default={})
+    payload = Column(JSON, nullable=True)
+    auth_context = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    scheduled_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    next_retry_at = Column(DateTime(timezone=True), nullable=True, default=lambda: datetime.now(timezone.utc))
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=10)
+    last_error = Column(Text, nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        slug = self.target_slug or self.target_url
+        return f"<OutboxMessage(id={self.id}, target='{slug}', status='{self.status}')>"
 
