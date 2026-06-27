@@ -23,6 +23,7 @@ import os
 from config import get_settings, APP_VERSION
 from database import init_db, close_db, apply_migrations
 from hub_client import hub_client
+from outbox import outbox_service
 from hub_auth import (
     hub_auth,
     get_current_user,
@@ -159,6 +160,18 @@ async def lifespan(app: FastAPI):
         app.state.hub_reconnect_task = asyncio.create_task(hub_reconnection_loop())
         logger.info("🔄 Tâche de reconnexion Hub démarrée en arrière-plan")
     
+    # 7. Démarrer le worker outbox (livraison garantie)
+    async def _outbox_auth_provider(slug: str) -> dict:
+        token = await hub_client.get_m2m_token()
+        if token:
+            return {"Authorization": f"Bearer {token}", "X-Slug": slug}
+        return {}
+
+    outbox_service.set_auth_provider(_outbox_auth_provider)
+    outbox_service.start_worker()
+    app.state.outbox_worker_active = True
+    logger.info("📦 Worker outbox démarré")
+    
     startup_duration = (datetime.now(timezone.utc) - startup_time).total_seconds()
     logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
     
@@ -174,6 +187,9 @@ async def lifespan(app: FastAPI):
             await reconnect_task
         except asyncio.CancelledError:
             pass
+    
+    await outbox_service.stop_worker()
+    await outbox_service.cleanup_old_messages()
     
     await hub_client.close()
     await close_db()
@@ -269,6 +285,9 @@ async def health_check_detailed():
     # Statut du cache JWKS
     jwks_cache_status = hub_auth.get_jwks_cache_status()
     
+    # Statistiques outbox
+    outbox_stats = await outbox_service.get_stats()
+    
     return {
         "status": "healthy" if hub_registered else "degraded",
         "app": {
@@ -292,6 +311,7 @@ async def health_check_detailed():
                 for s in discovered_services[:10]
             ]
         },
+        "outbox": outbox_stats,
         "jwks_cache": jwks_cache_status,
         "config": {
             "is_shared": settings.IS_SHARED,
@@ -465,6 +485,35 @@ async def service_endpoint(user: TokenPayload = Depends(require_service_account(
         "service": user.sub,
         "token_type": user.token_type
     }
+
+
+# ============================================================
+# ENDPOINTS OUTBOX (administration)
+# ============================================================
+
+@app.get("/api/outbox/stats", tags=["Admin"])
+async def outbox_stats(user: TokenPayload = Depends(require_role("admin"))):
+    """Statistiques de la file outbox."""
+    return await outbox_service.get_stats()
+
+
+@app.post("/api/outbox/{msg_id}/retry", tags=["Admin"])
+async def outbox_retry(
+    msg_id: int,
+    user: TokenPayload = Depends(require_role("admin")),
+):
+    """Force le retry d'un message outbox en échec."""
+    success = await outbox_service.retry_failed_message(msg_id)
+    if success:
+        return {"success": True, "message": f"Message #{msg_id} remis en file d'attente"}
+    raise HTTPException(status_code=404, detail=f"Message #{msg_id} introuvable ou pas en échec")
+
+
+@app.post("/api/outbox/cleanup", tags=["Admin"])
+async def outbox_cleanup(user: TokenPayload = Depends(require_role("admin"))):
+    """Purge les vieux messages outbox (delivered > 7j, failed > 30j)."""
+    await outbox_service.cleanup_old_messages()
+    return {"success": True, "message": "Nettoyage effectué"}
 
 
 # ============================================================

@@ -307,3 +307,16 @@ async def test_worker_skips_4xx_errors(outbox_svc, monkeypatch):
     async with outbox_svc._session_maker() as session:
         saved = await session.get(OutboxMessage, msg_id)
     assert saved.status == "delivered"
+
+
+async def test_outbox_cleanup_endpoint_requires_auth(client):
+    """Test que /api/outbox/cleanup nécessite authentification."""
+    response = await client.post("/api/outbox/cleanup")
+    assert response.status_code == 401
+
+
+async def test_outbox_retry_endpoint_not_found(admin_client, outbox_svc, monkeypatch):
+    """Test retry sur un message inexistant."""
+    monkeypatch.setattr("main.outbox_service", outbox_svc)
+    response = await admin_client.post("/api/outbox/999999/retry")
+    assert response.status_code == 404
