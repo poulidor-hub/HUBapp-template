@@ -320,3 +320,81 @@ async def test_outbox_retry_endpoint_not_found(admin_client, outbox_svc, monkeyp
     monkeypatch.setattr("main.outbox_service", outbox_svc)
     response = await admin_client.post("/api/outbox/999999/retry")
     assert response.status_code == 404
+
+
+async def test_concurrent_enqueue(outbox_svc, db_session):
+    """Test que plusieurs enqueues concurrents marchent."""
+    import asyncio
+    ids = await asyncio.gather(*[
+        outbox_svc.enqueue(
+            target_url=f"http://service-{i}/api/data",
+            target_slug=f"svc-{i}",
+            method="POST",
+            payload={"num": i},
+        )
+        for i in range(10)
+    ])
+    assert len(ids) == 10
+    assert len(set(ids)) == 10
+
+    for i in range(10):
+        saved = await db_session.get(OutboxMessage, ids[i])
+        assert saved is not None
+        assert saved.payload == {"num": i}
+
+
+async def test_worker_full_delivery_cycle(outbox_svc, monkeypatch):
+    """Test du cycle complet : enqueue -> worker livre -> delivered."""
+    import httpx
+
+    received = []
+
+    async def mock_ok(self, method, url, **kwargs):
+        received.append({"method": method, "url": url, "json": kwargs.get("json")})
+        class Resp:
+            status_code = 200
+            async def aiter_bytes(self):
+                return
+        return Resp()
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", mock_ok)
+    monkeypatch.setattr("outbox.POLL_INTERVAL", 0.1)
+
+    msg_id = await outbox_svc.enqueue(
+        target_url="http://test-service/api/data",
+        target_slug="test-service",
+        method="POST",
+        payload={"order": 42},
+    )
+
+    await outbox_svc._process_batch()
+
+    async with outbox_svc._session_maker() as session:
+        saved = await session.get(OutboxMessage, msg_id)
+    assert saved.status == "delivered"
+    assert saved.delivered_at is not None
+    assert len(received) == 1
+    assert received[0]["json"] == {"order": 42}
+
+
+async def test_worker_pending_message_not_processed_before_schedule(outbox_svc):
+    """Test qu'un message avec next_retry_at futur n'est pas traité."""
+    from datetime import timedelta
+    from models import OutboxMessage
+
+    msg_id = await outbox_svc.enqueue(
+        target_url="http://test/api",
+        target_slug="test",
+        method="GET",
+    )
+    # Repousser next_retry_at dans le futur
+    async with outbox_svc._session_maker() as session:
+        msg = await session.get(OutboxMessage, msg_id)
+        msg.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        await session.commit()
+
+    await outbox_svc._process_batch()
+
+    async with outbox_svc._session_maker() as session:
+        saved = await session.get(OutboxMessage, msg_id)
+    assert saved.status == "pending"
