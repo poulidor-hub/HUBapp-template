@@ -9,9 +9,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.4.1] - 28 juin 2026
+
+### 🗑️ Centralisation du dev-interface (vers POULIDOR)
+
+- **Retrait** : `opencode.json`, `.opencode/`, `AGENTS.md`, `.github/` (instructions / skills / prompts), `AI_INDEX.md`. Le tooling de dev est désormais centralisé dans le méta-dépôt POULIDOR ; les apps générées par ce template restent propres. Conservés : `INITIALISE`/`ACTIONS` (bootstrap), `backend/`, `frontend/`, `hub_mcp/`, `scripts/`.
+
 ### ✨ Nouvelles fonctionnalités
 
-- **Nouveau** : Skill `.github/skills/verify-feature/SKILL.md` qui normalise le cycle de vérification post-implémentation (rebuild → logs boot → pytest in-Docker → appel API → logs runtime)
 - **Nouveau** : Cibles Make `test-docker` / `test-docker-cov` qui lancent pytest dans le conteneur `api` (image runtime, env Postgres réel)
 - **Nouveau** : Cible Make `ai-index` qui régénère `AI_INDEX.md` via `scripts/generate_ai_index.py`
 
