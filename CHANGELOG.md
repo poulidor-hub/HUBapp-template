@@ -9,6 +9,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.4.2] - 28 juin 2026
+
+### Correctif
+- **MCP hub** : ajout d'un micro `opencode.json` (contenant uniquement le bloc
+  `mcp.hub`) pour câbler le serveur MCP propre au template. Le dev-interface
+  générique (skills, plugins) reste centralisé dans POULIDOR.
+
 ## [2.4.1] - 28 juin 2026
 
 ### 🗑️ Centralisation du dev-interface (vers POULIDOR)
