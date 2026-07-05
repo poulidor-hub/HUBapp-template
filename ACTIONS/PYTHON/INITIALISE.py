@@ -7,7 +7,7 @@ Ce script est le SEUL présent dans `ACTIONS/PYTHON/` au démarrage du template.
 Il :
 1. Collecte les paramètres de la nouvelle app (slug, nom, ports, hub...)
 2. Met à jour les fichiers de config, docker-compose, frontend, backend, etc.
-3. Optionnellement nettoie le contenu de démo (--clean).
+3. Par défaut, nettoie le contenu de démo. Utiliser --demo pour le garder.
 4. Génère les scripts d'action (`START`, `STOP`, `RESTART`, `LOGS`,
    `STATUS`, `DELETE_DATA`, `UPDATE`, `BACKUP_DB`, `SHELL_API`,
    `SHELL_DB`, `TEST`, `COMMIT`) sous `ACTIONS/PYTHON/` et leurs wrappers
@@ -16,7 +16,7 @@ Il :
 
 Usage :
     python ACTIONS/PYTHON/INITIALISE.py
-    python ACTIONS/PYTHON/INITIALISE.py --clean
+    python ACTIONS/PYTHON/INITIALISE.py --demo
     python ACTIONS/PYTHON/INITIALISE.py --profile client.json
 
 Compatible Linux / Windows / macOS.
@@ -225,7 +225,7 @@ def build_config_from_profile(profile: dict, profile_path: Path) -> dict:
         'HUB_HOST': str(profile['hub']['host']),
         'HUB_API_PORT': str(profile['hub']['api_port']),
         'HUB_FRONTEND_PORT': str(profile['hub']['frontend_port']),
-        'CLEAN_DEMO': bool(options.get('clean_demo', False)),
+        'CLEAN_DEMO': not bool(options.get('demo', False)),
         'CLIENT_NAME': profile['client']['name'],
         'CLIENT_CONTACT_NAME': profile.get('client', {}).get('contact_name', ''),
         'CLIENT_CONTACT_EMAIL': profile.get('client', {}).get('contact_email', ''),
@@ -675,8 +675,8 @@ class UserPreference(Base):
     language = Column(String(5), default="fr")
     items_per_page = Column(Integer, default=20)
     email_notifications = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<UserPreference(username=\'{self.username}\')>"
@@ -697,8 +697,8 @@ class UploadedFile(Base):
     owner = Column(String(100), nullable=False, index=True)
     entity_type = Column(String(50), nullable=True, index=True)
     entity_id = Column(Integer, nullable=True, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<UploadedFile(id={self.id}, filename=\'{self.filename}\', owner=\'{self.owner}\')>"
@@ -2194,12 +2194,17 @@ def main():
         print(f"{Colors.RED}✗ {exc}{Colors.ENDC}")
         return 1
 
-    clean_mode = '--clean' in parsed_options['args']
+    clean_mode = '--clean' not in parsed_options['args']  # par défaut on nettoie, --demo pour garder
+    # Support rétrocompatible : --clean fait la même chose que le défaut (cleanup)
+    if '--clean' in parsed_options['args']:
+        clean_mode = True
+    if '--demo' in parsed_options['args']:
+        clean_mode = False
 
     print_header()
 
     if clean_mode:
-        print(f"{Colors.YELLOW}🧹 Mode --clean : le contenu de démonstration sera supprimé{Colors.ENDC}\n")
+        print(f"{Colors.YELLOW}🧹 Mode par défaut : le contenu de démonstration sera supprimé{Colors.ENDC}\n")
 
     root = get_project_root()
     if not (root / 'docker-compose.yml').exists():
@@ -2208,7 +2213,7 @@ def main():
 
     config = collect_app_info(parsed_options)
 
-    clean_mode = clean_mode or config.get('CLEAN_DEMO', False)
+    clean_mode = config.get('CLEAN_DEMO', clean_mode)
 
     if not confirm_settings(config):
         print(f"\n{Colors.YELLOW}Opération annulée.{Colors.ENDC}")

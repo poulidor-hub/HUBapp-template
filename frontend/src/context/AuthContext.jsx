@@ -96,6 +96,28 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
+  // Refresh proactif du token AVANT expiration
+  useEffect(() => {
+    if (!token) return
+
+    const decoded = decodeToken(token)
+    if (!decoded?.exp) return
+
+    const now = Math.floor(Date.now() / 1000)
+    const expiresIn = decoded.exp - now
+    if (expiresIn <= 0) return
+
+    const refreshBefore = Math.max(expiresIn - 120, 10) * 1000
+    console.log(`⏰ Refresh token programmé dans ${Math.round(refreshBefore / 1000)}s (exp dans ${expiresIn}s)`)
+
+    const timer = setTimeout(() => {
+      console.log('🔄 Refresh proactif du token...')
+      refreshAccessToken()
+    }, refreshBefore)
+
+    return () => clearTimeout(timer)
+  }, [token, refreshAccessToken])
+
   const login = useCallback(() => {
     const callbackUrl = encodeURIComponent(window.location.origin + window.location.pathname)
     const hubLoginUrl = `${appConfig.hubFrontendUrl}?callback=${callbackUrl}`

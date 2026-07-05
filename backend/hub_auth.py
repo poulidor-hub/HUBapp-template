@@ -497,6 +497,9 @@ class HubAuth:
                 self._hub_reachable = True
                 self._cached_key_fetched_at = utcnow()
                 return payload
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+                # Token invalide/expiré → ne pas traiter comme une erreur JWKS
+                raise
             except Exception as jwks_error:
                 logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
                 self._hub_reachable = False

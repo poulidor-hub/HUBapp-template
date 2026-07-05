@@ -19,7 +19,7 @@ import { useAuth } from '../context/AuthContext'
  */
 export function useApiQuery({ queryKey, endpoint, params, auth = false, ...queryOptions }) {
   const config = useConfig()
-  const { token } = useAuth()
+  const { token, refreshAccessToken } = useAuth()
 
   return useQuery({
     queryKey,
@@ -37,12 +37,21 @@ export function useApiQuery({ queryKey, endpoint, params, auth = false, ...query
         if (qs) url += `?${qs}`
       }
 
-      const headers = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
+      const makeHeaders = (tk) => {
+        const h = {}
+        if (tk) h['Authorization'] = `Bearer ${tk}`
+        return h
       }
 
-      const response = await fetch(url, { headers })
+      let response = await fetch(url, { headers: makeHeaders(token) })
+
+      if (response.status === 401 && token) {
+        const refreshed = await refreshAccessToken()
+        if (refreshed) {
+          const newToken = localStorage.getItem(config.storageKeys?.accessToken || 'hub_token')
+          response = await fetch(url, { headers: makeHeaders(newToken) })
+        }
+      }
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))

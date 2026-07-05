@@ -41,7 +41,7 @@ export function useApiMutation({
   ...mutationOptions
 }) {
   const config = useConfig()
-  const { token } = useAuth()
+  const { token, refreshAccessToken } = useAuth()
   const queryClient = useQueryClient()
 
   // Normalise les patchs optimistes en un tableau unique
@@ -73,19 +73,29 @@ export function useApiMutation({
 
       const url = `${config.apiUrl}${resolvedEndpoint}`
 
-      const headers = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
+      const makeHeaders = (tk) => {
+        const h = {}
+        if (tk) h['Authorization'] = `Bearer ${tk}`
+        return h
       }
 
-      const fetchOptions = { method, headers }
+      let fetchOptions = { method, headers: makeHeaders(token) }
 
       if (body !== undefined && body !== null) {
-        headers['Content-Type'] = 'application/json'
+        fetchOptions.headers['Content-Type'] = 'application/json'
         fetchOptions.body = JSON.stringify(body)
       }
 
-      const response = await fetch(url, fetchOptions)
+      let response = await fetch(url, fetchOptions)
+
+      if (response.status === 401 && token) {
+        const refreshed = await refreshAccessToken()
+        if (refreshed) {
+          const newToken = localStorage.getItem(config.storageKeys?.accessToken || 'hub_token')
+          fetchOptions.headers['Authorization'] = `Bearer ${newToken}`
+          response = await fetch(url, fetchOptions)
+        }
+      }
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}))
