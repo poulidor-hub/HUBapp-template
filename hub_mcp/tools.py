@@ -456,7 +456,7 @@ TOOLS = [
     Tool(name="hub_changelog_diff", description="Diff entre deux versions.", inputSchema={"type": "object", "properties": {"from_version": {"type": "string"}}, "required": ["from_version"]}),
     # --- Discovery ---
     Tool(name="hub_discover_services", description="Decouvre les services partages via le Hub.", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_call_service", description="Appelle un endpoint d'un service decouvert.", inputSchema={"type": "object", "properties": {"service_slug": {"type": "string"}, "endpoint": {"type": "string"}, "method": {"type": "string", "default": "GET"}}, "required": ["service_slug", "endpoint"]}),
+    Tool(name="hub_call_service", description="Appelle un endpoint d'un service decouvert.", inputSchema={"type": "object", "properties": {"service_slug": {"type": "string"}, "endpoint": {"type": "string"}, "method": {"type": "string", "default": "GET"}, "body": {"type": "object", "description": "Corps JSON pour POST/PATCH"}}, "required": ["service_slug", "endpoint"]}),
     Tool(name="hub_discovery_proxy", description="Proxy admin vers une app.", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}, "endpoint": {"type": "string"}}, "required": ["app_slug", "endpoint"]}),
     # --- Design ---
     Tool(name="hub_design_manifest", description="Manifeste courant du design system.", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -486,7 +486,10 @@ HANDLERS = {
         json=args.get("body"),
     ),
     # --- App Management ---
-    "hub_app_list": lambda args: hub_client.call_hub_endpoint("/api/apps/", method="GET"),
+    "hub_app_list": lambda args: hub_client.call_hub_endpoint(
+        "/api/apps/", method="GET",
+        params={k: v for k, v in args.items() if v is not None},
+    ),
     "hub_app_get": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_id']}", method="GET"),
     "hub_app_create": lambda args: hub_client.call_hub_endpoint("/api/apps/", method="POST", json={"slug": args["slug"], "name": args["name"], "description": args.get("description", ""), "is_shared_service": args.get("is_shared_service", False)}),
     "hub_app_update": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_id']}", method="PATCH", json={k: v for k, v in args.items() if k != "app_id"}),
@@ -500,7 +503,10 @@ HANDLERS = {
     "hub_app_approve": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/approve", method="POST", json={"approve": args["approved"]}),
     "hub_app_docker_scan": lambda args: hub_client.call_hub_endpoint("/api/apps/docker/scan", method="GET"),
     # --- User Management ---
-    "hub_user_list": lambda args: hub_client.call_hub_endpoint("/api/users/", method="GET"),
+    "hub_user_list": lambda args: hub_client.call_hub_endpoint(
+        "/api/users/", method="GET",
+        params={k: v for k, v in args.items() if v is not None},
+    ),
     "hub_user_get": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}", method="GET"),
     "hub_user_create": lambda args: hub_client.call_hub_endpoint("/api/users/", method="POST", json={k: v for k, v in args.items()}),
     "hub_user_update": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}", method="PATCH", json={k: v for k, v in args.items() if k != "user_id"}),
@@ -554,12 +560,18 @@ HANDLERS = {
     "hub_changelog_diff": lambda args: hub_client.call_hub_endpoint(f"/api/docs/changelog/diff?from_version={args['from_version']}", method="GET"),
     # --- Discovery ---
     "hub_discover_services": lambda args: _handle_discover_services(args),
-    "hub_call_service": lambda args: hub_client.call_discovered_service(args["service_slug"], args["endpoint"], method=args.get("method", "GET")),
+    "hub_call_service": lambda args: hub_client.call_discovered_service(args["service_slug"], args["endpoint"], method=args.get("method", "GET"), json=args.get("body")),
     "hub_discovery_proxy": lambda args: hub_client.call_hub_endpoint("/api/discovery/proxy", method="POST", json={"app_slug": args["app_slug"], "endpoint": args["endpoint"]}),
     # --- Design ---
     "hub_design_manifest": lambda args: hub_client.call_hub_endpoint("/api/design-system/manifest", method="GET"),
     "hub_design_status": lambda args: hub_client.call_hub_endpoint("/api/admin/design-system/status", method="GET"),
-    "hub_design_upload": lambda args: {"error": "Upload design system: utiliser hub_raw_call avec POST /api/admin/design-system/upload"},
+    # L'upload multipart de tarball design system n'est pas supporté via le proxy
+    # HTTP de hub_client (pas de support `files=`). L'utilisateur doit utiliser
+    # hub_raw_call ou curl directement.
+    "hub_design_upload": lambda args: {
+        "status": "not_implemented",
+        "message": "L'upload multipart design system necessite curl en ligne de commande. Utiliser hub_raw_call vers /api/admin/design-system/upload avec --data-binary @design.tar.gz ou contacter le support.",
+    },
     # --- Admin ---
     "hub_admin_info": lambda args: hub_client.call_hub_endpoint("/api/admin/hub-info", method="GET"),
     "hub_admin_settings": lambda args: hub_client.call_hub_endpoint("/api/admin/settings", method="GET"),

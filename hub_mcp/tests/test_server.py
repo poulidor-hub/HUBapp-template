@@ -106,7 +106,7 @@ class TestMCPHubTools:
                 params=CallToolRequestParams(name="hub_app_list", arguments={}),
             )
             result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/apps/", method="GET")
+            mock_call.assert_called_once_with("/api/apps/", method="GET", params={})
             assert "test-app" in result.root.content[0].text
 
     @pytest.mark.asyncio
@@ -186,7 +186,7 @@ class TestMCPHubTools:
                 params=CallToolRequestParams(name="hub_user_list", arguments={}),
             )
             result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/users/", method="GET")
+            mock_call.assert_called_once_with("/api/users/", method="GET", params={})
             assert "admin" in result.root.content[0].text
 
     @pytest.mark.asyncio

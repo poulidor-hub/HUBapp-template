@@ -173,8 +173,10 @@ export function AuthProvider({ children }) {
     
     const connectSSE = () => {
       try {
-        const sseUrl = `${hubApiUrl}/api/events/stream`
-        console.log('🔌 Connexion SSE au Hub:', sseUrl)
+        // EventSource ne supporte pas les headers custom (Authorization).
+        // On passe le token JWT en query param (?token=) pour l'auth.
+        const sseUrl = `${hubApiUrl}/api/events/stream?token=${encodeURIComponent(token)}`
+        console.log('🔌 Connexion SSE au Hub:', sseUrl.replace(token, '***'))
         eventSource = new EventSource(sseUrl)
         
         eventSource.onopen = () => {
@@ -251,7 +253,7 @@ export function AuthProvider({ children }) {
         console.log('🔌 SSE déconnecté')
       }
     }
-  }, [user, hubApiUrl, refreshAccessToken, logout])
+  }, [user, token, hubApiUrl, refreshAccessToken, logout])
 
   // Charger les messages non-lus depuis le Hub au login
   useEffect(() => {

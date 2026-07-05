@@ -9,7 +9,32 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-## [2.4.2] - 28 juin 2026
+## [2.4.3] - 5 juillet 2026
+
+### ⚡ Skills .opencode centralisés
+- **9 skills « app »** (`backup-restore-ops`, `badge-search-system`,
+  `cache-busting-deployment`, `deploy-troubleshoot`, `frontend-crud-page`,
+  `hub-messages-integration`, `react-list-rendering`, `release-sync`,
+  `verify-feature`) déplacés du méta-repo POULIDOR vers
+  `.opencode/skills/`. Leurs chemins relatifs `../../../` résolvent
+  désormais dans le contexte de l'app.
+- `opencode.json` mis à jour avec `skills.paths: [.opencode/skills]`.
+
+### Correctif
+- **Double `apply_migrations()`** retiré dans `backend/main.py` (appelé
+  deux fois consécutivement, non bloquant mais incorrect).
+- **`.instructions.md`** : références Tailwind retirées (stack retirée
+  en `cc56c85`) et remplacées par HUBCSS ; chemin `index.css` corrigé
+  en `app.css`.
+- **Seed HUBCSS régénéré** : `global.css` 16 Ko → 38 Ko (tokens
+  `--hub-space-*`, nouveaux composants 0.2.x : Timeline, StatCard,
+  Skeleton, EmptyState, Search*, etc.).
+
+### Interne
+- **Versions synchronisées** : `bump_version.py` appliqué, `package.json`,
+  `.env.example` et `docs/API.md` alignés sur `VERSION`.
+- `frontend/src/context/AuthContext.jsx` modifié (SSE `?token=` pour
+  compatibilité EventSource, en attente du fix côté Hub v3.9.0).
 
 ### Correctif
 - **MCP hub** : ajout d'un micro `opencode.json` (contenant uniquement le bloc

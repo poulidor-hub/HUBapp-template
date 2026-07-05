@@ -128,7 +128,6 @@ async def lifespan(app: FastAPI):
         await init_db()
         await apply_migrations()
         logger.info("✅ Base de données initialisée")
-        await apply_migrations()
     except Exception as e:
         logger.error(f"❌ Erreur init DB: {e}")
     
