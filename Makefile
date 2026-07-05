@@ -81,8 +81,12 @@ up: sync-env ## Démarrer les services en arrière-plan (production)
 	https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
 	echo "🚀 Démarrage: HTTP=$$frontend_port, HTTPS=$$frontend_https_port, HTTPS_ENABLED=$$https_enabled"
 	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
-	if [ "$$https_enabled" = "true" ]; then bash scripts/generate-ssl.sh; fi
-	$(COMPOSE) up -d
+	if [ "$$https_enabled" = "true" ]; then \
+		bash scripts/generate-ssl.sh; \
+		$(COMPOSE) -f docker-compose.https.yml up -d; \
+	else \
+		$(COMPOSE) up -d; \
+	fi
 
 down: ## Arrêter tous les services (prod ou dev)
 	$(COMPOSE) down
@@ -113,10 +117,10 @@ logs-db: ## Voir les logs de PostgreSQL
 # === TESTS ===
 
 test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
-	cd backend && python -m pytest -v
+	cd backend && python3 -m pytest -v
 
 test-cov: ## Lancer les tests avec couverture (hôte)
-	cd backend && python -m pytest --cov=. --cov-report=html -v
+	cd backend && python3 -m pytest --cov=. --cov-report=html -v
 
 test-docker: ## Lancer pytest dans le conteneur api (env Docker, image runtime)
 	$(COMPOSE) exec api python -m pytest -v
@@ -154,7 +158,7 @@ clean-all: clean ## Nettoyage complet (+ images Docker)
 # === INITIALISATION ===
 
 init: ## Initialiser une nouvelle app depuis le template (déprécié : utilisez ACTIONS/PYTHON/INITIALISE.py)
-	python ACTIONS/PYTHON/INITIALISE.py
+	python3 ACTIONS/PYTHON/INITIALISE.py
 
 ai-index: ## Régénérer AI_INDEX.md (carte symboles pour assistants IA)
 	python scripts/generate_ai_index.py

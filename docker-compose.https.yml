@@ -1,0 +1,10 @@
+# Override HTTPS pour le frontend — chargé conditionnellement par make up
+# quand HTTPS_ENABLED=true (cf. Makefile cible up).
+#
+# N'ajoute QUE le port 443 ; le reste (nginx, ssl, certs) est déjà
+# dans docker-compose.yml.
+services:
+  frontend:
+    ports:
+      - "${FRONTEND_PORT:-4250}:80"
+      - "${FRONTEND_HTTPS_PORT:?FRONTEND_HTTPS_PORT must be set in .env (expected FRONTEND_PORT + 1)}:443"
