@@ -505,13 +505,8 @@ class HubAuth:
                 self._hub_reachable = False
                 self.schedule_reconnect()
                 
-                # Fallback: cache JWKS client puis PEM
-                try:
-                    payload = self._decode_with_jwks(token)
-                    logger.info("✅ Décodage réussi avec cache JWKS client")
-                    return payload
-                except Exception:
-                    pass
+                # Pas de cache JWKS client distinct du JWKS live (même _jwk_client).
+                # On tombe directement sur le fallback PEM (stratégie 3 ci-dessous).
         
         # Stratégie 3: PEM en cache
         if self._public_key:
