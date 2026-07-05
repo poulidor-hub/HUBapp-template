@@ -26,7 +26,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 import logging
 
 from config import get_settings, APP_VERSION
@@ -127,18 +127,12 @@ async def _get_all_tables(db: AsyncSession) -> List[str]:
     Découvre dynamiquement toutes les tables de la base de données.
     Exclut les tables système.
     """
-    # Utiliser une requête SQL pour lister les tables
-    result = await db.execute(text("""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_type = 'BASE TABLE'
-        ORDER BY table_name
-    """))
-    
-    tables = [row[0] for row in result.fetchall()]
-    # Exclure les tables système et valider les noms
-    return [t for t in tables if t not in EXCLUDED_TABLES and _SAFE_IDENTIFIER_RE.match(t)]
+    def _sync(session):
+        inspector = inspect(session.bind)
+        tables = inspector.get_table_names()
+        return [t for t in tables if t not in EXCLUDED_TABLES and _SAFE_IDENTIFIER_RE.match(t)]
+
+    return await db.run_sync(_sync)
 
 
 async def _get_table_row_count(db: AsyncSession, table_name: str) -> int:
@@ -149,37 +143,30 @@ async def _get_table_row_count(db: AsyncSession, table_name: str) -> int:
 
 async def _get_table_columns(db: AsyncSession, table_name: str) -> List[Dict[str, str]]:
     """Récupère les informations sur les colonnes d'une table."""
-    result = await db.execute(text("""
-        SELECT column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = :table_name
-        ORDER BY ordinal_position
-    """), {"table_name": table_name})
-    
-    return [
-        {
-            "name": row[0],
-            "type": row[1],
-            "nullable": row[2] == "YES",
-            "default": row[3]
-        }
-        for row in result.fetchall()
-    ]
+    def _sync(session):
+        inspector = inspect(session.bind)
+        columns = inspector.get_columns(table_name)
+        return [
+            {
+                "name": col["name"],
+                "type": str(col["type"]),
+                "nullable": col["nullable"],
+                "default": col.get("default"),
+            }
+            for col in columns
+        ]
+
+    return await db.run_sync(_sync)
 
 
 async def _get_primary_key_columns(db: AsyncSession, table_name: str) -> List[str]:
     """Récupère les colonnes de la clé primaire d'une table."""
-    # Utiliser une sous-requête pour éviter le conflit entre :param et ::cast
-    result = await db.execute(text("""
-        SELECT a.attname
-        FROM pg_index i
-        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-        WHERE i.indrelid = (SELECT oid FROM pg_class WHERE relname = :table_name AND relnamespace = 'public'::regnamespace)
-          AND i.indisprimary
-        ORDER BY array_position(i.indkey, a.attnum)
-    """), {"table_name": table_name})
-    
-    return [row[0] for row in result.fetchall()]
+    def _sync(session):
+        inspector = inspect(session.bind)
+        pk_constraint = inspector.get_pk_constraint(table_name)
+        return pk_constraint.get("constrained_columns", []) or []
+
+    return await db.run_sync(_sync)
 
 
 async def _export_table_data(db: AsyncSession, table_name: str) -> List[Dict[str, Any]]:
@@ -609,8 +596,9 @@ async def restore_backup(
             # 6. Clear existing si demandé
             if clear_existing_bool:
                 logger.warning("🗑️ Suppression des données existantes...")
-                # Désactiver les contraintes FK temporairement
-                await db.execute(text("SET CONSTRAINTS ALL DEFERRED"))
+                # Désactiver les contraintes FK temporairement (PostgreSQL uniquement)
+                if db.get_bind().dialect.name != "sqlite":
+                    await db.execute(text("SET CONSTRAINTS ALL DEFERRED"))
                 
                 for table_name in existing_tables:
                     if table_name in backup_tables:
