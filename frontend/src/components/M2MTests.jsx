@@ -395,7 +395,7 @@ function M2MTests() {
                       style={{
                         padding: '6px 10px',
                         borderRadius: '4px',
-                        border: '1px solid var(--border-color)',
+                        border: '1px solid var(--border)',
                         background: 'var(--bg-primary)',
                         color: 'var(--text-primary)',
                         fontSize: '0.85em',
@@ -515,7 +515,7 @@ function M2MTests() {
           <div style={{ marginTop: '10px', fontSize: '0.9em' }}>
             {ENDPOINT_CATEGORIES.map(category => (
               <div key={category} style={{ marginBottom: '10px' }}>
-                <strong style={{ color: 'var(--primary-color)' }}>{category}</strong>
+                <strong style={{ color: 'var(--accent)' }}>{category}</strong>
                 <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px' }}>
                   {AVAILABLE_ENDPOINTS
                     .filter(ep => ep.category === category)
