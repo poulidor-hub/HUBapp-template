@@ -161,18 +161,18 @@ init: ## Initialiser une nouvelle app depuis le template (déprécié : utilisez
 	python3 ACTIONS/PYTHON/INITIALISE.py
 
 ai-index: ## Régénérer AI_INDEX.md (carte symboles pour assistants IA)
-	python scripts/generate_ai_index.py
+	python3 scripts/generate_ai_index.py
 
 # === VERSION ===
 
 bump-patch: ## Incrémenter la version patch (x.y.Z)
-	python scripts/bump_version.py patch
+	python3 scripts/bump_version.py patch
 
 bump-minor: ## Incrémenter la version minor (x.Y.0)
-	python scripts/bump_version.py minor
+	python3 scripts/bump_version.py minor
 
 bump-major: ## Incrémenter la version major (X.0.0)
-	python scripts/bump_version.py major
+	python3 scripts/bump_version.py major
 
 # === DESIGN SYSTEM (HUBCSS seed) ===
 
