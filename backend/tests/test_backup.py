@@ -271,13 +271,13 @@ class TestStorageManager:
     
     def test_human_readable_size(self):
         """Test du formatage de taille."""
-        from storage import StorageManager
+        from utils import human_readable_size
         
-        assert StorageManager._human_readable_size(0) == "0.0 B"
-        assert StorageManager._human_readable_size(1023) == "1023.0 B"
-        assert StorageManager._human_readable_size(1024) == "1.0 KB"
-        assert StorageManager._human_readable_size(1024 * 1024) == "1.0 MB"
-        assert StorageManager._human_readable_size(1024 * 1024 * 1024) == "1.0 GB"
+        assert human_readable_size(0) == "0.0 B"
+        assert human_readable_size(1023) == "1023.0 B"
+        assert human_readable_size(1024) == "1.0 KB"
+        assert human_readable_size(1024 * 1024) == "1.0 MB"
+        assert human_readable_size(1024 * 1024 * 1024) == "1.0 GB"
 
 
 # ============================================================
@@ -301,8 +301,9 @@ class TestBackupEstimate:
         assert response.status_code == 200
         data = response.json()
         
-        assert "total_items" in data
-        assert "total_preferences" in data
+        assert "tables" in data
+        assert "total_tables" in data
+        assert "total_rows" in data
         assert "total_files" in data
         assert "total_size_bytes" in data
         assert "total_size_human" in data
@@ -325,8 +326,7 @@ class TestBackupEstimate:
         assert response.status_code == 200
         data = response.json()
         
-        assert data["total_items"] == 0
-        assert data["total_preferences"] == 0
+        assert data["total_rows"] == 0
 
 
 class TestBackupCreate:
@@ -352,8 +352,8 @@ class TestBackupCreate:
         assert "download_url" in data
         
         metadata = data["metadata"]
-        assert metadata["total_items"] == 3
-        assert metadata["total_preferences"] == 2
+        assert metadata["total_rows"] == 6
+        assert metadata["table_stats"]["items"] == 3
     
     @pytest.mark.asyncio
     async def test_create_backup_empty_db(self, admin_client, mock_storage_manager):
@@ -364,7 +364,7 @@ class TestBackupCreate:
         data = response.json()
         
         assert data["success"] is True
-        assert data["metadata"]["total_items"] == 0
+        assert data["metadata"]["total_rows"] == 0
 
 
 class TestBackupDownload:
@@ -582,23 +582,18 @@ class TestRestore:
         assert data["success"] is True
     
     @pytest.mark.asyncio
-    async def test_restore_selective(self, admin_client, valid_backup_zip, mock_storage_manager):
-        """Restauration sélective (items seulement)."""
+    async def test_restore_restores_all_tables_in_backup(self, admin_client, valid_backup_zip, mock_storage_manager):
+        """Restauration complète de toutes les tables du backup."""
         response = await admin_client.post(
             "/api/admin/restore",
-            files={"file": ("backup.zip", valid_backup_zip, "application/zip")},
-            data={
-                "restore_items": "true",
-                "restore_preferences": "false",
-                "restore_files": "false"
-            }
+            files={"file": ("backup.zip", valid_backup_zip, "application/zip")}
         )
         
         assert response.status_code == 200
         data = response.json()
         
         assert data["items_restored"] == 1
-        assert data["preferences_restored"] == 0
+        assert data["preferences_restored"] == 1
 
 
 # ============================================================
@@ -659,7 +654,7 @@ class TestBackupRestoreIntegration:
         estimate_response = await admin_client.get("/api/admin/backup/estimate")
         assert estimate_response.status_code == 200
         estimate = estimate_response.json()
-        assert estimate["total_items"] == 3
+        assert estimate["total_rows"] == 6
         
         # 2. Créer le backup (on capture le ZIP créé)
         captured_zip = None
