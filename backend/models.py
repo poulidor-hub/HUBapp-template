@@ -176,7 +176,7 @@ class OutboxMessage(Base):
     target_url = Column(Text, nullable=False)
     target_slug = Column(String(100), nullable=True)
     method = Column(String(10), nullable=False, default="POST")
-    headers = Column(JSON, default={})
+    headers = Column(JSON, default=dict)
     payload = Column(JSON, nullable=True)
     auth_context = Column(JSON, nullable=True)
     status = Column(String(20), nullable=False, default="pending")
