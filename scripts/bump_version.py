@@ -309,7 +309,7 @@ def show_usage():
 
 def generate_changelog_template(version: str) -> None:
     """Affiche un template de changelog pour la version."""
-    today = datetime.now().strftime("%-d %B %Y")
+    today = datetime.now().strftime("%d %B %Y").lstrip("0")
     template = f"""
 ## [{version}] - {today}
 
