@@ -9,6 +9,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.4.4] - 6 juillet 2026
+
+### 🐛 Corrections (tests)
+- **Tests services** : activation de `ENABLE_DEMO_ENDPOINTS` dans `conftest.py` (19 tests `test_services.py` désormais verts).
+- **Tests backup** : `test_backup.py` réaligné sur le format générique v3.0 (`tables`/`total_tables`/`total_rows`) et `utils.human_readable_size` correctement référencée.
+
+### 🐛 Corrections (code)
+- **Backup** : introspection DB dialect-agnostique via SQLAlchemy `Inspector` (remplace `information_schema`/`pg_*` Postgres-only → tests SQLite valides + robustesse Postgres).
+- **Restore** : `SET CONSTRAINTS ALL DEFERRED` restreint à PostgreSQL (SQLite ignoré).
+- **Models** : `OutboxMessage.headers` `default=dict` (mutable default footgun).
+- **hub_auth** : retrait du fallback JWKS mort dans `_try_decode` (cascade directe vers PEM).
+- **Compose** : port 443 conditionnel via `docker-compose.https.yml` (plus de crash si `FRONTEND_HTTPS_PORT` vide) + fallback `APP_SLUG` sur `POSTGRES_HOST`.
+- **M2MTests** : variables CSS `--border-color`/`--primary-color` → `--border`/`--accent` (alias HUBCSS réels).
+
+### 🔧 Chores
+- **Makefile** : toutes les cibles `python` → `python3` (cohérence tooling, robustesse distros).
+- **Dépendances** : retrait de `psycopg2-binary` inutilisée (stack 100% async/asyncpg).
+- **bump_version** : format de date portable (`lstrip("0")` au lieu de `%-d` GNU-only).
+
+### 📝 Docs
+- **CHANGELOG** : réinsertion de l'entrée `[2.4.2]` manquante.
+
 ## [2.4.3] - 5 juillet 2026
 
 ### ⚡ Skills .opencode centralisés
