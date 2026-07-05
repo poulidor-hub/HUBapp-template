@@ -43,4 +43,4 @@ fi
 
 # === Démarrage de l'application ===
 echo -e "${GREEN}🚀 Démarrage de l'API (HTTP)...${NC}"
-exec uvicorn main:app --host 0.0.0.0 --port 8000
+exec uvicorn main:app --host 0.0.0.0 --port 8000 "$@"

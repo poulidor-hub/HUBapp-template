@@ -3,9 +3,9 @@
 # ============================================================
 # Usage:
 #   make help          Afficher l'aide
-#   make dev           Lancer en mode développement
-#   make build         Construire les images Docker
-#   make up            Démarrer les services
+#   make dev           Lancer en mode développement (hot-reload + HMR)
+#   make up-dev        Mode développement en arrière-plan
+#   make up            Démarrer en mode production
 #   make down          Arrêter les services
 #   make test          Lancer les tests
 #   make logs          Voir les logs
@@ -17,7 +17,10 @@ ifneq (,$(wildcard ./.env))
 	export
 endif
 
-.PHONY: help dev build up down restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
+.PHONY: help dev up-dev build up down down-dev restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
+
+COMPOSE      = docker compose -f docker-compose.yml
+COMPOSE_DEV  = docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 APP_SLUG ?= mon-app
 
@@ -62,46 +65,50 @@ ssl: ## Générer les certificats SSL (pour HTTPS)
 
 # === DÉVELOPPEMENT ===
 
-dev: sync-env ## Lancer en mode développement (rebuild + logs)
-	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
-	if [ "$$https_enabled" = "true" ]; then bash scripts/generate-ssl.sh; fi
-	docker compose up --build -d
-	docker compose logs -f
+dev: sync-env ## Lancer en mode développement (hot-reload backend + HMR frontend)
+	$(COMPOSE_DEV) up --build -d
+	$(COMPOSE_DEV) logs -f
+
+up-dev: sync-env ## Démarrer le mode développement en arrière-plan
+	$(COMPOSE_DEV) up --build -d
 
 build: sync-env ## Construire les images Docker
-	docker compose build
+	$(COMPOSE) build
 
-up: sync-env ## Démarrer les services en arrière-plan
+up: sync-env ## Démarrer les services en arrière-plan (production)
 	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
 	frontend_https_port=$$(grep -E '^FRONTEND_HTTPS_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
 	https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
 	echo "🚀 Démarrage: HTTP=$$frontend_port, HTTPS=$$frontend_https_port, HTTPS_ENABLED=$$https_enabled"
 	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
 	if [ "$$https_enabled" = "true" ]; then bash scripts/generate-ssl.sh; fi
-	docker compose up -d
+	$(COMPOSE) up -d
 
-down: ## Arrêter tous les services
-	docker compose down
+down: ## Arrêter tous les services (prod ou dev)
+	$(COMPOSE) down
+
+down-dev: ## Arrêter les services lancés en mode dev
+	$(COMPOSE_DEV) down
 
 restart: ## Redémarrer tous les services
-	docker compose restart
+	$(COMPOSE) restart
 
 restart-api: ## Redémarrer uniquement l'API
-	docker compose restart api
+	$(COMPOSE) restart api
 
 restart-frontend: ## Redémarrer uniquement le frontend
-	docker compose restart frontend
+	$(COMPOSE) restart frontend
 
 # === LOGS ===
 
 logs: ## Voir les logs de tous les services
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 logs-api: ## Voir les logs de l'API uniquement
-	docker compose logs -f api
+	$(COMPOSE) logs -f api
 
 logs-db: ## Voir les logs de PostgreSQL
-	docker compose logs -f postgres
+	$(COMPOSE) logs -f postgres
 
 # === TESTS ===
 
@@ -112,10 +119,10 @@ test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python -m pytest --cov=. --cov-report=html -v
 
 test-docker: ## Lancer pytest dans le conteneur api (env Docker, image runtime)
-	docker compose exec api python -m pytest -v
+	$(COMPOSE) exec api python -m pytest -v
 
 test-docker-cov: ## Pytest + couverture dans le conteneur api
-	docker compose exec api python -m pytest --cov=. --cov-report=term-missing -v
+	$(COMPOSE) exec api python -m pytest --cov=. --cov-report=term-missing -v
 
 # === SANTÉ ===
 
@@ -131,18 +138,18 @@ version: ## Afficher la version
 # === BASE DE DONNÉES ===
 
 db-shell: ## Ouvrir un shell PostgreSQL
-	docker compose exec postgres psql -U $${POSTGRES_USER:-app_user} -d $${POSTGRES_DB:-app_db}
+	$(COMPOSE) exec postgres psql -U $${POSTGRES_USER:-app_user} -d $${POSTGRES_DB:-app_db}
 
 # === NETTOYAGE ===
 
 clean: ## Supprimer les conteneurs, volumes et caches
-	docker compose down -v
+	$(COMPOSE) down -v
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
 
 clean-all: clean ## Nettoyage complet (+ images Docker)
-	docker compose down -v --rmi local
+	$(COMPOSE) down -v --rmi local
 
 # === INITIALISATION ===
 
