@@ -18,6 +18,10 @@ sys.path.insert(0, '.')
 _test_uploads_dir = tempfile.mkdtemp(prefix="test_uploads_")
 os.environ["UPLOADS_DIR"] = _test_uploads_dir
 
+# Activer les endpoints démo (/api/tests/*) couverts par test_services.py.
+# À positionner AVANT l'import de config/main (settings évalués au 1er import).
+os.environ["ENABLE_DEMO_ENDPOINTS"] = "true"
+
 from database import Base, get_db
 from config import get_settings
 
