@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from hub_auth import (
     require_role, require_service_account, get_current_user, TokenPayload,
 )
-from m2m_catalog import deduce_auth_level, resolve_refs
+from m2m_catalog import deduce_auth_level, resolve_refs, build_app_catalog
 
 
 class TestDeduceAuthLevel:
@@ -135,3 +135,82 @@ class TestResolveRefs:
         # La référence circulaire (Node dans Node) est marquée, pas bouclée
         children_items = node["properties"]["children"]["items"]
         assert children_items.get("$ref_circular") == "Node"
+
+
+class TestBuildAppCatalog:
+    """build_app_catalog assemble le catalogue d'une app à partir de ses routes."""
+
+    def test_catalog_structure_and_exclusions(self):
+        from fastapi import FastAPI
+        from hub_auth import require_role, require_service_account, get_current_user, TokenPayload
+
+        app = FastAPI()
+
+        @app.get("/api/items")
+        async def list_items(user: TokenPayload = Depends(get_current_user)):
+            """Liste des items."""
+            return []
+
+        @app.post("/api/m2m/sync")
+        async def sync(sa: TokenPayload = Depends(require_service_account())):
+            return {}
+
+        catalog = build_app_catalog(app, slug="test-app", name="Test", version="1.0.0")
+
+        assert catalog["slug"] == "test-app"
+        assert catalog["name"] == "Test"
+        assert catalog["version"] == "1.0.0"
+        assert catalog["introspection_source"] == "m2m-catalog"
+        # 2 endpoints métier (les routes techniques /docs, /openapi.json exclues)
+        paths = {(e["path"], e["method"]) for e in catalog["endpoints"]}
+        assert ("/api/items", "GET") in paths
+        assert ("/api/m2m/sync", "POST") in paths
+        # Les routes techniques sont exclues
+        assert all("/docs" != e["path"] for e in catalog["endpoints"])
+        assert all("/openapi.json" != e["path"] for e in catalog["endpoints"])
+
+    def test_auth_levels_assigned(self):
+        from fastapi import FastAPI
+        from hub_auth import require_role, require_service_account, get_current_user, TokenPayload
+
+        app = FastAPI()
+
+        @app.get("/api/public-ish")
+        async def p():
+            return {}
+
+        @app.get("/api/secure")
+        async def s(user: TokenPayload = Depends(get_current_user)):
+            return {}
+
+        @app.get("/api/svc")
+        async def sv(sa: TokenPayload = Depends(require_service_account())):
+            return {}
+
+        catalog = build_app_catalog(app, slug="x")
+        by_path = {e["path"]: e["auth_level"] for e in catalog["endpoints"]}
+        assert by_path["/api/public-ish"] == "public"
+        assert by_path["/api/secure"] == "user"
+        assert by_path["/api/svc"] == "service"
+
+
+class TestAppCatalogEndpoint:
+    """L'endpoint GET /api/m2m/catalog retourne le catalogue et est service-only."""
+
+    @pytest.mark.asyncio
+    async def test_service_account_can_access(self, m2m_client: AsyncClient):
+        response = await m2m_client.get("/api/m2m/catalog")
+        assert response.status_code == 200
+        data = response.json()
+        assert "endpoints" in data
+        assert "introspection_source" in data
+
+    @pytest.mark.asyncio
+    async def test_user_cannot_access(self, authenticated_client: AsyncClient):
+        response = await authenticated_client.get("/api/m2m/catalog")
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_anon_cannot_access(self, client: AsyncClient):
+        response = await client.get("/api/m2m/catalog")
+        assert response.status_code == 401

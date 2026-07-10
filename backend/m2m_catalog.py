@@ -92,3 +92,108 @@ def resolve_refs(spec: dict) -> dict:
                 resolved_paths[path][method] = resolve(op, set())
 
     return {"paths": resolved_paths, "components_raw": components}
+
+
+# Routes techniques à exclure du catalogue (bruit pour l'IA).
+EXCLUDED_PATHS = {
+    "/docs", "/redoc", "/openapi.json", "/api/openapi.json",
+    "/api/m2m/catalog",  # auto-référence
+}
+
+
+def _extract_request_body(op: dict) -> dict | None:
+    rb = op.get("requestBody")
+    if not rb:
+        return None
+    json_media = rb.get("content", {}).get("application/json", {})
+    return {
+        "required": rb.get("required", False),
+        "content_type": "application/json",
+        "schema": json_media.get("schema"),
+    }
+
+
+def _extract_responses(op: dict) -> dict:
+    out = {}
+    for code, resp in op.get("responses", {}).items():
+        out[code] = {
+            "description": resp.get("description", ""),
+            "schema": resp.get("content", {}).get("application/json", {}).get("schema"),
+        }
+    return out
+
+
+def _extract_params(op: dict):
+    path_params, query_params = [], []
+    for p in op.get("parameters", []):
+        entry = {
+            "name": p.get("name"),
+            "required": p.get("required", False),
+            "schema": p.get("schema", {}),
+        }
+        if p.get("in") == "path":
+            path_params.append(entry)
+        elif p.get("in") == "query":
+            query_params.append(entry)
+    return path_params, query_params
+
+
+def build_app_catalog(
+    app,
+    slug: str | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    version: str | None = None,
+) -> dict:
+    """
+    Construit le catalogue M2M d'une app FastAPI.
+
+    1. Génère l'OpenAPI (paths, méthodes, summaries, schémas).
+    2. Mappe chaque (path, method) -> auth_level via introspection des Depends.
+    3. Résout les $ref (inlining).
+    4. Retourne un dict structuré.
+    """
+    spec = app.openapi()
+    resolved = resolve_refs(spec)
+
+    # Carte (path, method_lower) -> auth_level
+    auth_map: dict[tuple[str, str], str] = {}
+    for route in app.routes:
+        methods = getattr(route, "methods", None)
+        path = getattr(route, "path", None)
+        if not methods or not path:
+            continue
+        level = deduce_auth_level(route)
+        for m in methods:
+            auth_map[(path, m.lower())] = level
+
+    endpoints = []
+    for path, methods in resolved["paths"].items():
+        if path in EXCLUDED_PATHS:
+            continue
+        for method, op in methods.items():
+            if method not in HTTP_METHODS:
+                continue
+            path_params, query_params = _extract_params(op)
+            endpoints.append({
+                "path": path,
+                "method": method.upper(),
+                "summary": op.get("summary"),
+                "description": op.get("description"),
+                "auth_level": auth_map.get((path, method), "public"),
+                "tags": op.get("tags", []),
+                "path_params": path_params,
+                "query_params": query_params,
+                "request_body": _extract_request_body(op),
+                "responses": _extract_responses(op),
+            })
+
+    return {
+        "slug": slug,
+        "name": name,
+        "description": description,
+        "version": version,
+        "is_shared": None,  # renseigné par le Hub lors de l'agrégation
+        "introspection_source": "m2m-catalog",
+        "endpoints": endpoints,
+    }

@@ -7,8 +7,10 @@ from typing import Optional
 import logging
 
 from config import get_settings
-from hub_auth import get_current_user, require_role, TokenPayload
+from hub_auth import get_current_user, require_role, require_service_account, TokenPayload
 from hub_client import hub_client
+from m2m_catalog import build_app_catalog
+from fastapi import Request
 from schemas import (
     ServiceDiscoveryResponse, DiscoveredServiceResponse
 )
@@ -210,3 +212,27 @@ async def call_discovered_service(
             status_code=502,
             detail=f"Erreur lors de l'appel au service '{service_slug}': {str(e)}"
         )
+
+
+@router.get("/m2m/catalog")
+async def m2m_catalog(
+    request: Request,
+    sa: TokenPayload = Depends(require_service_account()),
+):
+    """
+    Catalogue M2M de cette application (auto-introspection).
+
+    Retourne la liste de tous les endpoints avec leur niveau d'auth, leurs
+    schémas de requête/réponse (résolus) et leurs paramètres. Destiné à être
+    consommé par le Hub pour l'export global du catalogue M2M du parc.
+
+    Réservé aux Service Accounts (M2M).
+    """
+    settings = get_settings()
+    return build_app_catalog(
+        request.app,
+        slug=settings.APP_SLUG,
+        name=settings.APP_NAME,
+        description=getattr(settings, "APP_DESCRIPTION", None),
+        version=getattr(settings, "APP_VERSION", None),
+    )
