@@ -700,7 +700,9 @@ def require_role(min_role: str):
             )
         
         return user
-    
+
+    role_checker.__auth_level__ = min_role
+    role_checker.__auth_roles__ = (min_role,)
     return role_checker
 
 
@@ -729,7 +731,9 @@ def require_any_role(*roles: str):
             )
         
         return user
-    
+
+    role_checker.__auth_level__ = max(roles, key=lambda r: ROLE_MAPPING.get(r, 0))
+    role_checker.__auth_roles__ = tuple(roles)
     return role_checker
 
 
@@ -747,5 +751,7 @@ def require_service_account():
                 detail="Accès réservé aux service accounts"
             )
         return user
-    
+
+    service_checker.__auth_level__ = "service"
+    service_checker.__auth_roles__ = ("service",)
     return service_checker
