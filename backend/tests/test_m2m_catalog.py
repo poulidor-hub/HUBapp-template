@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from hub_auth import (
     require_role, require_service_account, get_current_user, TokenPayload,
 )
-from m2m_catalog import deduce_auth_level
+from m2m_catalog import deduce_auth_level, resolve_refs
 
 
 class TestDeduceAuthLevel:
@@ -62,3 +62,76 @@ class TestDeduceAuthLevel:
             if getattr(r, "path", None) == path and method.lower() in methods:
                 return r
         raise AssertionError(f"Route {method} {path} introuvable")
+
+
+class TestResolveRefs:
+    """resolve_refs inline les $ref et détecte les cycles."""
+
+    def test_resolves_simple_ref(self):
+        spec = {
+            "paths": {
+                "/items": {
+                    "get": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"$ref": "#/components/schemas/Item"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Item": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                }
+            },
+        }
+        resolved = resolve_refs(spec)
+        schema = resolved["paths"]["/items"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        # Le $ref est inliné
+        assert schema["type"] == "object"
+        assert "id" in schema["properties"]
+        assert "$ref" not in schema
+
+    def test_detects_circular_ref(self):
+        spec = {
+            "paths": {
+                "/tree": {
+                    "get": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"$ref": "#/components/schemas/Node"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Node": {
+                        "type": "object",
+                        "properties": {
+                            "children": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/Node"},
+                            }
+                        },
+                    }
+                }
+            },
+        }
+        resolved = resolve_refs(spec)
+        node = resolved["paths"]["/tree"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        # Le premier niveau est inliné
+        assert node["type"] == "object"
+        # La référence circulaire (Node dans Node) est marquée, pas bouclée
+        children_items = node["properties"]["children"]["items"]
+        assert children_items.get("$ref_circular") == "Node"

@@ -53,3 +53,42 @@ def deduce_auth_level(route: Any) -> str:
     if found_user:
         return "user"
     return "public"
+
+
+HTTP_METHODS = ("get", "post", "put", "delete", "patch")
+
+
+def resolve_refs(spec: dict) -> dict:
+    """
+    Résout les $ref d'un spec OpenAPI en inlinant les références vers
+    #/components/schemas/*. Détecte les cycles (remplace par {"$ref_circular": name}).
+
+    Retourne {"paths": {...}, "components_raw": {...}} où toutes les opérations
+    HTTP ont leurs schémas inlinés.
+    """
+    components = spec.get("components", {}).get("schemas", {})
+
+    def resolve(node: Any, visiting: set) -> Any:
+        if isinstance(node, dict):
+            if "$ref" in node:
+                ref_path = node["$ref"]
+                ref_name = ref_path.split("/")[-1]
+                if ref_name in visiting:
+                    return {"$ref_circular": ref_name}
+                target = components.get(ref_name)
+                if target is None:
+                    return {"$ref_unresolved": ref_path}
+                return resolve(target, visiting | {ref_name})
+            return {k: resolve(v, visiting) for k, v in node.items()}
+        if isinstance(node, list):
+            return [resolve(item, visiting) for item in node]
+        return node
+
+    resolved_paths = {}
+    for path, methods in spec.get("paths", {}).items():
+        resolved_paths[path] = {}
+        for method, op in methods.items():
+            if method in HTTP_METHODS:
+                resolved_paths[path][method] = resolve(op, set())
+
+    return {"paths": resolved_paths, "components_raw": components}
