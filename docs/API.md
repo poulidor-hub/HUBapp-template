@@ -783,6 +783,56 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ---
 
+### Catalogue M2M (auto-introspection)
+
+```http
+GET /api/m2m/catalog
+```
+
+**Authentification** : Service Account (M2M) — `require_service_account()`
+
+Retourne le catalogue complet des endpoints de cette application : paths, méthodes,
+schémas de requête/réponse (résolus, sans `$ref`) et **niveau d'auth** de chaque
+endpoint (`public`/`viewer`/`user`/`manager`/`service`/`admin`). Destiné à être
+consommé par le Hub pour produire l'export global du parc.
+
+**Réponse** `200 OK` (extrait) :
+```json
+{
+  "slug": "mon-app",
+  "name": "Mon Application",
+  "introspection_source": "m2m-catalog",
+  "endpoints": [
+    {
+      "path": "/api/m2m/sync",
+      "method": "POST",
+      "auth_level": "service",
+      "request_body": {"required": true, "schema": {"type": "object", "...": "..."}},
+      "responses": {"200": {"description": "ok"}}
+    }
+  ]
+}
+```
+
+### Export global du catalogue (côté Hub)
+
+```http
+GET /api/apps/m2m-catalog/export
+```
+
+**Rôle requis** : `admin` (sur le Hub)
+
+Agrège le catalogue M2M de toutes les apps partagées (`is_shared_service=true`) en un
+**fichier JSON téléchargeable** (`m2m-catalog-YYYYMMDD.json`). Pour chaque app :
+- essaie `GET <api_url>/api/m2m/catalog` (tagging fiable) ;
+- sinon fallback `GET <api_url>/api/openapi.json` + heuristique (tagging approximatif).
+
+Ce fichier est un **blueprint sans secret** : il sert à générer des fausses données
+réalistes côté dev via une IA. Voir le design spec
+`docs/superpowers/specs/2026-07-10-m2m-catalog-export-design.md`.
+
+---
+
 ## 🧪 Tests des Services
 
 Endpoints pour tester l'ensemble des services de l'application par rapport au Hub.

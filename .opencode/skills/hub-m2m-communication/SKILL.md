@@ -182,6 +182,23 @@ async def m2m_sync(
 
 **Ne jamais exposer un endpoint M2M sans `require_service_account()`** — tout utilisateur humain connecté pourrait l'appeler.
 
+## Phase E — Exporter le catalogue M2M (blueprint pour IA de dev)
+
+Pour qu'une IA de dev génère/injecte des fausses données conformes aux shapes réelles :
+
+1. Un **admin** appelle `GET /api/apps/m2m-catalog/export` sur le Hub de prod.
+2. Le Hub agrège `/api/m2m/catalog` de chaque app partagée (fallback heuristique OpenAPI).
+3. Le fichier JSON téléchargé est apporté sur le serveur dev/test et filé à l'IA.
+4. L'IA lit les endpoints `auth_level="service"` (M2M-reachable), génère des payloads
+   conformes aux schémas, et les injecte via `call_discovered_service` en dev.
+
+L'export ne contient **aucun secret**. L'IA n'attaque jamais la prod.
+
+| Méthode | Rôle | Réf. |
+|---------|------|------|
+| `GET /api/m2m/catalog` (app) | service | introspection locale |
+| `GET /api/apps/m2m-catalog/export` (Hub) | admin | agrégation parc |
+
 ## Anti-patterns
 
 | Pattern | Pourquoi c'est mal | Correction |
