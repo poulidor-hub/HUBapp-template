@@ -9,6 +9,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.5.0] - 10 juillet 2026
+
+### ⚡ Catalogue M2M exportable (auto-introspection)
+
+- **Ajouté** : `GET /api/m2m/catalog` (auth service account) — auto-introspection de la surface d'API de l'app (paths, méthodes, schémas résolus, niveaux d'auth). Destiné à être agrégé par le Hub pour produire un export global du parc.
+- **Ajouté** : module `backend/m2m_catalog.py` — `deduce_auth_level(route)` (déduction du niveau d'auth via l'arbre des dépendances), `resolve_refs(spec)` (inlining des `$ref` OpenAPI + détection de cycles), `build_app_catalog(app)` (assemblage du catalogue).
+- **Ajouté** : tagging `__auth_level__`/`__auth_roles__` sur les closures `require_role`/`require_any_role`/`require_service_account` (`hub_auth.py`) pour permettre l'introspection fiable du niveau d'auth de chaque route.
+- **Docs** : documentation des endpoints dans `API.md` + nouvelle « Phase E » dans le skill `hub-m2m-communication`.
+
 ## [2.4.4] - 6 juillet 2026
 
 ### 🐛 Corrections (tests)
