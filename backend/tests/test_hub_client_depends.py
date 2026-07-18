@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hub_client import HubClient
+from hub_client import HubClient, HubCredentials
 
 
 def test_load_depends_yaml_returns_empty_when_absent(tmp_path):
@@ -135,6 +135,63 @@ async def test_report_sync_calls_endpoint(monkeypatch):
     assert calls[0][0] == "/api/apps/sync-report"
     assert calls[0][1] == "POST"
     assert calls[0][2]["json"] == {"target": "exemple-app-2"}
+
+
+@pytest.mark.asyncio
+async def test_do_register_sends_cached_m2m_bearer(monkeypatch):
+    """Une réinscription avec token cache transmet une preuve au Hub."""
+    client = HubClient()
+    client._credentials = HubCredentials(
+        client_id="client-id",
+        client_secret="client-secret",
+        access_token="cached-m2m-token",
+    )
+    sent = {}
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"credentials": {"client_id": "client-id", "client_secret": "new-secret"}, "is_new": False}
+
+    class FakeHttpClient:
+        async def post(self, url, **kwargs):
+            sent.update(kwargs)
+            return Response()
+
+    async def fake_get_client():
+        return FakeHttpClient()
+
+    monkeypatch.setattr(client, "_get_client", fake_get_client)
+    monkeypatch.setattr(client, "_save_credentials_to_file", lambda: None)
+
+    assert await client._do_register() is True
+    assert sent["headers"] == {"Authorization": "Bearer cached-m2m-token"}
+
+
+@pytest.mark.asyncio
+async def test_do_register_bootstrap_has_no_bearer(monkeypatch):
+    """Le premier bootstrap sans credentials ne doit pas tenter de token M2M."""
+    client = HubClient()
+    sent = {}
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"credentials": {"client_id": "client-id", "client_secret": "new-secret"}, "is_new": True}
+
+    class FakeHttpClient:
+        async def post(self, url, **kwargs):
+            sent.update(kwargs)
+            return Response()
+
+    async def fake_get_client():
+        return FakeHttpClient()
+
+    monkeypatch.setattr(client, "_get_client", fake_get_client)
+    monkeypatch.setattr(client, "_save_credentials_to_file", lambda: None)
+
+    assert await client._do_register() is True
+    assert "headers" not in sent
 
 
 @pytest.mark.asyncio

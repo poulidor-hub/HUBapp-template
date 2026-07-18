@@ -289,9 +289,14 @@ class HubClient:
             else:
                 logger.info(f"📍 Application LOCALE : enregistrement avec custom_host={self.settings.app_host}")
             
+            request_kwargs = {"json": payload}
+            if self._credentials and self._credentials.access_token:
+                request_kwargs["headers"] = {
+                    "Authorization": f"Bearer {self._credentials.access_token}"
+                }
             response = await client.post(
                 f"{self.settings.hub_api_internal_url}/api/apps/register",
-                json=payload
+                **request_kwargs,
             )
             
             if response.status_code == 200:
