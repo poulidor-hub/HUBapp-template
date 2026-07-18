@@ -185,6 +185,24 @@ class HubClient:
         except OSError:
             pass
     
+    async def _push_deps_to_hub(self) -> None:
+        """Envoie le depends.yaml au hub (best-effort, non bloquant).
+
+        Appelé à chaque succès de register() — que l'enregistrement soit
+        nouveau ou que les credentials aient déjà été en cache.
+        """
+        deps = self._load_depends_yaml()
+        if deps:
+            try:
+                await self.call_hub_endpoint(
+                    "/api/apps/dependencies",
+                    method="POST",
+                    json={"depends_on": deps},
+                )
+                logger.info(f"📦 Dépendances envoyées au hub ({len(deps)} entrées)")
+            except Exception as e:
+                logger.warning(f"⚠️ Envoi dépendances au hub échoué: {e}")
+
     async def register(self) -> bool:
         """
         Auto-enregistrement auprès du Hub.
@@ -192,10 +210,14 @@ class HubClient:
         
         Utilise un lock fichier pour éviter que plusieurs workers
         ne s'enregistrent simultanément.
+
+        Après succès (nouvel enregistrement ou cache), envoie toujours
+        le graphe de dépendances (depends.yaml) au hub.
         """
         # Essayer de charger les credentials depuis le fichier partagé
         # (un autre worker a peut-être déjà fait l'enregistrement)
         if self._load_credentials_from_file():
+            await self._push_deps_to_hub()
             return True
         
         # Utiliser un lock fichier pour éviter les enregistrements concurrents
@@ -212,32 +234,24 @@ class HubClient:
                     await asyncio.sleep(2)  # Attendre un peu
                     # Réessayer de charger les credentials
                     if self._load_credentials_from_file():
+                        await self._push_deps_to_hub()
                         return True
                     # Sinon, attendre le lock
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                     # Revérifier si les credentials sont disponibles
                     if self._load_credentials_from_file():
+                        await self._push_deps_to_hub()
                         return True
                 
                 # On a le lock, vérifier une dernière fois si les credentials existent
                 if self._load_credentials_from_file():
+                    await self._push_deps_to_hub()
                     return True
             
             # Faire l'enregistrement
             reg_ok = await self._do_register()
             if reg_ok:
-                # Envoyer le graphe de dépendances au hub (best-effort, non bloquant)
-                deps = self._load_depends_yaml()
-                if deps:
-                    try:
-                        await self.call_hub_endpoint(
-                            "/api/apps/dependencies",
-                            method="POST",
-                            json={"depends_on": deps},
-                        )
-                        logger.info(f"📦 Dépendances envoyées au hub ({len(deps)} entrées)")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Envoi dépendances au hub échoué: {e}")
+                await self._push_deps_to_hub()
             return reg_ok
             
         finally:

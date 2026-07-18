@@ -95,6 +95,32 @@ async def test_register_does_not_crash_if_depends_send_fails(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_register_sends_deps_even_with_cached_credentials(monkeypatch, tmp_path):
+    f = tmp_path / "depends.yaml"
+    f.write_text("depends_on:\n  - slug: exemple-app-2\n  - slug: exemple-app\n")
+
+    client = HubClient()
+    with patch("hub_client.DEPENDS_FILE", f):
+        monkeypatch.setattr(client, "_load_credentials_from_file", lambda: True)
+
+        calls = []
+        async def fake_call(endpoint, method="GET", **kwargs):
+            calls.append((endpoint, method, kwargs))
+            return {"status_code": 200}
+        monkeypatch.setattr(client, "call_hub_endpoint", fake_call)
+
+        result = await client.register()
+        assert result is True
+
+    dep_calls = [c for c in calls if c[0] == "/api/apps/dependencies"]
+    assert len(dep_calls) == 1
+    assert dep_calls[0][2]["json"]["depends_on"] == [
+        {"slug": "exemple-app-2"},
+        {"slug": "exemple-app"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_report_sync_calls_endpoint(monkeypatch):
     client = HubClient()
     calls = []
