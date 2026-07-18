@@ -224,7 +224,21 @@ class HubClient:
                     return True
             
             # Faire l'enregistrement
-            return await self._do_register()
+            reg_ok = await self._do_register()
+            if reg_ok:
+                # Envoyer le graphe de dépendances au hub (best-effort, non bloquant)
+                deps = self._load_depends_yaml()
+                if deps:
+                    try:
+                        await self.call_hub_endpoint(
+                            "/api/apps/dependencies",
+                            method="POST",
+                            json={"depends_on": deps},
+                        )
+                        logger.info(f"📦 Dépendances envoyées au hub ({len(deps)} entrées)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Envoi dépendances au hub échoué: {e}")
+            return reg_ok
             
         finally:
             if lock_file:

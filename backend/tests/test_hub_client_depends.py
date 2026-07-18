@@ -43,3 +43,52 @@ def test_load_depends_yaml_returns_empty_on_corrupted_yaml(tmp_path):
     client = HubClient()
     with patch("hub_client.DEPENDS_FILE", f):
         assert client._load_depends_yaml() == []
+
+
+async def _async_true():
+    return True
+
+
+@pytest.mark.asyncio
+async def test_register_sends_dependencies_to_hub(monkeypatch, tmp_path):
+    """register() réussit puis envoie le depends.yaml au hub via call_hub_endpoint."""
+    f = tmp_path / "depends.yaml"
+    f.write_text("depends_on:\n  - slug: exemple-app-2\n")
+
+    client = HubClient()
+    with patch("hub_client.DEPENDS_FILE", f):
+        monkeypatch.setattr(client, "_do_register", lambda: _async_true())
+        monkeypatch.setattr(client, "_load_credentials_from_file", lambda: False)
+
+        calls = []
+        async def fake_call(endpoint, method="GET", **kwargs):
+            calls.append((endpoint, method, kwargs))
+            return {"status_code": 200}
+        monkeypatch.setattr(client, "call_hub_endpoint", fake_call)
+
+        result = await client.register()
+        assert result is True
+
+    dep_calls = [c for c in calls if c[0] == "/api/apps/dependencies"]
+    assert len(dep_calls) == 1
+    assert dep_calls[0][1] == "POST"
+    assert dep_calls[0][2]["json"] == {"depends_on": [{"slug": "exemple-app-2"}]}
+
+
+@pytest.mark.asyncio
+async def test_register_does_not_crash_if_depends_send_fails(monkeypatch, tmp_path):
+    """Si l'envoi échoue, register() a quand même réussi (non bloquant)."""
+    f = tmp_path / "depends.yaml"
+    f.write_text("depends_on:\n  - slug: exemple-app-2\n")
+
+    client = HubClient()
+    with patch("hub_client.DEPENDS_FILE", f):
+        monkeypatch.setattr(client, "_do_register", lambda: _async_true())
+        monkeypatch.setattr(client, "_load_credentials_from_file", lambda: False)
+
+        async def failing_call(endpoint, method="GET", **kwargs):
+            raise Exception("network down")
+        monkeypatch.setattr(client, "call_hub_endpoint", failing_call)
+
+        result = await client.register()
+        assert result is True
