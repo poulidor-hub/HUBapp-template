@@ -9,6 +9,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.6.0] - 18 juillet 2026
+
+### ⚡ Déclaration et suivi des dépendances M2M
+
+- **Ajouté** : lecture de `depends.yaml` par `HubClient`, avec dépendance PyYAML.
+- **Ajouté** : envoi non bloquant des dépendances déclarées pendant l'inscription de l'application au Hub.
+- **Ajouté** : `HubClient.report_sync()` pour remonter les synchronisations M2M réussies au Hub.
+- **Ajouté** : helper `_push_deps_to_hub()` et prise en charge des credentials M2M mis en cache dans le registre.
+- **Documentation** : ajout du skill `app-dependencies` pour déclarer et instrumenter les dépendances inter-apps.
+
 ## [2.5.0] - 10 juillet 2026
 
 ### ⚡ Catalogue M2M exportable (auto-introspection)
