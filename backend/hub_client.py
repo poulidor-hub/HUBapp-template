@@ -28,6 +28,7 @@ import logging
 from config import get_settings, APP_VERSION
 from pathlib import Path
 from outbox import outbox_service
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ DISCOVERED_SERVICES_CACHE_TTL = 60
 REGISTER_LOCK_FILE = str(_storage_dir / ".hub_register.lock")
 # Fichier de credentials partagé entre workers
 CREDENTIALS_FILE = str(_storage_dir / ".hub_credentials")
+DEPENDS_FILE = Path(__file__).resolve().parent.parent / "depends.yaml"
 
 
 @dataclass
@@ -108,6 +110,21 @@ class HubClient:
         # Cache des services découverts
         self._discovered_services: Dict[str, DiscoveredService] = {}
         self._discovered_services_fetched_at: Optional[datetime] = None
+
+    def _load_depends_yaml(self) -> list:
+        """Lit depends.yaml s'il existe. Retourne [] sinon (pas d'erreur).
+
+        Retourne la liste brute d'entrées : [{"slug": "X", "note": "..."}, ...].
+        Jamais d'exception — l'app doit démarrer même si le fichier est corrompu.
+        """
+        if not DEPENDS_FILE.exists():
+            return []
+        try:
+            data = yaml.safe_load(DEPENDS_FILE.read_text()) or {}
+            return data.get("depends_on", []) or []
+        except Exception as e:
+            logger.warning(f"⚠️ depends.yaml illisible: {e}")
+            return []
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Retourne le client HTTP partagé, le créant si nécessaire."""
