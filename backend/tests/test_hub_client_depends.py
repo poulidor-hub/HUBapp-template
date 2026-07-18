@@ -92,3 +92,32 @@ async def test_register_does_not_crash_if_depends_send_fails(monkeypatch, tmp_pa
 
         result = await client.register()
         assert result is True
+
+
+@pytest.mark.asyncio
+async def test_report_sync_calls_endpoint(monkeypatch):
+    client = HubClient()
+    calls = []
+    async def fake_call(endpoint, method="GET", **kwargs):
+        calls.append((endpoint, method, kwargs))
+        return {"status_code": 200}
+    monkeypatch.setattr(client, "call_hub_endpoint", fake_call)
+
+    await client.report_sync("exemple-app-2")
+
+    assert len(calls) == 1
+    assert calls[0][0] == "/api/apps/sync-report"
+    assert calls[0][1] == "POST"
+    assert calls[0][2]["json"] == {"target": "exemple-app-2"}
+
+
+@pytest.mark.asyncio
+async def test_report_sync_swallows_exceptions(monkeypatch):
+    """report_sync ne lève jamais (best-effort)."""
+    client = HubClient()
+    async def failing_call(endpoint, method="GET", **kwargs):
+        raise Exception("network down")
+    monkeypatch.setattr(client, "call_hub_endpoint", failing_call)
+
+    # Ne doit pas lever
+    await client.report_sync("exemple-app-2")

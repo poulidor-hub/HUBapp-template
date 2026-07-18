@@ -1069,6 +1069,23 @@ class HubClient:
             max_retries=max_retries,
         )
 
+    async def report_sync(self, target_slug: str) -> None:
+        """Signale au hub qu'une synchro M2M vient de réussir avec ``target_slug``.
+
+        Met à jour ``last_sync_at`` côté hub. Best-effort : ne lève jamais,
+        ne casse jamais le flux métier appelant. À appeler après un
+        ``call_discovered_service`` réussi.
+        """
+        try:
+            await self.call_hub_endpoint(
+                "/api/apps/sync-report",
+                method="POST",
+                json={"target": target_slug},
+            )
+            logger.debug(f"📡 report_sync → {target_slug} ok")
+        except Exception as e:
+            logger.warning(f"⚠️ report_sync vers {target_slug} échoué: {e}")
+
 
 # Instance singleton
 hub_client = HubClient()
