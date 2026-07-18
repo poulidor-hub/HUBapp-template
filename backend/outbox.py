@@ -112,7 +112,7 @@ class OutboxService:
                     json=msg.payload,
                 )
 
-                if response.status_code < 500:
+                if 200 <= response.status_code < 300:
                     logger.info(
                         f"✅ Outbox #{msg.id} delivered to "
                         f"{msg.target_slug} (HTTP {response.status_code})"
@@ -238,7 +238,7 @@ class OutboxService:
                 "last_message_at": last.isoformat() if last else None,
             }
 
-    async def cleanup_old_messages(self):
+    async def cleanup_old_messages(self) -> int:
         now = datetime.now(timezone.utc)
         async with self._session_maker() as session:
             deleted = await session.execute(
@@ -255,6 +255,9 @@ class OutboxService:
                     )
                 )
             )
+            await session.commit()
+            count = deleted.rowcount or 0
+            return count
             if deleted.rowcount:
                 logger.info(f"🧹 Purged {deleted.rowcount} old outbox messages")
 

@@ -282,8 +282,8 @@ async def test_retry_failed_message(outbox_svc, monkeypatch):
     assert saved.retry_count == 0
 
 
-async def test_worker_skips_4xx_errors(outbox_svc, monkeypatch):
-    """Test que les 4xx sont considérées comme livrées (pas de retry applicatif)."""
+async def test_worker_retries_4xx_errors(outbox_svc, monkeypatch):
+    """Les 4xx (ex: 400) sont conservées en failed pour retry, pas livrées."""
     msg_id = await outbox_svc.enqueue(
         target_url="http://localhost:9999/api/test",
         target_slug="test",
@@ -306,7 +306,7 @@ async def test_worker_skips_4xx_errors(outbox_svc, monkeypatch):
 
     async with outbox_svc._session_maker() as session:
         saved = await session.get(OutboxMessage, msg_id)
-    assert saved.status == "delivered"
+    assert saved.status == "failed"
 
 
 async def test_outbox_cleanup_endpoint_requires_auth(client):
