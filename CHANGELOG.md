@@ -9,6 +9,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [2.6.1] - 19 juillet 2026
+
+### ⚡ Sécurité outbox et stabilité AuthProvider
+
+- **Corrigé** : outbox — seules les réponses HTTP `2xx` sont livrées ; les `4xx` restent en `failed` (retry).
+- **Corrigé** : `cleanup_old_messages()` commit désormais la purge.
+- **Corrigé** : AuthProvider — l'effet de refresh proactif est déplacé après la déclaration de `refreshAccessToken`, supprimant l'erreur TDZ (ReferenceError) au rendu.
+- **Ajouté** : `_do_register()` transmet un token Bearer M2M en cache lors d'une réinscription.
+- **Documentation** : procédure canari volontaire `MIGRATION_M2M_CANARY.md`.
+- **Tests** : +2 tests (_do_register avec/sans credentials), 1 test outbox réaligné (4xx → failed) ; 135 passed.
+
 ## [2.6.0] - 18 juillet 2026
 
 ### ⚡ Déclaration et suivi des dépendances M2M
