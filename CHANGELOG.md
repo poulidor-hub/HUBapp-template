@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.6.3] - 22 juillet 2026
+
+### 📚 Doc / Tooling — sync outillage Hub (hub-mcp v0.3.0)
+
+- **Skill `hub-mcp-usage`** : réécrit pour refléter le catalogue réel (65 outils). Ajout d'une section « Modèle de permissions : mode app (SA) vs standalone (admin) » expliquant les `403 « réservé aux utilisateurs »` en mode app (token Service Account) et la solution (mode standalone avec `HUB_ADMIN_USERNAME/PASSWORD`, qui obtient un token utilisateur). Badges 🔓/🔒 par outil. Outils retirés documentés (`pki_*`, `design_*`, `admin_info`, `admin_dns_status`, `discovery_proxy`, `backup_export_env`/`import_env`, `user_reset_password`).
+- **Plugin `hub.ts`** : retrait de 2 regex destructrices mortes (`hub_pki_revoke`, `hub_user_reset_password`) — ces outils n'existent plus dans le catalogue hub-mcp v0.3.0.
+- Synchronisé depuis le méta-repo POULIDOR (plugin) et aligné sur hub-mcp v0.3.0 (skill).
+
 ## [2.6.2] - 21 juillet 2026
 
 ### 🐛 Fix — INITIALISE.py mode clean cassait le code généré
