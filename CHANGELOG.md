@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.6.2] - 21 juillet 2026
+
+### 🐛 Fix — INITIALISE.py mode clean cassait le code généré
+
+- **Corrigé** : le mode `--clean` (défaut) produisait une app qui ne démarrait pas, à cause de deux bugs dans la logique de nettoyage :
+  - **`ImportError: OutboxMessage`** : `_clean_models()` réécrivait `models.py` avec un contenu codé en dur qui omettait le modèle core `OutboxMessage` (nécessaire à `outbox.py`). Bug latent révélé quand `OutboxMessage` a été ajouté au template sans mise à jour du contenu codé en dur.
+  - **`IndentationError` dans `main.py`** : `_clean_main()` retirait `test_data_router` mais laissait le bloc `if settings.ENABLE_DEMO_ENDPOINTS:` orphelin avec une indentation instable.
+- **Fix** : `_clean_models()` ne réécrit plus `models.py` en dur — il retire **ciblément** les classes de démo `Item` et `TestData` (regex) et **préserve tout le reste** (`UserPreference`, `UploadedFile`, `OutboxMessage`, et tout modèle core futur). `_clean_main()` retire désormais proprement le bloc `if ENABLE_DEMO_ENDPOINTS:` complet. Le nettoyage devient robuste face à l'évolution du template (plus de désynchronisation possible).
+- **Validé** : recréation d'une app canari en mode clean → démarre, s'inscrit au Hub (`register 200 OK`, `hub_connected: true`).
+
 ## [Unreleased]
 
 ## [2.6.1] - 19 juillet 2026

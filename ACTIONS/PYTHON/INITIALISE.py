@@ -657,73 +657,28 @@ def clean_demo_content(root: Path, config: dict) -> bool:
 
 def _clean_models(root: Path) -> bool:
     filepath = root / 'backend' / 'models.py'
-    content = '''"""
-Modèles SQLAlchemy pour l\'application.
-"""
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, BigInteger
-from datetime import datetime, timezone
-
-from database import Base
-
-
-class UserPreference(Base):
-    __tablename__ = "user_preferences"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(100), unique=True, nullable=False, index=True)
-    theme = Column(String(20), default="system")
-    language = Column(String(5), default="fr")
-    items_per_page = Column(Integer, default=20)
-    email_notifications = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    def __repr__(self):
-        return f"<UserPreference(username=\'{self.username}\')>"
-
-
-class UploadedFile(Base):
-    __tablename__ = "uploaded_files"
-
-    id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String(255), nullable=False)
-    original_filename = Column(String(255), nullable=False)
-    relative_path = Column(String(500), nullable=False, unique=True, index=True)
-    size = Column(BigInteger, nullable=False)
-    mime_type = Column(String(100), nullable=False)
-    hash = Column(String(64), nullable=False)
-    category = Column(String(100), default="general", index=True)
-    description = Column(Text, nullable=True)
-    owner = Column(String(100), nullable=False, index=True)
-    entity_type = Column(String(50), nullable=True, index=True)
-    entity_id = Column(Integer, nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    def __repr__(self):
-        return f"<UploadedFile(id={self.id}, filename=\'{self.filename}\', owner=\'{self.owner}\')>"
-
-    def to_backup_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "filename": self.filename,
-            "original_filename": self.original_filename,
-            "relative_path": self.relative_path,
-            "size": self.size,
-            "mime_type": self.mime_type,
-            "hash": self.hash,
-            "category": self.category,
-            "description": self.description,
-            "owner": self.owner,
-            "entity_type": self.entity_type,
-            "entity_id": self.entity_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }
-'''
     try:
+        content = filepath.read_text(encoding='utf-8')
+        original = content
+        # Retrait ciblé : on supprime UNIQUEMENT les classes de démonstration
+        # (Item, TestData) en préservant tout le reste (UserPreference, UploadedFile,
+        # OutboxMessage et tout modèle core ajouté ultérieurement).
+        # Chaque classe est retirée de "class <Name>(Base):" jusqu'à la prochaine
+        # définition de même niveau (class/def/from/import) ou la fin du fichier.
+        for demo_class in ('Item', 'TestData'):
+            content = re.sub(
+                rf'class {demo_class}\(Base\):.*?(?=\nclass |\ndef |\nfrom |\nimport |\Z)',
+                '',
+                content,
+                flags=re.DOTALL,
+            )
+        # Collapser les blocs vides résiduels (3+ sauts de ligne consécutifs).
+        content = re.sub(r'\n{3,}', '\n\n\n', content)
+        if content == original:
+            print(f"    {Colors.YELLOW}⚠ models.py inchangé (classes de démo non trouvées){Colors.ENDC}")
+        else:
+            print(f"    {Colors.GREEN}✓ models.py nettoyé (Item/TestData retirés, modèles core préservés){Colors.ENDC}")
         filepath.write_text(content, encoding='utf-8')
-        print(f"    {Colors.GREEN}✓ models.py nettoyé{Colors.ENDC}")
         return True
     except Exception as e:
         print(f"    {Colors.RED}✗ Erreur models.py: {e}{Colors.ENDC}")
@@ -928,6 +883,15 @@ def _clean_main(root: Path, config: dict) -> bool:
             'app.include_router(test_data_router)\n',
         ]:
             content = content.replace(line, '')
+        # Retirer le bloc `if settings.ENABLE_DEMO_ENDPOINTS:` (routeurs de démo
+        # tests_router/test_data_router). En mode clean ces endpoints n'ont pas lieu
+        # d'être : on supprime le `if` et toutes ses lignes indentées consécutives,
+        # sinon il reste un bloc orphelin (indentation instable / import inutilisé).
+        content = re.sub(
+            r'\nif settings\.ENABLE_DEMO_ENDPOINTS:\n(?:[ \t]+.*\n)*',
+            '\n',
+            content,
+        )
         content = content.replace(
             'from models import Item, UserPreference, TestData',
             'from models import UserPreference'
