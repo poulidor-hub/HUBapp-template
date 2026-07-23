@@ -7,6 +7,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.7.0] - 23 juillet 2026
+
+### ⚡ Santé — version et uptime dans /api/health basique
+
+- feat: ajout de `version` (APP_VERSION) et `uptime_seconds` au endpoint `/api/health` basique. Auparavant ces champs n'étaient que dans `/api/health/detailed` (imbriqués sous `app.version`), ce qui empêchait le dashboard de santé du Hub de les collecter sans sonde additionnelle. Le contrat basique est désormais aligné sur le standard du parc.
+
 ## [2.6.3] - 22 juillet 2026
 
 ### 📚 Doc / Tooling — sync outillage Hub (hub-mcp v0.3.0)
