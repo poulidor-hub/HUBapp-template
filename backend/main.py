@@ -243,11 +243,18 @@ app.include_router(m2m_router)
 async def health_check():
     """Health check - toujours accessible."""
     hub_registered = getattr(app.state, 'is_registered', False)
-    
+    startup_time = getattr(app.state, 'startup_time', None)
+    uptime_seconds = (
+        (datetime.now(timezone.utc) - startup_time).total_seconds()
+        if startup_time else None
+    )
+
     return {
         "status": "healthy",
         "app": settings.APP_SLUG,
+        "version": APP_VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": uptime_seconds,
         "hub_connected": hub_registered,
     }
 
