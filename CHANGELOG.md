@@ -7,6 +7,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.8.0] - 1er août 2026
+
+### ⚡ Outils de développement — MSW, TanStack Router, TanStack Form
+
+- feat: ajout de MSW (Mock Service Worker) pour développer le frontend sans backend. Les handlers mockés interceptent les requêtes fetch en mode dev via un Service Worker. Conditionné à `import.meta.env.DEV`, tree-shaké en production.
+- feat: ajout de TanStack Router (routing code-based) remplaçant le mono-page App.jsx. Routes : `/` (accueil), `/demo/form` (démo formulaire), `$` (404). Layout dans `routes/root.jsx`.
+- feat: ajout de TanStack Form avec composant démo `FormDemo` (validation SIRET, email, nom). Package `@tanstack/react-form` en dependency.
+- feat: ajout de TanStack React Query DevTools et TanStack Router DevTools, conditionnés à `import.meta.env.DEV`, positionnés à droite et bas-gauche.
+- fix: conditionnement de `ReactQueryDevtools` avec `import.meta.env.DEV` (précédemment inconditionnel).
+- fix: suppression du port redondant dans `docker-compose.dev.yml` qui causait un conflit avec le port de base.
+- fix: `Dockerfile.frontend.dev` expose désormais le port 80 (au lieu de 3000) pour correspondre au mapping du docker-compose de base.
+
+### ⚡ Packages ajoutés
+
+- dep: `@tanstack/react-router` ^1.170
+- dep: `@tanstack/react-form` ^1.33
+- devDep: `@tanstack/react-router-devtools` ^1.167
+- devDep: `@tanstack/react-form-devtools` ^0.2.31
+- devDep: `msw` ^2.15
+
+---
+
 ## [2.7.0] - 23 juillet 2026
 
 ### ⚡ Santé — version et uptime dans /api/health basique
