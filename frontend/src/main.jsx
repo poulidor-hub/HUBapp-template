@@ -24,8 +24,8 @@ async function bootstrap() {
               <RouterProvider router={router} />
               {import.meta.env.DEV && (
                 <>
-                  <ReactQueryDevtools initialIsOpen={false} />
-                  <TanStackRouterDevtools router={router} position="bottom-right" />
+                  <ReactQueryDevtools initialIsOpen={false} position="right" />
+                  <TanStackRouterDevtools router={router} position="bottom-left" />
                 </>
               )}
             </QueryClientProvider>
