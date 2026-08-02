@@ -7,6 +7,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.8.0] - 2 août 2026
+
+### 📣 Pour les développeurs
+
+- **Amélioré** : Les skills du template sont nettoyés et consolidés — fusion, scission, allègement. Chaque app copiée hérite de ~650 lignes de skills en moins.
+- **Ajouté** : Nouveau skill `bulk-operations` pour les opérations par lot (select-all filtré, bulk update/delete), extrait de `badge-search-system`.
+- **Ajouté** : Nouvelle doc `docs/HUB_MCP.md` — catalogue exhaustif des ~65 outils MCP, séparé du skill pour éviter la dérive.
+- **Corrigé** : Le skill `app-dependencies` était invisible (front-matter manquant) — corrigé. `release-sync` pointe désormais vers `release-on-main`.
+
+### ⚡ Refactor massif des skills template — fusion, scission, allègement
+
+- **Fusion** : `hub-messages-integration` (rétrofit legacy, inutile dans une app template) absorbé dans `hub-notifications` (annexe rétrofit, +24 lignes). Skill supprimé.
+- **Scission** : `badge-search-system` 616→229 lignes (-63%) — code inline → invariants + renvois vers AssetsPage/OrdersPage. Section batch ops → nouveau skill `bulk-operations` (230 lignes).
+- **Migration doc** : `hub-mcp-usage` 207→56 lignes — catalogue 65 outils MCP → `docs/HUB_MCP.md` (155 lignes). Mini-skill = permissions SA/standalone + MCP vs code direct.
+- **Allègements** : `hub-oidc-manager` 462→387 (doc code coupée), `release-sync` 57→44 (renvoie release-on-main), `create-hub-app` Phase E/F → pointeurs.
+- **Corrections** : `app-dependencies` front-matter ajouté (zombie invisible), `jellycode.md` listing skills à jour (+app-dependencies, ~65 outils MCP, cache headers `immutable`).
+
 ## [2.7.0] - 23 juillet 2026
 
 ### ⚡ Santé — version et uptime dans /api/health basique

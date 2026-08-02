@@ -1,4 +1,8 @@
-# Skill: app-dependencies
+---
+name: app-dependencies
+description: Use when an app calls another app via M2M and you need to declare the dependency (depends.yaml at app root) or instrument report_sync so the Hub dashboard reflects inter-app activity. Triggers on: "déclarer une dépendance inter-apps", "depends.yaml", "report_sync", "mon app appelle une autre app", "instrumenter une synchro", "emmener les deps à l'atelier".
+argument-hint: 'What dependency operation is needed (write depends.yaml, instrument report_sync after M2M, test group resolution at workshop)'
+---
 
 # Déclarer et instrumenter les dépendances inter-apps
 

@@ -1,7 +1,7 @@
 ---
 name: hub-notifications
-description: Use when working with Hub notifications from an app — sending messages to users via M2M, receiving real-time SSE events, displaying MessageBanner/MessageArchive in the frontend, or testing the notification circuit. Triggers on: "notification", "envoyer une notification", "message utilisateur", "send_user_message", "MessageBanner", "SSE", "notif M2M", "alerte utilisateur".
-argument-hint: 'What notification operation is needed (send a message to users, integrate SSE, add MessageBanner UI, test the circuit)'
+description: Use when working with Hub notifications from an app — sending messages to users via M2M, receiving real-time SSE events, displaying MessageBanner/MessageArchive in the frontend, testing the notification circuit, or retrofitting the messaging system into a legacy app that already has M2M. Triggers on: "notification", "envoyer une notification", "message utilisateur", "send_user_message", "MessageBanner", "SSE", "notif M2M", "alerte utilisateur", "rétrofit messagerie", "intégrer messages Hub".
+argument-hint: 'What notification operation is needed (send a message to users, integrate SSE, add MessageBanner UI, test the circuit, retrofit messaging into a legacy app)'
 ---
 
 # Hub Notifications (M2M)
@@ -231,3 +231,27 @@ Après la requête, faire `make logs-api` pour vérifier l'absence d'erreurs dan
 | AuthContext (SSE) | `frontend/src/context/AuthContext.jsx` |
 | Smoke test route | `backend/routes/tests.py:616-638` |
 | Exemple notifs | `../../APPS/exemple-app/backend/routes/transfers.py:260-270` |
+
+## Annexe — Rétrofit d'une app pré-template
+
+> ⚠️ Cas rare. Le template fournit déjà toute la messagerie montée (`MessageBanner`/`MessageArchive`, `AuthContext` avec SSE, route smoke test). Cette section ne sert **que** pour une app **legacy** (pré-template, sans messagerie) qu'on veut migrer — son ancien skill dédié `hub-messages-integration` a été fusionné ici.
+
+### Prérequis à vérifier avant tout code
+
+- M2M enregistré et `get_m2m_token()` opérationnel (`backend/hub_client.py`).
+- `/api/config` expose `hub_api_url` et `hub_frontend_url` (`backend/main.py`).
+- Un `AuthContext` frontend existe (`frontend/src/context/AuthContext.jsx`).
+- En mode nginx déployé, le bloc `location /hub/` doit exister avec `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout 24h` (`nginx-ssl.conf`). Voir aussi le skill `deploy-troubleshoot`.
+
+### Composants à monter
+
+- `frontend/src/components/MessageBanner.jsx` + `MessageArchive.jsx` au root layout (`App.jsx`).
+- CSS `message-banner*` / `message-archive*` dans `frontend/src/styles/index.css`.
+- `lucide-react` présent dans `frontend/package.json` (icônes du bandeau).
+- Switch `${origin}/hub` hors dev Vite via `frontend/src/config.js` + `ConfigContext.jsx`.
+
+### À ne pas faire
+
+- Ne pas forcer le flux messages dans `useApiQuery`/`useApiMutation` sans redesigner l'auth refresh + SSE — c'est volontairement en `fetch` direct + `EventSource` natif dans `AuthContext`.
+- Ne pas appeler `/api/messages/m2m/send` depuis le frontend (M2M only, backend).
+- Ne pas stocker les messages localement — le Hub est la seule source de vérité.

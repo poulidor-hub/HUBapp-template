@@ -1,57 +1,44 @@
 ---
 name: release-sync
-description: 'Prepare or verify a release by syncing VERSION across the repo, checking CHANGELOG coverage, updating .env version fields, and validating the standard release commands. Use for version bump, release preparation, changelog sync, or version consistency checks.'
-argument-hint: 'Requested release action, for example: check consistency, bump patch, set 2.5.0, or prepare release 2.5.0'
+description: 'Use when synchronizing or verifying the VERSION field across repo files (VERSION, package.json, main.py, .env, docs/API.md) via the bump_version.py tool. Covers consistency checks, version bumps, and sync-env. Triggers on: "version sync", "bump version", "version consistency", "vérifier cohérence version", "make sync-env". For the full release gate (deduce patch/minor/major + CHANGELOG + commit + push main), use the release-on-main skill instead.'
+argument-hint: 'Requested sync action, for example: check consistency, bump patch, set 2.5.0'
 ---
 
 # Release Sync
 
-Use this skill when the task is about preparing a release, bumping a version, synchronizing versioned files, or checking whether the repository is release-ready.
+> **Ce skill = mode d'emploi de `bump_version.py` + fichiers synchronisés.** Pour la **procédure de release complète** (déduction patch/minor/major + CHANGELOG technique + commit + push vers `main`), utiliser le skill parc **`release-on-main`** — c'est la gate obligatoire avant tout push main.
 
-## What This Repository Uses
+## Fichiers synchronisés
 
-- [VERSION](../../../VERSION) is the source of truth.
-- The main automation entry point is [scripts/bump_version.py](../../../scripts/bump_version.py).
-- Hook installation lives in [scripts/install-hooks.sh](../../../scripts/install-hooks.sh).
-- API docs versioning lives in [docs/API.md](../../../docs/API.md).
-- Environment synchronization for `.env` uses `make sync-env` from [Makefile](../../../Makefile).
+`VERSION` est la source de vérité. `scripts/bump_version.py` propage la version vers :
 
-## Procedure
+- [VERSION](../../../VERSION)
+- [frontend/package.json](../../../frontend/package.json)
+- [backend/main.py](../../../backend/main.py)
+- [.env.example](../../../.env.example) + [.env](../../../.env) (si présent)
+- [docs/API.md](../../../docs/API.md)
 
-1. Determine the requested release action.
-   - For validation only, use the consistency path.
-   - For a bump, decide whether it is `patch`, `minor`, `major`, or an explicit version.
+> La liste exhaustive et les détails de substitution vivent dans `scripts/bump_version.py` (source canonique). Hooks : `scripts/install-hooks.sh`.
 
-2. Verify the current state before changing files.
-   - Inspect [VERSION](../../../VERSION).
-   - Check whether [CHANGELOG.md](../../../CHANGELOG.md) already contains the target version.
-   - Review any uncommitted changes before performing automated synchronization.
+## Commandes
 
-3. Use the repository's supported automation instead of hand-editing version files.
-   - Validation: run `python scripts/bump_version.py --check`.
-   - Synchronize current version: run `python scripts/bump_version.py`.
-   - Bump release: run `python scripts/bump_version.py patch`, `minor`, or `major`.
-   - Set an explicit version: run `python scripts/bump_version.py --set X.Y.Z`.
+| Action | Commande |
+|---|---|
+| Vérifier la cohérence (CI-style, exit code ≠ 0 si incohérent) | `python scripts/bump_version.py --check` |
+| Synchroniser la version courante (propager VERSION → tous les fichiers) | `python scripts/bump_version.py` |
+| Bumper release | `python scripts/bump_version.py patch\|minor\|major` |
+| Setter une version explicite | `python scripts/bump_version.py --set X.Y.Z` |
+| Resync `.env` après changements de ports/déploiement | `make sync-env` |
 
-4. Confirm the synchronized file set after the script runs.
-   - [VERSION](../../../VERSION)
-   - [frontend/package.json](../../../frontend/package.json)
-   - [backend/main.py](../../../backend/main.py)
-   - [.env.example](../../../.env.example)
-   - [.env](../../../.env) when present
-   - [docs/API.md](../../../docs/API.md)
+## Vérification post-bump
 
-5. Verify release notes and environment follow-through.
-   - Ensure [CHANGELOG.md](../../../CHANGELOG.md) has an entry for the target version.
-   - If `.env`, ports, or deployment settings changed during release preparation, run `make sync-env`.
-   - If hooks are missing in a fresh clone, install them with [scripts/install-hooks.sh](../../../scripts/install-hooks.sh).
-
-6. Prefer repo-native verification.
-   - Backend verification: `make test` or `make test-cov`.
-   - Frontend-only verification after version-visible UI changes: `cd frontend && npm run build`.
+- `python scripts/bump_version.py --check` doit passer (cohérence).
+- [CHANGELOG.md](../../../CHANGELOG.md) contient une entrée pour la version cible (sinon release incomplète — voir `release-on-main`).
+- Backend : `make test` ou `make test-cov`.
+- Frontend (si changements visibles dans le build Vite) : `cd frontend && npm run build`.
 
 ## Guardrails
 
-- Do not hand-edit multiple versioned files when [scripts/bump_version.py](../../../scripts/bump_version.py) already owns that workflow.
-- Treat a missing changelog entry as incomplete release preparation, even if version synchronization succeeded.
-- Remember that the built frontend does not pick up runtime env changes automatically; rebuild when release work changes Vite-visible configuration.
+- **Ne pas hand-éditer** plusieurs fichiers versionnés quand `bump_version.py` existe.
+- Changelog manquant = release incomplète, même si la synchro a réussi.
+- Le frontend built ne pick pas les env changes au runtime ; rebuilder si la release touche la config Vite-visible.
