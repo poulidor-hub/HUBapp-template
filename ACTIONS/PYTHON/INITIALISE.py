@@ -344,7 +344,13 @@ def collect_app_info(parsed_options: dict) -> dict:
     # Mode auto : nom fourni en argument positionnel, pas de --interactive, pas de --profile
     if app_name and not interactive and not profile_path:
         clean_demo = '--demo' not in parsed_options['args']
-        return collect_app_info_auto(app_name, clean_demo=clean_demo)
+        force_slug = None
+        args = parsed_options['args']
+        for i, a in enumerate(args):
+            if a == '--force-slug' and i + 1 < len(args):
+                force_slug = args[i + 1]
+                break
+        return collect_app_info_auto(app_name, clean_demo=clean_demo, force_slug=force_slug)
 
     # Mode profil (inchangé)
     if profile_path:
@@ -432,11 +438,13 @@ def collect_app_info(parsed_options: dict) -> dict:
     return config
 
 
-def collect_app_info_auto(app_name: str, clean_demo: bool = True) -> dict:
+def collect_app_info_auto(app_name: str, clean_demo: bool = True, force_slug: str | None = None) -> dict:
     """Collecte automatique en mode --auto (zéro question)."""
     print(f"\n{Colors.BOLD}⚡ Mode auto : initialisation de '{app_name}'{Colors.ENDC}\n")
 
     app_slug = slugify(app_name)
+    if force_slug:
+        app_slug = force_slug
     hub_host = detect_host_ip()
 
     config = {
