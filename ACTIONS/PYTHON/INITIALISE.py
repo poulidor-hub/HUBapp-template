@@ -442,9 +442,10 @@ def collect_app_info_auto(app_name: str, clean_demo: bool = True, force_slug: st
     """Collecte automatique en mode --auto (zéro question)."""
     print(f"\n{Colors.BOLD}⚡ Mode auto : initialisation de '{app_name}'{Colors.ENDC}\n")
 
-    app_slug = slugify(app_name)
     if force_slug:
         app_slug = force_slug
+    else:
+        app_slug = slugify(app_name)
     hub_host = detect_host_ip()
 
     config = {

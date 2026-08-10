@@ -90,3 +90,12 @@ class TestCollectAppInfoAuto:
     def test_demo_mode(self):
         config = collect_app_info_auto("Test App", clean_demo=False)
         assert config["CLEAN_DEMO"] is False
+
+    def test_force_slug_overrides_auto(self):
+        config = collect_app_info_auto("Gestion des Factures", force_slug="my-custom-slug")
+        assert config["APP_SLUG"] == "my-custom-slug"
+
+    def test_force_slug_rescues_invalid_name(self):
+        """--force-slug doit fonctionner même si le nom produit un slug invalide (< 3 car)."""
+        config = collect_app_info_auto("AB", force_slug="ab-app")
+        assert config["APP_SLUG"] == "ab-app"
