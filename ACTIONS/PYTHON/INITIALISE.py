@@ -110,6 +110,36 @@ def validate_date(date_str: str) -> bool:
         return False
 
 
+def detect_host_ip() -> str:
+    """Détecte l'IP hôte qui sera utilisée comme HUB_HOST par défaut."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
+        s.connect(("1.1.1.1", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "192.0.2.11"
+
+
+def slugify(name: str) -> str:
+    """Transforme un nom lisible en slug (ex: 'Gestion des Factures' → 'gestion-des-factures')."""
+    slug = name.lower().strip()
+    accents = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
+    slug = slug.translate(accents)
+    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    slug = slug.strip('-')
+    slug = re.sub(r'-{2,}', '-', slug)
+    if not re.match(r'^[a-z][a-z0-9-]*[a-z0-9]$', slug) or len(slug) < 3:
+        raise ValueError(
+            f"Le slug généré '{slug}' est invalide (min 3 car., [a-z0-9-]). "
+            f"Utilisez --force-slug pour forcer un slug manuel."
+        )
+    return slug
+
+
 def parse_cli_options(argv: List[str]) -> dict:
     profile_path = None
     filtered_args = []
