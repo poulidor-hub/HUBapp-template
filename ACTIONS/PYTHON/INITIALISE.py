@@ -415,6 +415,36 @@ def collect_app_info(parsed_options: dict) -> dict:
     return config
 
 
+def collect_app_info_auto(app_name: str, clean_demo: bool = True) -> dict:
+    """Collecte automatique en mode --auto (zéro question)."""
+    print(f"\n{Colors.BOLD}⚡ Mode auto : initialisation de '{app_name}'{Colors.ENDC}\n")
+
+    app_slug = slugify(app_name)
+    hub_host = detect_host_ip()
+
+    config = {
+        'APP_KIND': APP_KIND_TOOL,
+        'APP_KIND_LABEL': APP_KIND_LABELS[APP_KIND_TOOL],
+        'APP_PROFILE_PATH': '',
+        "APP_SLUG": app_slug,
+        "APP_NAME": app_name,
+        "APP_DESCRIPTION": f"Application {app_name}",
+        "API_PORT": "",
+        "FRONTEND_PORT": "",
+        "HUB_HOST": hub_host,
+        "HUB_API_PORT": "8000",
+        "HUB_FRONTEND_PORT": "80",
+        'CLEAN_DEMO': clean_demo,
+        'CLIENT_NAME': '',
+        'CLIENT_CONTACT_NAME': '',
+        'CLIENT_CONTACT_EMAIL': '',
+        'LICENSE_QUOTE_NUMBER': '',
+        'LICENSE_QUOTE_DATE': '',
+        'LICENSE_NOTICE_YEAR': str(datetime.now().year),
+    }
+    return config
+
+
 def confirm_settings(config: dict) -> bool:
     print(f"\n{Colors.BOLD}📋 Récapitulatif de la configuration{Colors.ENDC}")
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
