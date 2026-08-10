@@ -15,9 +15,10 @@ Il :
 5. S'auto-supprime (lui-même + ses wrappers `INITIALISE.sh` / `.bat`).
 
 Usage :
-    python ACTIONS/PYTHON/INITIALISE.py
-    python ACTIONS/PYTHON/INITIALISE.py --demo
-    python ACTIONS/PYTHON/INITIALISE.py --profile client.json
+    python ACTIONS/PYTHON/INITIALISE.py "Gestion des Factures"   # Mode auto (défaut)
+    python ACTIONS/PYTHON/INITIALISE.py --interactive             # Mode interactif
+    python ACTIONS/PYTHON/INITIALISE.py --profile client.json     # Mode profil
+    python ACTIONS/PYTHON/INITIALISE.py "Mon App" --demo          # Auto + garder démo
 
 Compatible Linux / Windows / macOS.
 """
@@ -336,6 +337,22 @@ def prompt_input(prompt: str, default: str = "", validator=None, error_msg: str 
 
 
 def collect_app_info(parsed_options: dict) -> dict:
+    app_name = parsed_options.get('app_name')
+    profile_path = parsed_options.get('profile_path')
+    interactive = parsed_options.get('interactive', False)
+
+    # Mode auto : nom fourni en argument positionnel, pas de --interactive, pas de --profile
+    if app_name and not interactive and not profile_path:
+        clean_demo = '--demo' not in parsed_options['args']
+        return collect_app_info_auto(app_name, clean_demo=clean_demo)
+
+    # Mode profil (inchangé)
+    if profile_path:
+        config = build_config_from_profile(load_client_profile(profile_path), profile_path)
+        print(f"{Colors.GREEN}✓ Fiche client importée: {profile_path}{Colors.ENDC}")
+        return config
+
+    # Mode interactif (comportement actuel, inchangé)
     print(f"\n{Colors.BOLD}📝 Configuration de votre nouvelle application{Colors.ENDC}\n")
 
     app_kind = prompt_choice(
