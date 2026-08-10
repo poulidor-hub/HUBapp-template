@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.9.0] - 10 août 2026
+
+### ⚡ Affichage version app dans le header
+
+- **Ajouté** : badge `v{APP_VERSION}` dans le header, sous le titre de l'app
+- **Ajouté** : classe CSS `.header-title-group` et `.header-version` pour le style du groupe titre+version
+
 ## [2.8.0] - 2 août 2026
 
 ### 📣 Pour les développeurs
