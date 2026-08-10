@@ -7,6 +7,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.10.0] — 10 août 2026
+
+### ⚡ INITIALISE.py — mode auto par défaut
+
+- **Ajouté** : mode auto — un seul argument positionnel suffit :
+  `./INITIALISE.sh "Gestion des Factures"`. Le slug est dérivé automatiquement
+  (`gestion-des-factures`), les ports sont laissés vides pour allocation Hub,
+  l'IP du Hub est auto-détectée.
+- **Ajouté** : flag `--interactive` pour l'ancien comportement interactif.
+- **Ajouté** : fonctions `slugify()` (nom → slug avec suppression accents) et
+  `detect_host_ip()` (auto-détection IP via socket).
+- **Ajouté** : flag `--force-slug <slug>` pour forcer un slug manuel si la
+  dérivation automatique échoue.
+- **Modifié** : `parse_cli_options()` enrichi avec détection du nom positionnel
+  et des flags `--interactive`/`--force-slug`.
+- **Modifié** : `collect_app_info()` dispatche désormais vers le mode auto
+  quand un nom est fourni, ou vers le mode profil/interactif selon les flags.
+- Les modes `--profile` et `--demo`/`--clean` sont inchangés.
+
 ## [2.9.0] - 10 août 2026
 
 ### ⚡ Affichage version app dans le header
