@@ -164,6 +164,7 @@ def parse_cli_options(argv: List[str]) -> dict:
             if index + 1 >= len(argv):
                 raise ValueError("L'option --force-slug attend un slug.")
             filtered_args.append(arg)
+            filtered_args.append(argv[index + 1])
             skip_next = True
             continue
         if arg.lower().endswith(".json") and profile_path is None:
