@@ -142,6 +142,8 @@ def slugify(name: str) -> str:
 
 def parse_cli_options(argv: List[str]) -> dict:
     profile_path = None
+    interactive = False
+    app_name = None
     filtered_args = []
     skip_next = False
 
@@ -155,16 +157,30 @@ def parse_cli_options(argv: List[str]) -> dict:
             profile_path = Path(argv[index + 1]).expanduser().resolve()
             skip_next = True
             continue
+        if arg == "--interactive":
+            interactive = True
+            continue
+        if arg == "--force-slug":
+            if index + 1 >= len(argv):
+                raise ValueError("L'option --force-slug attend un slug.")
+            filtered_args.append(arg)
+            skip_next = True
+            continue
         if arg.lower().endswith(".json") and profile_path is None:
             candidate = Path(arg).expanduser()
             if candidate.exists():
                 profile_path = candidate.resolve()
                 continue
+        if not arg.startswith('-') and app_name is None and profile_path is None:
+            app_name = arg
+            continue
         filtered_args.append(arg)
 
     return {
         "args": filtered_args,
         "profile_path": profile_path,
+        "app_name": app_name,
+        "interactive": interactive,
     }
 
 
