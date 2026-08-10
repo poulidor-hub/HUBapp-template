@@ -1,5 +1,6 @@
 import React from 'react'
 import { MoonStar, ShieldCheck, SunMedium } from 'lucide-react'
+import { APP_VERSION } from '../config'
 import { useAuth } from '../context/AuthContext'
 import { useApiQuery } from '../hooks/useApiQuery'
 
@@ -18,10 +19,13 @@ function Header({ theme, toggleTheme }) {
 
   return (
     <header>
-      <h1 className="app-title">
-        <ShieldCheck className="hub-icon" aria-hidden="true" />
-        <span>Template App - Hub Auth</span>
-      </h1>
+      <div className="header-title-group">
+        <h1 className="app-title">
+          <ShieldCheck className="hub-icon" aria-hidden="true" />
+          <span>Template App - Hub Auth</span>
+        </h1>
+        <span className="header-version">v{APP_VERSION}</span>
+      </div>
       <div className="header-actions">
         <div className="status-indicator">
           <span className={`status-dot ${checking ? '' : online ? 'online' : 'offline'}`} />
