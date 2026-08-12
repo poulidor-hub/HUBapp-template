@@ -183,6 +183,14 @@ def test_main_hub_host_flag_writes_directly(monkeypatch, tmp_path, capsys):
     assert "HUB_HOST=5.5.5.5" in env_file.read_text()
 
 
+def test_main_hub_host_empty_rejected(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    rc = sync_hub_host.main(["--hub-host", ""])
+    assert rc == 1
+    assert "HUB_HOST=9.9.9.9" in env_file.read_text()  # .env inchangé (rien effacé)
+    assert "vide" in capsys.readouterr().out.lower()
+
+
 def test_main_interactive_prompts_on_failure(monkeypatch, tmp_path, capsys):
     env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
     monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: None)

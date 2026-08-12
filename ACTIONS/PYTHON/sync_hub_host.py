@@ -95,8 +95,6 @@ def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float =
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Découverte/synchronisation de l'IP du Hub via GET /api/config/hub-host."
     )
@@ -113,7 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     # --- Override explicite : écriture directe, découverte sautée ---
     if args.hub_host is not None:
         new = args.hub_host.strip()
-        if new and new != current:
+        if not new:
+            print("❌ --hub-host vide ignoré")
+            return 1
+        if new != current:
             set_env_var(ENV_PATH, "HUB_HOST", new)
             print(f"🔄 HUB_HOST forcé: {current or '(vide)'} → {new}")
         elif not args.quiet:
@@ -160,5 +161,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(main())
