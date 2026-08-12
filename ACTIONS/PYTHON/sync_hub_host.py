@@ -7,8 +7,10 @@ pour forcer). Interroge GET /api/config/hub-host du Hub.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import socket
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -90,3 +92,73 @@ def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float =
         if result:
             return result
     return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Découverte/synchronisation de l'IP du Hub via GET /api/config/hub-host."
+    )
+    parser.add_argument("--quiet", action="store_true",
+                        help="mode silencieux non-bloquant (utilisé par sync-env)")
+    parser.add_argument("--hub-host", default=None,
+                        help="force l'IP/hostname ; saute la découverte")
+    args = parser.parse_args(argv)
+
+    env = read_env(ENV_PATH)
+    hub_api_port = (env.get("HUB_API_PORT") or "8000").strip() or "8000"
+    current = (env.get("HUB_HOST") or "").strip()
+
+    # --- Override explicite : écriture directe, découverte sautée ---
+    if args.hub_host is not None:
+        new = args.hub_host.strip()
+        if new and new != current:
+            set_env_var(ENV_PATH, "HUB_HOST", new)
+            print(f"🔄 HUB_HOST forcé: {current or '(vide)'} → {new}")
+        elif not args.quiet:
+            print(f"✅ HUB_HOST déjà à jour ({new})")
+        return 0
+
+    # --- Découverte via candidats ordonnés ---
+    local_ip = get_local_ip()
+    raw_candidates = [current, "localhost", "127.0.0.1", local_ip, "host.docker.internal"]
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for c in raw_candidates:
+        if c and c.strip() and c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    discovered = discover_hub_host(candidates, hub_api_port)
+
+    if discovered:
+        if discovered != current:
+            set_env_var(ENV_PATH, "HUB_HOST", discovered)
+            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {discovered}")
+        elif not args.quiet:
+            print(f"✅ HUB_HOST déjà à jour ({discovered})")
+        return 0
+
+    # --- Hub injoignable ---
+    if args.quiet:
+        return 0  # silence, on garde current
+
+    # mode interactif : prompt de secours
+    try:
+        saisie = input(
+            f"❌ Hub injoignable via {candidates}. "
+            f"Saisissez la nouvelle IP/hostname (Entrée = garder '{current}', Ctrl+C = annuler) : "
+        ).strip()
+    except EOFError:
+        print("❌ Pas de TTY interactif. Relancez avec : make sync-hub-host HUB_HOST=<ip>")
+        return 1
+    if saisie and saisie != current:
+        set_env_var(ENV_PATH, "HUB_HOST", saisie)
+        print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {saisie}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

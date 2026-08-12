@@ -134,3 +134,85 @@ def test_discover_skips_empty_candidates(monkeypatch):
     monkeypatch.setattr(sync_hub_host, "query_hub_host", fake_query)
     sync_hub_host.discover_hub_host(["", "  ", "localhost", None], "8000")
     assert seen == ["localhost"]  # les vides/None sont skippés
+
+
+# --- main ---
+
+def _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9", hub_api_port="8000"):
+    """Pointe sync_hub_host.ENV_PATH vers un .env temporaire."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"HUB_HOST={hub_host}\nHUB_API_PORT={hub_api_port}\n")
+    monkeypatch.setattr(sync_hub_host, "ENV_PATH", env_file)
+    return env_file
+
+
+def test_main_quiet_updates_when_changed(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: "1.2.3.4")
+    rc = sync_hub_host.main(["--quiet"])
+    assert rc == 0
+    assert "HUB_HOST=1.2.3.4" in env_file.read_text()
+    assert "1.2.3.4" in capsys.readouterr().out
+
+
+def test_main_quiet_silent_when_same(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="1.2.3.4")
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: "1.2.3.4")
+    rc = sync_hub_host.main(["--quiet"])
+    assert rc == 0
+    assert capsys.readouterr().out == ""  # silence total
+    assert env_file.read_text() == "HUB_HOST=1.2.3.4\nHUB_API_PORT=8000\n"  # inchangé
+
+
+def test_main_quiet_silent_when_unreachable(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: None)
+    rc = sync_hub_host.main(["--quiet"])
+    assert rc == 0
+    assert capsys.readouterr().out == ""  # silence, garde current
+    assert "HUB_HOST=9.9.9.9" in env_file.read_text()  # inchangé
+
+
+def test_main_hub_host_flag_writes_directly(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    called = []
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda *a, **k: called.append(1) or "should-not-happen")
+    rc = sync_hub_host.main(["--hub-host", "5.5.5.5"])
+    assert rc == 0
+    assert called == []  # découverte jamais appelée
+    assert "HUB_HOST=5.5.5.5" in env_file.read_text()
+
+
+def test_main_interactive_prompts_on_failure(monkeypatch, tmp_path, capsys):
+    env_file = _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: None)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "5.6.7.8")
+    rc = sync_hub_host.main([])  # mode interactif (pas de --quiet)
+    assert rc == 0
+    assert "HUB_HOST=5.6.7.8" in env_file.read_text()
+    assert "5.6.7.8" in capsys.readouterr().out
+
+
+def test_main_interactive_eoferror_returns_1(monkeypatch, tmp_path, capsys):
+    _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", lambda c, p, t=1.5: None)
+    def boom(prompt=""):
+        raise EOFError
+    monkeypatch.setattr("builtins.input", boom)
+    rc = sync_hub_host.main([])  # mode interactif sans TTY
+    assert rc == 1
+    assert "TTY" in capsys.readouterr().out
+
+
+def test_main_builds_candidate_order(monkeypatch, tmp_path):
+    """Vérifie l'ordre des candidats : current, localhost, 127.0.0.1, local_ip, host.docker.internal."""
+    _patch_env(monkeypatch, tmp_path, hub_host="9.9.9.9")
+    monkeypatch.setattr(sync_hub_host, "get_local_ip", lambda: "192.0.2.12")
+    seen = []
+    def fake_discover(candidates, port, timeout=1.5):
+        seen.extend(candidates)
+        return None
+    monkeypatch.setattr(sync_hub_host, "discover_hub_host", fake_discover)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")  # Entrée = garder current
+    sync_hub_host.main([])
+    assert seen == ["9.9.9.9", "localhost", "127.0.0.1", "192.0.2.12", "host.docker.internal"]
