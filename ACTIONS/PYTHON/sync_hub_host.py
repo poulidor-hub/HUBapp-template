@@ -104,6 +104,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="force l'IP/hostname ; saute la découverte")
     args = parser.parse_args(argv)
 
+    # Garde : ne jamais créer de .env de zéro (rôle de INITIALISE.py / make dev qui
+    # bootstrappe depuis .env.example). Sans .env on s'abstient proprement.
+    if not ENV_PATH.exists():
+        if not args.quiet:
+            print(
+                f"ℹ️ Aucun .env trouvé ({ENV_PATH.name}). Lancez `make dev` ou `make up` "
+                f"pour le créer depuis .env.example, ou copiez-le manuellement."
+            )
+        return 0
+
     env = read_env(ENV_PATH)
     hub_api_port = (env.get("HUB_API_PORT") or "8000").strip() or "8000"
     current = (env.get("HUB_HOST") or "").strip()

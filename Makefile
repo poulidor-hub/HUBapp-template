@@ -38,6 +38,7 @@ help: ## Afficher cette aide
 # === SSL / HTTPS ===
 
 sync-env: ## Allouer les ports via le Hub si absents, puis synchroniser FRONTEND_HTTPS_PORT et APP_VERSION
+	@if [ ! -f .env ]; then cp .env.example .env && echo "🆕 Premier démarrage : .env créé depuis .env.example — adaptez APP_SLUG, HUB_HOST et les secrets (POSTGRES_PASSWORD) si besoin."; fi
 	@python3 ACTIONS/PYTHON/sync_hub_host.py --quiet
 	@python3 ACTIONS/PYTHON/allocate_ports.py || { echo "❌ Allocation des ports échouée"; exit 1; }
 	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \

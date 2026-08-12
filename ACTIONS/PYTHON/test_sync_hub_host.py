@@ -224,3 +224,26 @@ def test_main_builds_candidate_order(monkeypatch, tmp_path):
     monkeypatch.setattr("builtins.input", lambda prompt="": "")  # Entrée = garder current
     sync_hub_host.main([])
     assert seen == ["9.9.9.9", "localhost", "127.0.0.1", "192.0.2.12", "host.docker.internal"]
+
+
+# --- Garde : pas de .env (ne jamais créer un .env partiel) ---
+
+def test_main_no_env_does_nothing_interactive(monkeypatch, tmp_path, capsys):
+    """Sans .env, main() s'abstient (ne crée rien), message informatif, return 0."""
+    missing = tmp_path / "absent.env"  # n'existe pas
+    monkeypatch.setattr(sync_hub_host, "ENV_PATH", missing)
+    rc = sync_hub_host.main([])  # mode interactif
+    assert rc == 0
+    assert not missing.exists()  # aucun fichier créé
+    out = capsys.readouterr().out
+    assert ".env" in out  # message informatif mentionne le .env
+
+
+def test_main_no_env_quiet_silent(monkeypatch, tmp_path, capsys):
+    """Sans .env en --quiet, main() sort silencieusement sans rien créer."""
+    missing = tmp_path / "absent.env"
+    monkeypatch.setattr(sync_hub_host, "ENV_PATH", missing)
+    rc = sync_hub_host.main(["--quiet"])
+    assert rc == 0
+    assert not missing.exists()
+    assert capsys.readouterr().out == ""  # silence total
