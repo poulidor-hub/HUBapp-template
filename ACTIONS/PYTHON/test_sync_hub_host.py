@@ -77,3 +77,60 @@ def test_get_local_ip_none_on_oserror(monkeypatch):
         raise OSError("no network")
     monkeypatch.setattr(socket, "socket", boom)
     assert sync_hub_host.get_local_ip() is None
+
+
+# --- query_hub_host ---
+
+def _urlopen_cm(payload: dict):
+    """Construit un faux context manager pour urllib.request.urlopen."""
+    resp = MagicMock()
+    resp.read.return_value = json.dumps(payload).encode()
+    cm = MagicMock()
+    cm.__enter__.return_value = resp
+    cm.__exit__.return_value = None
+    return cm
+
+
+def test_query_hub_host_returns_host(monkeypatch):
+    cm = _urlopen_cm({"host": "1.2.3.4", "configured": True})
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: cm)
+    assert sync_hub_host.query_hub_host("1.2.3.4", "8000") == "1.2.3.4"
+
+
+def test_query_hub_host_none_on_exception(monkeypatch):
+    def boom(req, timeout=None):
+        raise OSError("connexion refusée")
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    assert sync_hub_host.query_hub_host("1.2.3.4", "8000") is None
+
+
+def test_query_hub_host_none_on_empty_host(monkeypatch):
+    cm = _urlopen_cm({"host": ""})
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: cm)
+    assert sync_hub_host.query_hub_host("1.2.3.4", "8000") is None
+
+
+# --- discover_hub_host ---
+
+def test_discover_returns_first_responding(monkeypatch):
+    answers = {"9.9.9.9": None, "localhost": "1.2.3.4", "127.0.0.1": "1.2.3.4"}
+    def fake_query(host, port, timeout=1.5):
+        return answers.get(host)
+    monkeypatch.setattr(sync_hub_host, "query_hub_host", fake_query)
+    result = sync_hub_host.discover_hub_host(["9.9.9.9", "localhost", "127.0.0.1"], "8000")
+    assert result == "1.2.3.4"
+
+
+def test_discover_returns_none_all_fail(monkeypatch):
+    monkeypatch.setattr(sync_hub_host, "query_hub_host", lambda h, p, t=1.5: None)
+    assert sync_hub_host.discover_hub_host(["9.9.9.9", "localhost"], "8000") is None
+
+
+def test_discover_skips_empty_candidates(monkeypatch):
+    seen = []
+    def fake_query(host, port, timeout=1.5):
+        seen.append(host)
+        return None
+    monkeypatch.setattr(sync_hub_host, "query_hub_host", fake_query)
+    sync_hub_host.discover_hub_host(["", "  ", "localhost", None], "8000")
+    assert seen == ["localhost"]  # les vides/None sont skippés

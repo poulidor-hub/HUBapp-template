@@ -64,3 +64,29 @@ def get_local_ip() -> str | None:
     if ip.startswith("172."):
         return None  # interface interne Docker
     return ip
+
+
+def query_hub_host(host: str, port: str, timeout: float = 1.5) -> str | None:
+    """GET http://{host}:{port}/api/config/hub-host → retourne le champ 'host', ou None."""
+    url = f"http://{host}:{port}/api/config/hub-host"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+        host_val = data.get("host")
+        if isinstance(host_val, str) and host_val.strip():
+            return host_val.strip()
+        return None
+    except Exception:
+        return None
+
+
+def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float = 1.5) -> str | None:
+    """Itère les candidats dans l'ordre, retourne le 1er 'host' non-None. None si tous injoignables."""
+    for host in candidates:
+        if not host or not host.strip():
+            continue
+        result = query_hub_host(host.strip(), hub_api_port, timeout)
+        if result:
+            return result
+    return None
