@@ -664,6 +664,114 @@
     markDirty(); updateSectionIndicator('fonctions'); updateProgress(); setExportEnabled();
   }
 
+  // ============================================================ EXPORT MARKDOWN
+  function download(filename, text, mime) {
+    const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = el('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|'); }
+  function exportMarkdown() {
+    const S = state.sections;
+    const meta = state.meta;
+    const app = S.identite.app || '(sans nom)';
+    let md = '';
+    md += '# Cahier des charges — ' + app + '\n\n';
+    md += '> Slug : `' + (S.identite.slug || '') + '` · Version doc : ' + (meta.version || '1.0') + ' · Maj : ' + (meta.updatedAt || '') + '\n\n---\n\n';
+
+    // §1
+    md += '## 1. Identité & contexte\n\n';
+    md += '- **Objectif** : ' + (S.identite.objectif || '—') + '\n';
+    md += '- **Contexte métier** : ' + (S.identite.contexte || '—') + '\n\n';
+    md += '**Périmètre**\n\n';
+    md += '- ✅ Fait : ' + (S.identite.fait || '—') + '\n';
+    md += '- 🚫 Ne fait pas : ' + (S.identite.neFaitPas || '—') + '\n\n---\n\n';
+
+    // §2 acteurs
+    md += '## 2. Acteurs & rôles\n\n';
+    if (S.acteurs.length) {
+      md += '| Rôle | Libellé métier | Description |\n|---|---|---|\n';
+      S.acteurs.forEach(a => { md += '| ' + esc(a.role) + ' | ' + esc(a.libelle) + ' | ' + esc(a.description) + ' |\n'; });
+    } else md += '_Aucun._';
+    md += '\n\n---\n\n';
+
+    // §3 données
+    md += '## 3. Données (modèle)\n\n';
+    if (S.donnees.length) {
+      S.donnees.forEach(ent => {
+        md += '### Entité : ' + esc(ent.nom || '(sans nom)') + '\n\n';
+        if (ent.description) md += '_' + esc(ent.description) + '_\n\n';
+        if (ent.champs.length) {
+          md += '| Champ | Type | Rôle | Note |\n|---|---|---|---|\n';
+          ent.champs.forEach(c => { md += '| ' + esc(c.nom) + ' | ' + esc(c.type) + ' | ' + esc(c.role) + ' | ' + esc(c.note) + ' |\n'; });
+        } else md += '_Aucun champ._\n';
+        md += '\n';
+      });
+    } else md += '_Aucune entité._\n';
+    md += '\n---\n\n';
+
+    // §4 interactions (matrice)
+    md += '## 4. Interactions × données (CRUD par rôle)\n\n';
+    syncInteractionsToEntities();
+    if (S.interactions.length) {
+      md += '| Entité | Créer | Lire | Modifier | Supprimer |\n|---|---|---|---|---|\n';
+      S.interactions.forEach(r => { md += '| ' + esc(r.entite) + ' | ' + esc(r.c.join(', ')) + ' | ' + esc(r.r.join(', ')) + ' | ' + esc(r.u.join(', ')) + ' | ' + esc(r.d.join(', ')) + ' |\n'; });
+    } else md += '_Aucune._\n';
+    md += '\n---\n\n';
+
+    // §5 affichage
+    md += '## 5. Affichage & objectifs\n\n';
+    if (S.affichage.length) {
+      md += '| Vue | Objectif | Type | Données affichées |\n|---|---|---|---|\n';
+      S.affichage.forEach(v => { md += '| ' + esc(v.nom) + ' | ' + esc(v.objectif) + ' | ' + esc(v.type) + ' | ' + esc(v.donnees) + ' |\n'; });
+    } else md += '_Aucune._\n';
+    md += '\n---\n\n';
+
+    // §6 règles
+    md += '## 6. Règles de gestion\n\n';
+    if (S.regles.length) {
+      md += '| Règle | Portée | Sévérité |\n|---|---|---|\n';
+      S.regles.forEach(r => { md += '| ' + esc(r.regle) + ' | ' + esc(r.portee) + ' | ' + esc(r.severite) + ' |\n'; });
+    } else md += '_Aucune._\n';
+    md += '\n---\n\n';
+
+    // §7 logigramme
+    md += '## 7. Logigramme\n\n';
+    if (S.logigramme.mermaid && S.logigramme.mermaid.trim()) {
+      md += '```mermaid\n' + S.logigramme.mermaid + '\n```\n';
+    } else md += '_Aucun._\n';
+    md += '\n---\n\n';
+
+    // §8 M2M
+    md += '## 8. Intégrations M2M\n\n';
+    if (S.m2m.length) {
+      md += '| App partenaire | Direction | Endpoint | Description |\n|---|---|---|---|\n';
+      S.m2m.forEach(m => { md += '| ' + esc(m.app) + ' | ' + esc(m.direction) + ' | ' + esc(m.endpoint) + ' | ' + esc(m.description) + ' |\n'; });
+    } else md += '_Aucune._\n';
+    md += '\n---\n\n';
+
+    // §9 fonctions
+    md += '## 9. Fonctions / backend nécessaires\n\n';
+    if (S.fonctions.length) {
+      md += '| Méthode | Endpoint | Description | Origine |\n|---|---|---|---|\n';
+      S.fonctions.forEach(f => { md += '| ' + esc(f.methode) + ' | ' + esc(f.endpoint) + ' | ' + esc(f.description) + ' | ' + (f.suggere ? 'suggéré' : 'manuel') + ' |\n'; });
+    } else md += '_Aucune._\n';
+    md += '\n---\n\n';
+
+    // §10 exigences
+    md += '## 10. Exigences non-fonctionnelles\n\n';
+    md += '- **Performance** : ' + (S.exigences.perf || '—') + '\n';
+    md += '- **Sécurité** : ' + (S.exigences.securite || '—') + '\n';
+    md += '- **Contraintes** : ' + (S.exigences.contraintes || '—') + '\n';
+    md += '- **Dépendances** : ' + (S.exigences.dependances || '—') + '\n\n';
+
+    md += '---\n\n_Généré par le canevas de cahier des charges du template POULIDOR._\n';
+    download('cahier-des-charges.md', md, 'text/markdown');
+    clearDirty();
+  }
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
@@ -676,6 +784,7 @@
     });
     $('btn-theme').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
     $('btn-print').addEventListener('click', function(){ window.print(); });
+    $('btn-md').addEventListener('click', exportMarkdown);
     renderAll();
   })();
   </script>
