@@ -8,9 +8,26 @@
   <link rel="stylesheet" href="frontend/public/design-system/current/bootstrap-icons/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <style>
-    /* --on-accent : texte sur fond accentué (valeur de contraste indépendante du thème ;
-       l'accent est saturé dans les 2 thèmes, le blanc reste lisible). Token centralisé. */
-    :root { --on-accent: #fff; }
+    /* Alias locaux → tokens source HUBCSS (cf. charte : mapping identique au app.css
+       de la React app). global.css définit les --hub-color-* mais PAS ces alias, donc
+       on les réexpose ici pour que toutes les règles ci-dessous (bordures de champs,
+       fonds, accents…) résolvent correctement dans les 2 thèmes. */
+    :root {
+      --bg-primary:     var(--hub-color-page);
+      --bg-secondary:   var(--hub-color-surface);
+      --text-primary:   var(--hub-color-text);
+      --text-secondary: var(--hub-color-muted);
+      --accent:         var(--hub-color-primary);
+      --accent-strong:  var(--hub-color-primary-strong);
+      --surface-muted:  var(--hub-color-surface-muted);
+      --success:        var(--hub-color-success);
+      --error:          var(--hub-color-danger);
+      --warning:        var(--hub-color-warning);
+      --border:         var(--hub-color-border);
+      /* --on-accent : texte sur fond accentué (valeur de contraste indépendante du thème ;
+         l'accent est saturé dans les 2 thèmes, le blanc reste lisible). Token centralisé. */
+      --on-accent: #fff;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -98,6 +115,10 @@
       width: 100%; font-family: inherit; font-size: var(--hub-font-size-sm, 14px);
       padding: var(--hub-space-2, 8px); border: 1px solid var(--border); border-radius: var(--radius-hub-sm, 6px);
       background: var(--bg-primary); color: var(--text-primary);
+    }
+    .field input[type=text]:focus-visible, .field textarea:focus-visible, .field select:focus-visible, .data-input:focus-visible {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--hub-color-primary-soft, color-mix(in srgb, var(--accent) 25%, transparent));
     }
     .field textarea { min-height: 60px; resize: vertical; }
     .field .req { color: var(--error); }
