@@ -134,6 +134,10 @@
     .list-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-2, 8px); }
     .hint { font-size: var(--hub-font-size-sm, 14px); color: var(--text-secondary); font-style: italic; }
 
+    .identity-card { border: 1px solid var(--border); border-radius: var(--radius-hub, 8px); background: var(--bg-secondary); padding: var(--hub-space-4, 16px); margin-bottom: var(--hub-space-3, 12px); }
+    .identity-card h2 { font-size: var(--hub-font-size-md, 16px); margin: 0 0 var(--hub-space-3, 12px); color: var(--text-primary); }
+    .identity-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--hub-space-3, 12px); }
+
     .mermaid-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-3, 12px); }
     .mermaid-wrap textarea { min-height: 200px; font-family: var(--hub-font-mono); }
     #mermaid-preview { border: 1px dashed var(--border); border-radius: var(--radius-hub-sm, 6px); padding: var(--hub-space-3, 12px); min-height: 200px; background: var(--bg-primary); text-align: center; }
@@ -142,7 +146,7 @@
     @media (max-width: 760px) {
       body { grid-template-columns: 1fr; grid-template-areas: "header" "sommaire" "main"; }
       aside#sommaire { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
-      .list-grid, .mermaid-wrap { grid-template-columns: 1fr; }
+      .list-grid, .mermaid-wrap, .identity-grid { grid-template-columns: 1fr; }
     }
     @media print {
       body { display: block; }
@@ -168,16 +172,16 @@
   </header>
   <div id="import-error" role="alert"></div>
   <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul><p class="attribution">© 2026 <strong>POULIDOR</strong> Audit &amp; Développement<br><span class="hint">Outil interne — <a href="LICENSE.md">licence</a></span></p></aside>
-  <main id="sections"></main>
+  <main>
+    <div id="identity-bar"></div>
+    <div id="sections"></div>
+  </main>
   <script>
   // ============================================================ SCHEMA (100 % métier)
   // L'agent Jellycode dérive la couche technique (modèle de données, endpoints,
   // permissions, écrans) à partir de cette description métier.
   const SCHEMA = {
     objectif: { title: '1. À quoi sert cette application ?', icon: 'bi bi-bullseye', type: 'object', fields: [
-      { key: 'app', label: 'Nom de l\'application', type: 'text', required: true },
-      { key: 'auteur', label: 'Auteur (nom / prénom) — qui crée l\'application', type: 'text' },
-      { key: 'mainteneur', label: 'Mainteneur du code (nom / prénom)', type: 'text' },
       { key: 'objectif', label: 'Objectif métier (en une phrase)', type: 'text', required: true },
       { key: 'contexte', label: 'Contexte, problème à résoudre', type: 'textarea' },
       { key: 'pourQui', label: 'Pour qui (bénéficiaires)', type: 'textarea' },
@@ -226,6 +230,7 @@
   const SCHEMA_ORDER = Object.keys(SCHEMA);
 
   // ============================================================ ETAT
+  const MERMAID_SEED = 'flowchart TD\n    A([Déclencheur]) --> B{Décision}\n    B -->|Oui| C[Étape 1]\n    B -->|Non| D[Étape 2]\n    C --> E([Résultat])\n    D --> E';
   function DEFAULT_STATE() {
     return {
       meta: { version: '1.0', updatedAt: new Date().toISOString().slice(0,10) },
@@ -237,7 +242,7 @@
         actions: [],
         ecrans: [],
         regles: [],
-        processus: { mermaid: 'flowchart TD\n    A([Déclencheur]) --> B{Décision}\n    B -->|Oui| C[Étape 1]\n    B -->|Non| D[Étape 2]\n    C --> E([Résultat])\n    D --> E' },
+        processus: { mermaid: MERMAID_SEED },
         echanges: [],
         exigences: { performance:'', acces:'', contraintes:'', autres:'' },
       }
@@ -266,12 +271,39 @@
 
   // ============================================================ RENDU
   function renderAll() {
+    renderIdentityBar();
     const main = $('sections');
     main.innerHTML = '';
     SCHEMA_ORDER.forEach(key => main.appendChild(renderSection(key)));
     renderSommaire();
     updateProgress();
     updateTitle();
+  }
+
+  // Fiche d'identité : nom de l'app + auteur + mainteneur, regroupés au même endroit (hors questions métier)
+  function renderIdentityBar() {
+    const bar = $('identity-bar');
+    bar.innerHTML = '';
+    const card = el('section', 'identity-card');
+    card.appendChild(el('h2', null, '<i class="bi bi-person-vcard"></i> Fiche d\'identité'));
+    const grid = el('div', 'identity-grid');
+    const mk = (key, label, required) => {
+      const cell = el('div', 'field');
+      cell.appendChild(el('label', null, label + (required ? ' <span class="req">*</span>' : '')));
+      const input = el('input'); input.type = 'text';
+      input.value = state.sections.objectif[key] || '';
+      input.addEventListener('input', () => {
+        state.sections.objectif[key] = input.value;
+        markDirty(); updateTitle(); setExportEnabled();
+      });
+      cell.appendChild(input);
+      grid.appendChild(cell);
+    };
+    mk('app', 'Nom de l\'application', true);
+    mk('auteur', 'Auteur (nom / prénom)', false);
+    mk('mainteneur', 'Mainteneur du code (nom / prénom)', false);
+    card.appendChild(grid);
+    bar.appendChild(card);
   }
 
   function renderSection(key) {
@@ -442,13 +474,27 @@
       'Nœuds : <code>A[Texte]</code>, <code>B{Décision}</code>, <code>C([Arrondi])</code>, <code>D((Cercle))</code>. ' +
       'Liens : <code>A --&gt; B</code>, <code>A --&gt;|Oui| B</code>, <code>C -. pointillé .-&gt; D</code>. Subgraph : <code>subgraph Nom ... end</code>.'
     ));
+    const resetBtn = el('button', 'btn btn-secondary btn-small', '<i class="bi bi-arrow-counterclockwise"></i> Réinitialiser l\'exemple');
+    resetBtn.style.marginTop = 'var(--hub-space-2, 8px)';
+    resetBtn.addEventListener('click', () => {
+      ta.value = MERMAID_SEED;
+      state.sections[key].mermaid = MERMAID_SEED;
+      markDirty(); updateSectionIndicator(key); updateProgress(); setExportEnabled();
+      doRender();
+    });
+    wrap.appendChild(resetBtn);
     function doRender() {
       const code = ta.value;
       state.sections[key].mermaid = code;
       if (!mermaidReady || !code.trim()) { preview.innerHTML = '<span class="hint">Aperçu indisponible (Mermaid non chargé ou code vide).</span>'; return; }
       const id = 'mmd-' + Date.now();
       window.mermaid.render(id, code).then(res => { preview.innerHTML = res.svg; })
-        .catch(err => { preview.innerHTML = '<span class="hint" style="color:var(--error)">Erreur Mermaid : ' + String(err.message || err).replace(/[<>]/g,'') + '</span>'; });
+        .catch(err => {
+          const detail = String(err && err.message ? err.message : err).replace(/[<>]/g,'');
+          preview.innerHTML = '<div class="hint" style="color:var(--error)"><strong>Le logigramme n\'est pas encore valide.</strong><br>' +
+            'Vérifiez la syntaxe (cf. antisèche ci-dessous) ou cliquez « Réinitialiser l\'exemple ».<br>' +
+            '<span style="font-size:11px;opacity:.8">' + detail + '</span></div>';
+        });
     }
     ta.addEventListener('input', () => {
       markDirty(); updateSectionIndicator(key); updateProgress(); setExportEnabled();
