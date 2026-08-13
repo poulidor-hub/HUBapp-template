@@ -896,7 +896,7 @@
       permissions: permissions,
       endpoints: endpoints,
       views: (S.affichage || []).map(v => ({ name: v.nom || '', objectif: v.objectif || '', type: v.type || '', data: v.donnees || '' })),
-      business_rules: (S.regles || []).map(r => ({ rule: r.regle || '', scope: r.portee || 'global', severity: r.severite || 'avertissement' })),
+      business_rules: (S.regles || []).map(r => ({ rule: r.regle || '', scope: r.portee || 'globale', severity: r.severite || 'bloquante' })),
       flows: { mermaid: (S.logigramme && S.logigramme.mermaid) || '' },
       integrations: (S.m2m || []).map(m => ({ app: m.app || '', direction: m.direction || 'consomme', endpoint: m.endpoint || '', description: m.description || '' })),
       function_notes: (S.fonctions || []).map(f => ({ method: f.methode || 'GET', path: f.endpoint || '', description: f.description || '', origin: f.suggere ? 'suggested' : 'manual' })),
