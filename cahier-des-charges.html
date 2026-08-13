@@ -772,6 +772,44 @@
     clearDirty();
   }
 
+  // ============================================================ EXPORT / IMPORT JSON
+  function showImportError(msg){ const e = $('import-error'); e.textContent = msg; e.classList.add('show'); }
+  function hideImportError(){ const e = $('import-error'); e.classList.remove('show'); e.textContent = ''; }
+  function exportJSON() {
+    state.meta.updatedAt = new Date().toISOString().slice(0,10);
+    download('cahier-des-charges.json', JSON.stringify(state, null, 2), 'application/json');
+    clearDirty();
+  }
+  // Valide la forme minimale du state importé (clés de sections présentes)
+  function validateState(obj) {
+    if (!obj || typeof obj !== 'object') throw new Error('racine non-objet');
+    if (!obj.sections || typeof obj.sections !== 'object') throw new Error('sections manquantes');
+    SCHEMA_ORDER.forEach(k => {
+      if (!(k in obj.sections)) throw new Error('section manquante : ' + k);
+    });
+    return obj;
+  }
+  function loadState(newState) {
+    validateState(newState);
+    // normalise vers DEFAULT_STATE pour les clés manquantes (robustesse)
+    const base = DEFAULT_STATE();
+    base.meta = Object.assign(base.meta, newState.meta || {});
+    SCHEMA_ORDER.forEach(k => {
+      const v = newState.sections[k];
+      const sv = SCHEMA[k];
+      if (sv.type === 'object') base.sections[k] = Object.assign(base.sections[k], v || {});
+      else if (sv.type === 'list') base.sections[k] = Array.isArray(v) ? v : [];
+      else base.sections[k] = v || base.sections[k];
+    });
+    state = base;
+    renderAll();
+    clearDirty();
+  }
+  function importJSON(text) {
+    const obj = JSON.parse(text);
+    loadState(obj);
+  }
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
@@ -785,6 +823,18 @@
     $('btn-theme').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
     $('btn-print').addEventListener('click', function(){ window.print(); });
     $('btn-md').addEventListener('click', exportMarkdown);
+    $('btn-json-export').addEventListener('click', exportJSON);
+    $('btn-json-import').addEventListener('click', () => { hideImportError(); $('json-file').click(); });
+    $('json-file').addEventListener('change', (ev) => {
+      const file = ev.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try { importJSON(reader.result); hideImportError(); }
+        catch(e){ showImportError('JSON invalide : ' + e.message); }
+      };
+      reader.readAsText(file);
+      ev.target.value = '';
+    });
     renderAll();
   })();
   </script>
