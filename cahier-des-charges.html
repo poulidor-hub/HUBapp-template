@@ -593,6 +593,77 @@
     return wrap;
   };
 
+  // ============================================================ §9 FONCTIONS (pré-remplissables)
+  const METHODS = ['GET','POST','PUT','PATCH','DELETE'];
+  function slugize(n) { return (n||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'entite'; }
+  CUSTOM_RENDERERS.fonctions = function (key, s) {
+    const wrap = el('div');
+    const bar = el('div'); bar.style.marginBottom = 'var(--hub-space-3, 12px)';
+    const prefill = el('button', 'btn btn-secondary btn-small', '🔄 Pré-remplir depuis §3 + §4');
+    prefill.addEventListener('click', () => { prefillFonctions(); rerenderSectionBody(key); });
+    bar.appendChild(prefill);
+    wrap.appendChild(bar);
+
+    const arr = state.sections.fonctions;
+    if (arr.length === 0) wrap.appendChild(el('p', 'hint', 'Aucune fonction. Pré-remplissez depuis les données/interactions, ou ajoutez manuellement.'));
+    arr.forEach((f, idx) => wrap.appendChild(renderFonctionRow(key, idx)));
+    const add = el('button', 'btn btn-secondary btn-small', '+ Fonction');
+    add.addEventListener('click', () => { arr.push({ endpoint:'', methode:'GET', description:'', suggere:false }); markDirty(); rerenderSectionBody(key); setExportEnabled(); });
+    wrap.appendChild(add);
+    return wrap;
+  };
+  function renderFonctionRow(sectionKey, idx) {
+    const f = state.sections.fonctions[idx];
+    const row = el('div', 'list-item');
+    const head = el('div', 'list-item-head');
+    const title = el('span', 'title', (f.endpoint && f.endpoint.trim()) ? (f.methode + ' ' + f.endpoint) : ('Fonction ' + (idx+1)));
+    if (f.suggere) title.appendChild(el('span', 'hint', '  [suggéré]'));
+    head.appendChild(title);
+    const del = el('button', 'btn btn-danger btn-small', 'Supprimer');
+    del.addEventListener('click', () => { state.sections.fonctions.splice(idx,1); markDirty(); rerenderSectionBody(sectionKey); setExportEnabled(); });
+    head.appendChild(del); row.appendChild(head);
+
+    const grid = el('div', 'list-grid');
+    const mkField = (labelText, makeInput) => { const cell = el('div','field'); cell.appendChild(el('label',null,labelText)); cell.appendChild(makeInput()); return cell; };
+    grid.appendChild(mkField('Endpoint', () => {
+      const i = el('input'); i.type='text'; i.value = f.endpoint || '';
+      i.addEventListener('input', () => { f.endpoint = i.value; head.querySelector('.title').firstChild.textContent = (f.endpoint.trim()? f.methode+' '+f.endpoint : 'Fonction '+(idx+1)); markDirty(); updateSectionIndicator(sectionKey); updateProgress(); setExportEnabled(); });
+      return i;
+    }));
+    grid.appendChild(mkField('Méthode', () => {
+      const sel = el('select'); METHODS.forEach(m => { const o=el('option'); o.value=m; o.textContent=m; sel.appendChild(o); });
+      sel.value = f.methode || 'GET';
+      sel.addEventListener('change', () => { f.methode = sel.value; head.querySelector('.title').firstChild.textContent = (f.endpoint.trim()? f.methode+' '+f.endpoint : 'Fonction '+(idx+1)); markDirty(); });
+      return sel;
+    }));
+    grid.appendChild(mkField('Description', () => {
+      const i = el('input'); i.type='text'; i.value = f.description || '';
+      i.addEventListener('input', () => { f.description = i.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); setExportEnabled(); });
+      return i;
+    }));
+    row.appendChild(grid);
+    return row;
+  }
+  // Génère les endpoints CRUD suggérés à partir de §3 (entités) et §4 (actions cochées), sans écraser l'existant.
+  function prefillFonctions() {
+    syncInteractionsToEntities();
+    const existing = new Set(state.sections.fonctions.filter(f => !f.suggere).map(f => f.methode + ' ' + f.endpoint));
+    // on retire d'abord les anciennes suggestions pour éviter les doublons
+    state.sections.fonctions = state.sections.fonctions.filter(f => !f.suggere);
+    state.sections.interactions.forEach(row => {
+      const base = '/api/' + slugize(row.entite);
+      const map = { c:['POST', base], r:['GET', base], u:['PUT', base + '/{id}'], d:['DELETE', base + '/{id}'] };
+      ['c','r','u','d'].forEach(act => {
+        if (row[act] && row[act].length) {
+          const m = map[act][0], ep = map[act][1];
+          const sig = m + ' ' + ep;
+          if (!existing.has(sig)) state.sections.fonctions.push({ endpoint: ep, methode: m, description: row.entite + ' — ' + ACTIONS.find(a=>a[0]===act)[1] + ' (' + row[act].join(', ') + ')', suggere: true });
+        }
+      });
+    });
+    markDirty(); updateSectionIndicator('fonctions'); updateProgress(); setExportEnabled();
+  }
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
