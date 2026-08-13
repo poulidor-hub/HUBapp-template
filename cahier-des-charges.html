@@ -155,20 +155,270 @@
   <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul></aside>
   <main id="sections"></main>
   <script>
-    // (le JS est ajouté tâche par tâche ci-dessous ; cette tâche pose la coquille + thème)
-    (function initTheme(){
-      var p = new URLSearchParams(location.search).get('theme');
-      if (p === 'dark' || p === 'light') document.documentElement.setAttribute('data-theme', p);
-      document.getElementById('btn-theme').addEventListener('click', function(){
-        var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', cur);
-        var u = new URL(location); u.searchParams.set('theme', cur); history.replaceState(null,'',u);
-        this.textContent = cur === 'dark' ? 'Mode clair' : 'Mode sombre';
+  // ============================================================ SCHEMA
+  const SCHEMA = {
+    identite: { title: '1. Identité & contexte', icon: 'bi bi-clipboard-data', type: 'object', fields: [
+      { key: 'app', label: 'Nom de l\'app', type: 'text', required: true },
+      { key: 'slug', label: 'Slug', type: 'text', required: true },
+      { key: 'objectif', label: 'Objectif (1 phrase)', type: 'text', required: true },
+      { key: 'contexte', label: 'Contexte métier', type: 'textarea' },
+      { key: 'fait', label: 'Périmètre — ce que l\'app fait', type: 'textarea' },
+      { key: 'neFaitPas', label: 'Périmètre — ce que l\'app ne fait pas', type: 'textarea' },
+    ]},
+    acteurs: { title: '2. Acteurs & rôles', icon: 'bi bi-people-fill', type: 'list', addLabel: '+ Acteur', item: [
+      { key: 'role', label: 'Rôle', type: 'select', options: ['viewer','user','manager','admin'] },
+      { key: 'libelle', label: 'Libellé métier', type: 'text' },
+      { key: 'description', label: 'Description', type: 'textarea' },
+    ]},
+    donnees: { title: '3. Données (modèle)', icon: 'bi bi-database-fill', custom: 'donnees' },
+    interactions: { title: '4. Interactions × données', icon: 'bi bi-arrow-left-right', custom: 'crud' },
+    affichage: { title: '5. Affichage & objectifs', icon: 'bi bi-display', type: 'list', addLabel: '+ Vue', item: [
+      { key: 'nom', label: 'Nom de la vue', type: 'text' },
+      { key: 'objectif', label: 'Objectif', type: 'text' },
+      { key: 'type', label: 'Type', type: 'select', options: ['liste','détail','dashboard','formulaire','autre'] },
+      { key: 'donnees', label: 'Données affichées', type: 'textarea' },
+    ]},
+    regles: { title: '6. Règles de gestion', icon: 'bi bi-list-check', type: 'list', addLabel: '+ Règle', item: [
+      { key: 'regle', label: 'Règle', type: 'textarea' },
+      { key: 'portee', label: 'Portée', type: 'select', options: ['globale','par entité'] },
+      { key: 'severite', label: 'Sévérité', type: 'select', options: ['bloquante','avertissement'] },
+    ]},
+    logigramme: { title: '7. Logigramme', icon: 'bi bi-signpost-2-split', custom: 'mermaid' },
+    m2m: { title: '8. Intégrations M2M', icon: 'bi bi-plug-fill', type: 'list', addLabel: '+ Intégration', item: [
+      { key: 'app', label: 'App partenaire', type: 'text' },
+      { key: 'direction', label: 'Direction', type: 'select', options: ['consomme','expose'] },
+      { key: 'endpoint', label: 'Endpoint', type: 'text' },
+      { key: 'description', label: 'Description', type: 'textarea' },
+    ]},
+    fonctions: { title: '9. Fonctions / backend nécessaires', icon: 'bi bi-gear-fill', custom: 'fonctions' },
+    exigences: { title: '10. Exigences non-fonctionnelles', icon: 'bi bi-bullseye', type: 'object', fields: [
+      { key: 'perf', label: 'Performance', type: 'textarea' },
+      { key: 'securite', label: 'Sécurité', type: 'textarea' },
+      { key: 'contraintes', label: 'Contraintes', type: 'textarea' },
+      { key: 'dependances', label: 'Dépendances', type: 'textarea' },
+    ]},
+  };
+  const SCHEMA_ORDER = Object.keys(SCHEMA);
+
+  // ============================================================ ETAT
+  function DEFAULT_STATE() {
+    return {
+      meta: { version: '1.0', updatedAt: new Date().toISOString().slice(0,10) },
+      sections: {
+        identite: { app:'', slug:'', objectif:'', contexte:'', fait:'', neFaitPas:'' },
+        acteurs: [],
+        donnees: [],
+        interactions: [],
+        affichage: [],
+        regles: [],
+        logigramme: { mermaid: 'flowchart TD\n    A([Déclencheur]) --> B{Décision}\n    B -->|Oui| C[Étape 1]\n    B -->|Non| D[Étape 2]\n    C --> E([Résultat])\n    D --> E' },
+        m2m: [],
+        fonctions: [],
+        exigences: { perf:'', securite:'', contraintes:'', dependances:'' },
+      }
+    };
+  }
+  let state = DEFAULT_STATE();
+  let dirty = false;
+  const CUSTOM_RENDERERS = {}; // rempli tâches 4-6
+
+  // ============================================================ HELPERS UI
+  const $ = (id) => document.getElementById(id);
+  function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  function markDirty(){ dirty = true; }
+  function clearDirty(){ dirty = false; }
+
+  // Une section est "commencée" si elle contient au moins une valeur non vide
+  function sectionIsEmpty(key) {
+    const s = SCHEMA[key];
+    const v = state.sections[key];
+    if (s.type === 'object') return s.fields.every(f => !(v[f.key] && String(v[f.key]).trim()));
+    if (s.type === 'list') return !v.some(it => Object.values(it).some(x => x && String(x).trim()));
+    if (s.custom === 'mermaid') return !(v.mermaid && v.mermaid.trim());
+    if (s.custom === 'donnees') return !v.some(e => (e.nom && e.nom.trim()) || e.champs.some(c => c.nom && c.nom.trim()));
+    if (s.custom === 'crud') return !v.some(r => ['c','r','u','d'].some(a => r[a] && r[a].length));
+    if (s.custom === 'fonctions') return !v.some(f => (f.endpoint && f.endpoint.trim()) || (f.description && f.description.trim()));
+    return true;
+  }
+
+  // ============================================================ RENDU
+  function renderAll() {
+    const main = $('sections');
+    main.innerHTML = '';
+    SCHEMA_ORDER.forEach(key => main.appendChild(renderSection(key)));
+    renderSommaire();
+    updateProgress();
+    updateTitle();
+  }
+
+  function renderSection(key) {
+    const s = SCHEMA[key];
+    const sec = el('section', 'acc');
+    sec.id = 'sec-' + key;
+    const header = el('button', 'acc-header');
+    header.innerHTML =
+      '<span class="ind" data-ind="' + key + '">○</span>' +
+      '<span><i class="' + s.icon + '"></i>' + s.title + '</span>' +
+      '<span class="acc-chevron">▾</span>';
+    header.addEventListener('click', () => sec.classList.toggle('open'));
+    const body = el('div', 'acc-body');
+    sec.appendChild(header);
+    sec.appendChild(body);
+    renderSectionBody(key, body);
+    updateSectionIndicator(key);
+    return sec;
+  }
+
+  // Rend le contenu du body (utilisé aussi pour re-render après +/- sur listes)
+  function renderSectionBody(key, body) {
+    if (!body) body = $('sec-' + key).querySelector('.acc-body');
+    body.innerHTML = '';
+    const s = SCHEMA[key];
+    if (s.custom) {
+      if (CUSTOM_RENDERERS[s.custom]) body.appendChild(CUSTOM_RENDERERS[s.custom](key, s));
+      else body.appendChild(el('p', 'hint', '(rendu dédié à venir)'));
+    } else if (s.type === 'object') {
+      s.fields.forEach(f => body.appendChild(renderField(key, f)));
+    } else if (s.type === 'list') {
+      body.appendChild(renderList(key, s));
+    }
+  }
+  function rerenderSectionBody(key) {
+    renderSectionBody(key, null);
+    updateSectionIndicator(key);
+    updateProgress();
+  }
+
+  function renderField(sectionKey, f) {
+    const wrap = el('div', 'field');
+    const lbl = el('label', null, f.label + (f.required ? ' <span class="req">*</span>' : ''));
+    wrap.appendChild(lbl);
+    let input;
+    if (f.type === 'textarea') input = el('textarea');
+    else if (f.type === 'select') { input = el('select'); f.options.forEach(o => { const op = el('option'); op.value = o; op.textContent = o; input.appendChild(op); }); }
+    else { input = el('input'); input.type = 'text'; }
+    input.value = state.sections[sectionKey][f.key] || '';
+    input.addEventListener('input', () => {
+      state.sections[sectionKey][f.key] = input.value;
+      markDirty();
+      if (sectionKey === 'identite') updateTitle();
+      updateSectionIndicator(sectionKey);
+      updateProgress();
+      setExportEnabled();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function renderList(sectionKey, s) {
+    const container = el('div', 'list-section');
+    const items = el('div', 'list-items');
+    container.appendChild(items);
+    state.sections[sectionKey].forEach((it, idx) => items.appendChild(renderListItem(sectionKey, s, idx)));
+    const addBtn = el('button', 'btn btn-secondary btn-small', s.addLabel || '+ Ajouter');
+    addBtn.addEventListener('click', () => {
+      const newItem = {};
+      s.item.forEach(f => { newItem[f.key] = f.type === 'select' ? f.options[0] : ''; });
+      state.sections[sectionKey].push(newItem);
+      markDirty();
+      rerenderSectionBody(sectionKey);
+      setExportEnabled();
+    });
+    container.appendChild(addBtn);
+    return container;
+  }
+
+  function renderListItem(sectionKey, s, idx) {
+    const item = state.sections[sectionKey][idx];
+    const card = el('div', 'list-item');
+    const head = el('div', 'list-item-head');
+    const titleTxt = (item[s.item[0].key] && String(item[s.item[0].key]).trim()) || ('Élément ' + (idx+1));
+    head.appendChild(el('span', 'title', titleTxt));
+    const del = el('button', 'btn btn-danger btn-small', 'Supprimer');
+    del.addEventListener('click', () => {
+      state.sections[sectionKey].splice(idx, 1);
+      markDirty();
+      rerenderSectionBody(sectionKey);
+      if (sectionKey === 'donnees') { resyncAfterDonnees(); }
+      setExportEnabled();
+    });
+    head.appendChild(del);
+    card.appendChild(head);
+    const grid = el('div', 'list-grid');
+    s.item.forEach(f => {
+      const cell = el('div', 'field');
+      cell.appendChild(el('label', null, f.label));
+      let input;
+      if (f.type === 'textarea') input = el('textarea');
+      else if (f.type === 'select') { input = el('select'); f.options.forEach(o => { const op = el('option'); op.value = o; op.textContent = o; input.appendChild(op); }); }
+      else { input = el('input'); input.type = 'text'; }
+      input.value = item[f.key] || '';
+      input.addEventListener('input', () => {
+        item[f.key] = input.value;
+        markDirty();
+        if (f.key === s.item[0].key) head.querySelector('.title').textContent = input.value.trim() || ('Élément ' + (idx+1));
+        updateSectionIndicator(sectionKey);
+        updateProgress();
+        setExportEnabled();
       });
-      document.getElementById('btn-theme').textContent =
-        document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
-      document.getElementById('btn-print').addEventListener('click', function(){ window.print(); });
-    })();
+      cell.appendChild(input);
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
+    return card;
+  }
+
+  // ============================================================ SOMMAIRE / PROGRESSION
+  function renderSommaire() {
+    const ul = $('sommaire-list'); ul.innerHTML = '';
+    SCHEMA_ORDER.forEach(key => {
+      const li = el('li');
+      const a = el('a', null, '<span class="ind" data-ind="' + key + '">○</span> ' + SCHEMA[key].title);
+      a.href = '#sec-' + key;
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const sec = $('sec-' + key); sec.classList.add('open');
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      li.appendChild(a); ul.appendChild(li);
+    });
+  }
+  function updateSectionIndicator(key) {
+    const filled = !sectionIsEmpty(key);
+    document.querySelectorAll('[data-ind="' + key + '"]').forEach(n => {
+      n.textContent = filled ? '●' : '○';
+      n.classList.toggle('filled', filled);
+    });
+  }
+  function updateProgress() {
+    const total = SCHEMA_ORDER.length;
+    const done = SCHEMA_ORDER.filter(k => !sectionIsEmpty(k)).length;
+    $('progress').textContent = done + '/' + total + ' sections';
+  }
+  function updateTitle() {
+    const app = state.sections.identite.app || state.sections.identite.slug;
+    $('app-title').textContent = app ? ('Cahier des charges — ' + app) : 'Nouveau cahier des charges';
+  }
+  function setExportEnabled() { /* activé dès la 1ère saisie ; reste tjrs dispo en pratique */ }
+
+  // ============================================================ RESYNC (placeholder, implémenté tâche 4)
+  function resyncAfterDonnees() { if (typeof rerenderInteractions === 'function') rerenderInteractions(); }
+
+  // ============================================================ THEME / PRINT / INIT
+  (function initChrome(){
+    var p = new URLSearchParams(location.search).get('theme');
+    if (p === 'dark' || p === 'light') document.documentElement.setAttribute('data-theme', p);
+    $('btn-theme').addEventListener('click', function(){
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', cur);
+      var u = new URL(location); u.searchParams.set('theme', cur); history.replaceState(null,'',u);
+      this.textContent = cur === 'dark' ? 'Mode clair' : 'Mode sombre';
+    });
+    $('btn-theme').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
+    $('btn-print').addEventListener('click', function(){ window.print(); });
+    renderAll();
+  })();
   </script>
 </body>
 </html>
