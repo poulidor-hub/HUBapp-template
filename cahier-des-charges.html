@@ -558,6 +558,41 @@
     return wrap;
   };
 
+  // ============================================================ §7 LOGIGRAMME (Mermaid)
+  let mermaidReady = false;
+  if (window.mermaid) { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' }); mermaidReady = true; } catch(e){ mermaidReady = false; } }
+  let renderTimer = null;
+  CUSTOM_RENDERERS.mermaid = function (key, s) {
+    const wrap = el('div');
+    const grid = el('div', 'mermaid-wrap');
+    const ta = el('textarea');
+    ta.value = state.sections.logigramme.mermaid || '';
+    ta.setAttribute('spellcheck', 'false');
+    const preview = el('div'); preview.id = 'mermaid-preview';
+    grid.appendChild(ta); grid.appendChild(preview);
+    wrap.appendChild(grid);
+
+    const cheats = el('div', 'cheatsheet',
+      '<strong>Antisèche :</strong> flowchart TD (top-down) ou LR (left-right). ' +
+      'Nœuds : <code>A[Texte]</code>, <code>B{Décision}</code>, <code>C([Arrondi])</code>, <code>D((Cercle))</code>. ' +
+      'Liens : <code>A --&gt; B</code>, <code>A --&gt;|Oui| B</code>, <code>C -. pointillé .-&gt; D</code>. Subgraph : <code>subgraph Nom ... end</code>.'
+    );
+    wrap.appendChild(cheats);
+
+    function doRender() {
+      const code = ta.value;
+      state.sections.logigramme.mermaid = code;
+      markDirty(); updateSectionIndicator('logigramme'); updateProgress(); setExportEnabled();
+      if (!mermaidReady || !code.trim()) { preview.innerHTML = '<span class="hint">Aperçu indisponible (Mermaid non chargé ou code vide).</span>'; return; }
+      const id = 'mmd-' + Date.now();
+      window.mermaid.render(id, code).then(res => { preview.innerHTML = res.svg; })
+        .catch(err => { preview.innerHTML = '<span class="hint" style="color:var(--error)">Erreur Mermaid : ' + String(err.message || err).replace(/[<>]/g,'') + '</span>'; });
+    }
+    ta.addEventListener('input', () => { clearTimeout(renderTimer); renderTimer = setTimeout(doRender, 300); });
+    setTimeout(doRender, 50);
+    return wrap;
+  };
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
