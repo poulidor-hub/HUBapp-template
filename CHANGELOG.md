@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.11.0] — 13 août 2026
+
+### ⚡ Canevas de cahier des charges interactif
+
+- **Ajouté** : `cahier-des-charges.html` à la racine du template — outil dev autonome
+  (HTML/CSS/JS vanilla, fonctionne en `file://`, sans backend ni build) pour structurer
+  le besoin métier d'une nouvelle app en amont du code, à remplir en atelier (dev + métier).
+  - 10 sections structurées : identité & contexte, acteurs & rôles, données (builder
+    d'entités/champs), interactions × données (matrice CRUD par rôle), affichage &
+    objectifs, règles de gestion, logigramme (Mermaid, aperçu live), intégrations M2M,
+    fonctions/backend nécessaires (pré-remplissables depuis les données/interactions),
+    exigences non-fonctionnelles.
+  - Layout hybride (accordéons + sommaire sticky + indicateurs de remplissage).
+  - Exports : **Markdown** (cahier des charges livrable), **export/import JSON**
+    (round-trip pour guide vivant), **export Bootstrap agent** (manifest JSON dérivé
+    orienté construction : entités, permissions, endpoints REST + rôles — destiné à
+    être ingéré par l'agent Jellycode pour scaffolder une app).
+  - Thème clair/sombre via tokens HUBCSS + Bootstrap Icons ; impression PDF ;
+    anti-perte (`beforeunload`).
+- **Ajouté** : section README documentant l'outil et son usage en atelier.
+
 ## [2.10.0] — 10 août 2026
 
 ### ⚡ INITIALISE.py — mode auto par défaut
