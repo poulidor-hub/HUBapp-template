@@ -497,7 +497,7 @@
       return i;
     }));
     const delCell = el('div');
-    const del = el('button', 'btn btn-danger btn-small', '✕');
+    const del = el('button', 'btn btn-danger btn-small', '<i class="bi bi-x"></i>');
     del.addEventListener('click', () => { ent.champs.splice(ci, 1); markDirty(); rerenderSectionBody(sectionKey); });
     delCell.appendChild(del); row.appendChild(delCell);
     return row;
@@ -582,13 +582,15 @@
     function doRender() {
       const code = ta.value;
       state.sections.logigramme.mermaid = code;
-      markDirty(); updateSectionIndicator('logigramme'); updateProgress(); setExportEnabled();
       if (!mermaidReady || !code.trim()) { preview.innerHTML = '<span class="hint">Aperçu indisponible (Mermaid non chargé ou code vide).</span>'; return; }
       const id = 'mmd-' + Date.now();
       window.mermaid.render(id, code).then(res => { preview.innerHTML = res.svg; })
         .catch(err => { preview.innerHTML = '<span class="hint" style="color:var(--error)">Erreur Mermaid : ' + String(err.message || err).replace(/[<>]/g,'') + '</span>'; });
     }
-    ta.addEventListener('input', () => { clearTimeout(renderTimer); renderTimer = setTimeout(doRender, 300); });
+    ta.addEventListener('input', () => {
+      markDirty(); updateSectionIndicator('logigramme'); updateProgress(); setExportEnabled();
+      clearTimeout(renderTimer); renderTimer = setTimeout(doRender, 300);
+    });
     setTimeout(doRender, 50);
     return wrap;
   };
@@ -599,7 +601,7 @@
   CUSTOM_RENDERERS.fonctions = function (key, s) {
     const wrap = el('div');
     const bar = el('div'); bar.style.marginBottom = 'var(--hub-space-3, 12px)';
-    const prefill = el('button', 'btn btn-secondary btn-small', '🔄 Pré-remplir depuis §3 + §4');
+    const prefill = el('button', 'btn btn-secondary btn-small', '<i class="bi bi-arrow-repeat"></i> Pré-remplir depuis §3 + §4');
     prefill.addEventListener('click', () => { prefillFonctions(); rerenderSectionBody(key); });
     bar.appendChild(prefill);
     wrap.appendChild(bar);
@@ -672,7 +674,7 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function esc(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|'); }
+  function esc(s) { return String(s == null ? '' : s).replace(/\r\n|\n|\r/g, ' ').replace(/\|/g, '\\|'); }
   function exportMarkdown() {
     const S = state.sections;
     const meta = state.meta;
@@ -801,6 +803,9 @@
       else if (sv.type === 'list') base.sections[k] = Array.isArray(v) ? v : [];
       else base.sections[k] = v || base.sections[k];
     });
+    // Harden custom-section shapes against hand-edited/foreign JSON
+    if (Array.isArray(base.sections.donnees)) base.sections.donnees = base.sections.donnees.map(e => ({ nom: e.nom || '', description: e.description || '', champs: Array.isArray(e.champs) ? e.champs.map(c => ({ nom: c.nom || '', type: c.type || 'text', role: c.role || 'info', note: c.note || '' })) : [] }));
+    if (Array.isArray(base.sections.interactions)) base.sections.interactions = base.sections.interactions.map(r => ({ entite: r.entite || '', c: Array.isArray(r.c) ? r.c : [], r: Array.isArray(r.r) ? r.r : [], u: Array.isArray(r.u) ? r.u : [], d: Array.isArray(r.d) ? r.d : [] }));
     state = base;
     renderAll();
     clearDirty();
