@@ -405,6 +405,104 @@
   // ============================================================ RESYNC (placeholder, implémenté tâche 4)
   function resyncAfterDonnees() { if (typeof rerenderInteractions === 'function') rerenderInteractions(); }
 
+  // ============================================================ §3 DONNEES (builder d'entités)
+  const CHAMP_TYPES = ['text','number','bool','date','datetime','relation','json','file'];
+  const CHAMP_ROLES = ['id','info','relation'];
+  CUSTOM_RENDERERS.donnees = function (key, s) {
+    const wrap = el('div');
+    const arr = state.sections.donnees;
+    if (arr.length === 0) wrap.appendChild(el('p', 'hint', 'Aucune entité. Cliquez sur « + Entité » pour définir le modèle de données.'));
+    arr.forEach((ent, idx) => wrap.appendChild(renderEntityCard(key, idx)));
+    const add = el('button', 'btn btn-secondary btn-small', '+ Entité');
+    add.addEventListener('click', () => {
+      arr.push({ nom:'', description:'', champs: [] });
+      markDirty();
+      rerenderSectionBody(key);
+      resyncAfterDonnees();
+      setExportEnabled();
+    });
+    wrap.appendChild(add);
+    return wrap;
+  };
+  function renderEntityCard(sectionKey, idx) {
+    const ent = state.sections.donnees[idx];
+    const card = el('div', 'entity-card');
+    const head = el('div', 'list-item-head');
+    head.appendChild(el('span', 'title', (ent.nom && ent.nom.trim()) || ('Entité ' + (idx+1))));
+    const del = el('button', 'btn btn-danger btn-small', 'Supprimer l\'entité');
+    del.addEventListener('click', () => {
+      state.sections.donnees.splice(idx, 1);
+      markDirty();
+      rerenderSectionBody(sectionKey);
+      resyncAfterDonnees();
+      setExportEnabled();
+    });
+    head.appendChild(del); card.appendChild(head);
+
+    const nomF = el('div', 'field');
+    nomF.appendChild(el('label', null, 'Nom de l\'entité'));
+    const nomI = el('input'); nomI.type = 'text'; nomI.value = ent.nom || '';
+    nomI.addEventListener('input', () => {
+      ent.nom = nomI.value;
+      head.querySelector('.title').textContent = ent.nom.trim() || ('Entité ' + (idx+1));
+      markDirty(); updateSectionIndicator(sectionKey); updateProgress();
+      resyncAfterDonnees(); setExportEnabled();
+    });
+    nomF.appendChild(nomI); card.appendChild(nomF);
+
+    const descF = el('div', 'field');
+    descF.appendChild(el('label', null, 'Description'));
+    const descI = el('textarea'); descI.value = ent.description || '';
+    descI.addEventListener('input', () => { ent.description = descI.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); });
+    descF.appendChild(descI); card.appendChild(descF);
+
+    card.appendChild(el('label', null, 'Champs'));
+    ent.champs.forEach((c, ci) => card.appendChild(renderChampRow(sectionKey, idx, ci)));
+    const addChamp = el('button', 'btn btn-secondary btn-small', '+ Champ');
+    addChamp.addEventListener('click', () => {
+      ent.champs.push({ nom:'', type:'text', role:'info', note:'' });
+      markDirty(); rerenderSectionBody(sectionKey);
+    });
+    card.appendChild(addChamp);
+    return card;
+  }
+  function renderChampRow(sectionKey, entIdx, ci) {
+    const ent = state.sections.donnees[entIdx];
+    const c = ent.champs[ci];
+    const row = el('div', 'champ-row');
+    const mkField = (labelText, makeInput) => {
+      const cell = el('div'); cell.appendChild(el('label', null, labelText));
+      cell.appendChild(makeInput()); return cell;
+    };
+    row.appendChild(mkField('Nom', () => {
+      const i = el('input'); i.type = 'text'; i.value = c.nom || '';
+      i.addEventListener('input', () => { c.nom = i.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); });
+      return i;
+    }));
+    row.appendChild(mkField('Type', () => {
+      const sel = el('select'); CHAMP_TYPES.forEach(t => { const o = el('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
+      sel.value = c.type || 'text';
+      sel.addEventListener('change', () => { c.type = sel.value; markDirty(); });
+      return sel;
+    }));
+    row.appendChild(mkField('Rôle', () => {
+      const sel = el('select'); CHAMP_ROLES.forEach(t => { const o = el('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
+      sel.value = c.role || 'info';
+      sel.addEventListener('change', () => { c.role = sel.value; markDirty(); });
+      return sel;
+    }));
+    row.appendChild(mkField('Note', () => {
+      const i = el('input'); i.type = 'text'; i.value = c.note || '';
+      i.addEventListener('input', () => { c.note = i.value; markDirty(); });
+      return i;
+    }));
+    const delCell = el('div');
+    const del = el('button', 'btn btn-danger btn-small', '✕');
+    del.addEventListener('click', () => { ent.champs.splice(ci, 1); markDirty(); rerenderSectionBody(sectionKey); });
+    delCell.appendChild(del); row.appendChild(delCell);
+    return row;
+  }
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
