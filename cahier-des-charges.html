@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canevas — Cahier des charges</title>
+  <link rel="stylesheet" href="frontend/public/design-system/current/global.css">
+  <link rel="stylesheet" href="frontend/public/design-system/current/bootstrap-icons/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    /* --on-accent : texte sur fond accentué (valeur de contraste indépendante du thème ;
+       l'accent est saturé dans les 2 thèmes, le blanc reste lisible). Token centralisé. */
+    :root { --on-accent: #fff; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--hub-font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      grid-template-areas: "header header" "sommaire main";
+      min-height: 100vh;
+    }
+    header.app-header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      gap: var(--hub-space-4, 16px);
+      padding: var(--hub-space-4, 16px) var(--hub-space-6, 24px);
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    header.app-header h1 { font-size: var(--hub-font-size-xl, 20px); margin: 0; flex: 1 1 auto; }
+    .toolbar { display: flex; gap: var(--hub-space-2, 8px); align-items: center; flex-wrap: wrap; }
+    #progress { font-size: var(--hub-font-size-sm, 14px); color: var(--text-secondary); }
+
+    .btn {
+      font-family: inherit; font-size: var(--hub-font-size-sm, 14px);
+      padding: var(--hub-space-2, 8px) var(--hub-space-3, 12px);
+      border: 1px solid var(--border); border-radius: var(--radius-hub, 8px);
+      background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+    .btn-secondary { background: var(--bg-secondary); }
+    .btn-small { padding: var(--hub-space-1, 4px) var(--hub-space-2, 8px); font-size: var(--hub-font-size-xs, 12px); }
+    .btn-danger { color: var(--error); border-color: var(--error); }
+    .btn i.bi, .acc-header i.bi, .sommaire-list i.bi { margin-right: var(--hub-space-2, 8px); }
+
+    #import-error {
+      display: none; margin: 0 var(--hub-space-6, 24px) var(--hub-space-3, 12px);
+      padding: var(--hub-space-3, 12px); border-radius: var(--radius-hub, 8px);
+      background: var(--error); color: var(--on-accent); font-size: var(--hub-font-size-sm, 14px);
+    }
+    #import-error.show { display: block; }
+
+    aside#sommaire {
+      grid-area: sommaire;
+      position: sticky; top: 0; align-self: start;
+      max-height: 100vh; overflow-y: auto;
+      padding: var(--hub-space-4, 16px);
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+    }
+    aside#sommaire h2 { font-size: var(--hub-font-size-sm, 14px); text-transform: uppercase; color: var(--text-secondary); margin: 0 0 var(--hub-space-2, 8px); }
+    .sommaire-list { list-style: none; margin: 0; padding: 0; }
+    .sommaire-list li { margin-bottom: var(--hub-space-1, 4px); }
+    .sommaire-list a {
+      display: flex; align-items: center; gap: var(--hub-space-2, 8px);
+      color: var(--text-primary); text-decoration: none; font-size: var(--hub-font-size-sm, 14px);
+      padding: var(--hub-space-1, 4px) var(--hub-space-2, 8px); border-radius: var(--radius-hub-sm, 6px);
+    }
+    .sommaire-list a:hover { background: var(--bg-primary); }
+    .ind { width: 10px; text-align: center; color: var(--text-secondary); }
+    .ind.filled { color: var(--success); }
+
+    main#sections { grid-area: main; padding: var(--hub-space-6, 24px); max-width: 900px; }
+
+    section.acc { border: 1px solid var(--border); border-radius: var(--radius-hub, 8px); margin-bottom: var(--hub-space-3, 12px); background: var(--bg-secondary); overflow: hidden; }
+    .acc-header {
+      width: 100%; text-align: left; display: flex; align-items: center; gap: var(--hub-space-2, 8px);
+      padding: var(--hub-space-3, 12px) var(--hub-space-4, 16px);
+      background: transparent; border: none; cursor: pointer;
+      font-family: inherit; font-size: var(--hub-font-size-md, 16px); font-weight: var(--hub-font-weight-semibold, 600);
+      color: var(--text-primary);
+    }
+    .acc-header:hover { background: var(--bg-primary); }
+    .acc-chevron { margin-left: auto; transition: transform .15s; color: var(--text-secondary); }
+    section.acc.open .acc-chevron { transform: rotate(180deg); }
+    .acc-body { display: none; padding: var(--hub-space-4, 16px); border-top: 1px solid var(--border); }
+    section.acc.open .acc-body { display: block; }
+
+    .field { margin-bottom: var(--hub-space-3, 12px); }
+    .field label { display: block; font-size: var(--hub-font-size-sm, 14px); margin-bottom: var(--hub-space-1, 4px); color: var(--text-secondary); }
+    .field input[type=text], .field textarea, .field select, .data-input {
+      width: 100%; font-family: inherit; font-size: var(--hub-font-size-sm, 14px);
+      padding: var(--hub-space-2, 8px); border: 1px solid var(--border); border-radius: var(--radius-hub-sm, 6px);
+      background: var(--bg-primary); color: var(--text-primary);
+    }
+    .field textarea { min-height: 60px; resize: vertical; }
+    .field .req { color: var(--error); }
+
+    .list-item {
+      border: 1px solid var(--border); border-radius: var(--radius-hub-sm, 6px);
+      padding: var(--hub-space-3, 12px); margin-bottom: var(--hub-space-2, 8px); background: var(--bg-primary);
+    }
+    .list-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--hub-space-2, 8px); }
+    .list-item-head .title { font-weight: var(--hub-font-weight-semibold, 600); font-size: var(--hub-font-size-sm, 14px); }
+    .list-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-2, 8px); }
+    .hint { font-size: var(--hub-font-size-sm, 14px); color: var(--text-secondary); font-style: italic; }
+
+    .crud-table { width: 100%; border-collapse: collapse; font-size: var(--hub-font-size-sm, 14px); }
+    .crud-table th, .crud-table td { border: 1px solid var(--border); padding: var(--hub-space-2, 8px); text-align: center; }
+    .crud-table th { background: var(--bg-secondary); }
+    .crud-actions { display: flex; gap: var(--hub-space-1, 4px); justify-content: center; flex-wrap: wrap; }
+    .crud-actions label { font-size: var(--hub-font-size-xs, 12px); display: inline-flex; align-items: center; gap: 2px; color: var(--text-secondary); }
+
+    .entity-card { border: 1px solid var(--border); border-radius: var(--radius-hub-sm, 6px); padding: var(--hub-space-3, 12px); margin-bottom: var(--hub-space-3, 12px); background: var(--bg-primary); }
+    .champ-row { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr auto; gap: var(--hub-space-2, 8px); align-items: end; margin-bottom: var(--hub-space-2, 8px); }
+    .mermaid-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-3, 12px); }
+    .mermaid-wrap textarea { min-height: 200px; font-family: var(--hub-font-mono); }
+    #mermaid-preview { border: 1px dashed var(--border); border-radius: var(--radius-hub-sm, 6px); padding: var(--hub-space-3, 12px); min-height: 200px; background: var(--bg-primary); text-align: center; }
+    .cheatsheet { font-size: var(--hub-font-size-xs, 12px); color: var(--text-secondary); background: var(--bg-primary); padding: var(--hub-space-2, 8px); border-radius: var(--radius-hub-sm, 6px); margin-top: var(--hub-space-2, 8px); }
+
+    @media (max-width: 760px) {
+      body { grid-template-columns: 1fr; grid-template-areas: "header" "sommaire" "main"; }
+      aside#sommaire { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+      .list-grid, .mermaid-wrap { grid-template-columns: 1fr; }
+      .champ-row { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { display: block; }
+      aside#sommaire, .toolbar, .acc-chevron { display: none !important; }
+      section.acc .acc-body { display: block !important; }
+      section.acc { break-inside: avoid; border: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <h1><span id="app-title">Nouveau cahier des charges</span></h1>
+    <span id="progress">0/10 sections</span>
+    <div class="toolbar">
+      <button class="btn btn-primary" id="btn-md" disabled>Exporter Markdown</button>
+      <button class="btn btn-secondary" id="btn-json-export" disabled>Exporter JSON</button>
+      <button class="btn btn-secondary" id="btn-json-import">Importer JSON</button>
+      <input type="file" id="json-file" accept="application/json" hidden>
+      <button class="btn btn-secondary" id="btn-print">Imprimer / PDF</button>
+      <button class="btn btn-secondary" id="btn-theme">Mode sombre</button>
+    </div>
+  </header>
+  <div id="import-error" role="alert"></div>
+  <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul></aside>
+  <main id="sections"></main>
+  <script>
+    // (le JS est ajouté tâche par tâche ci-dessous ; cette tâche pose la coquille + thème)
+    (function initTheme(){
+      var p = new URLSearchParams(location.search).get('theme');
+      if (p === 'dark' || p === 'light') document.documentElement.setAttribute('data-theme', p);
+      document.getElementById('btn-theme').addEventListener('click', function(){
+        var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', cur);
+        var u = new URL(location); u.searchParams.set('theme', cur); history.replaceState(null,'',u);
+        this.textContent = cur === 'dark' ? 'Mode clair' : 'Mode sombre';
+      });
+      document.getElementById('btn-theme').textContent =
+        document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
+      document.getElementById('btn-print').addEventListener('click', function(){ window.print(); });
+    })();
+  </script>
+</body>
+</html>
