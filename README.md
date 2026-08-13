@@ -2,6 +2,19 @@
 
 Template d'application avec authentification Hub pour le développement rapide d'applications connectées.
 
+## 📋 Canevas de cahier des charges
+
+Un outil de conception (pur HTML statique) pour structurer le besoin métier d'une
+nouvelle application **en amont du code**, à remplir en atelier (dev + métier).
+
+**Usage :**
+1. Ouvrir `cahier-des-charges.html` dans un navigateur (double-clic, fonctionne hors-ligne sauf le logigramme Mermaid qui nécessite un CDN).
+2. Remplir les 10 sections (identité, acteurs, données, interactions CRUD, affichage, règles de gestion, logigramme, M2M, fonctions backend, exigences non-fonctionnelles).
+3. **Exporter Markdown** → ranger le `cahier-des-charges.md` dans le `docs/` de l'app.
+4. Pour reprendre l'édition plus tard : **Exporter JSON**, puis **Importer JSON** à la session suivante.
+
+Aucun backend, aucune persistance locale — l'export est la seule sauvegarde. Thème clair/sombre via le bouton dédié (préférence dans l'URL).
+
 ## 🎯 Fonctionnalités
 
 - ✅ **Auto-enregistrement** auprès du Hub au démarrage
