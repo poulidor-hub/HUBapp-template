@@ -132,14 +132,6 @@
     .list-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-2, 8px); }
     .hint { font-size: var(--hub-font-size-sm, 14px); color: var(--text-secondary); font-style: italic; }
 
-    .crud-table { width: 100%; border-collapse: collapse; font-size: var(--hub-font-size-sm, 14px); }
-    .crud-table th, .crud-table td { border: 1px solid var(--border); padding: var(--hub-space-2, 8px); text-align: center; }
-    .crud-table th { background: var(--bg-secondary); }
-    .crud-actions { display: flex; gap: var(--hub-space-1, 4px); justify-content: center; flex-wrap: wrap; }
-    .crud-actions label { font-size: var(--hub-font-size-xs, 12px); display: inline-flex; align-items: center; gap: 2px; color: var(--text-secondary); }
-
-    .entity-card { border: 1px solid var(--border); border-radius: var(--radius-hub-sm, 6px); padding: var(--hub-space-3, 12px); margin-bottom: var(--hub-space-3, 12px); background: var(--bg-primary); }
-    .champ-row { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr auto; gap: var(--hub-space-2, 8px); align-items: end; margin-bottom: var(--hub-space-2, 8px); }
     .mermaid-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: var(--hub-space-3, 12px); }
     .mermaid-wrap textarea { min-height: 200px; font-family: var(--hub-font-mono); }
     #mermaid-preview { border: 1px dashed var(--border); border-radius: var(--radius-hub-sm, 6px); padding: var(--hub-space-3, 12px); min-height: 200px; background: var(--bg-primary); text-align: center; }
@@ -149,7 +141,6 @@
       body { grid-template-columns: 1fr; grid-template-areas: "header" "sommaire" "main"; }
       aside#sommaire { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
       .list-grid, .mermaid-wrap { grid-template-columns: 1fr; }
-      .champ-row { grid-template-columns: 1fr; }
     }
     @media print {
       body { display: block; }
@@ -166,7 +157,7 @@
     <div class="toolbar">
       <button class="btn btn-primary" id="btn-md" disabled>Exporter Markdown</button>
       <button class="btn btn-secondary" id="btn-json-export" disabled>Exporter JSON</button>
-      <button class="btn btn-secondary" id="btn-bootstrap">Bootstrap agent (JSON)</button>
+      <button class="btn btn-secondary" id="btn-bootstrap">Spécification agent (JSON)</button>
       <button class="btn btn-secondary" id="btn-json-import">Importer JSON</button>
       <input type="file" id="json-file" accept="application/json" hidden>
       <button class="btn btn-secondary" id="btn-print">Imprimer / PDF</button>
@@ -177,47 +168,55 @@
   <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul></aside>
   <main id="sections"></main>
   <script>
-  // ============================================================ SCHEMA
+  // ============================================================ SCHEMA (100 % métier)
+  // L'agent Jellycode dérive la couche technique (modèle de données, endpoints,
+  // permissions, écrans) à partir de cette description métier.
   const SCHEMA = {
-    identite: { title: '1. Identité & contexte', icon: 'bi bi-clipboard-data', type: 'object', fields: [
-      { key: 'app', label: 'Nom de l\'app', type: 'text', required: true },
-      { key: 'slug', label: 'Slug', type: 'text', required: true },
-      { key: 'objectif', label: 'Objectif (1 phrase)', type: 'text', required: true },
-      { key: 'contexte', label: 'Contexte métier', type: 'textarea' },
-      { key: 'fait', label: 'Périmètre — ce que l\'app fait', type: 'textarea' },
-      { key: 'neFaitPas', label: 'Périmètre — ce que l\'app ne fait pas', type: 'textarea' },
+    objectif: { title: '1. À quoi sert cette application ?', icon: 'bi bi-bullseye', type: 'object', fields: [
+      { key: 'app', label: 'Nom de l\'application', type: 'text', required: true },
+      { key: 'objectif', label: 'Objectif métier (en une phrase)', type: 'text', required: true },
+      { key: 'contexte', label: 'Contexte, problème à résoudre', type: 'textarea' },
+      { key: 'pourQui', label: 'Pour qui (bénéficiaires)', type: 'textarea' },
     ]},
-    acteurs: { title: '2. Acteurs & rôles', icon: 'bi bi-people-fill', type: 'list', addLabel: '+ Acteur', item: [
-      { key: 'role', label: 'Rôle', type: 'select', options: ['viewer','user','manager','admin'] },
-      { key: 'libelle', label: 'Libellé métier', type: 'text' },
-      { key: 'description', label: 'Description', type: 'textarea' },
+    situation: { title: '2. Comment ça se passe aujourd\'hui ?', icon: 'bi bi-clock-history', type: 'object', fields: [
+      { key: 'existant', label: 'Comment c\'est fait aujourd\'hui (outil, processus, manuel, Excel, autre app…)', type: 'textarea' },
+      { key: 'etapes', label: 'Les grandes étapes du processus actuel (une par ligne)', type: 'textarea' },
+      { key: 'douleurs', label: 'Points de douleur / problèmes rencontrés aujourd\'hui (une par ligne)', type: 'textarea' },
     ]},
-    donnees: { title: '3. Données (modèle)', icon: 'bi bi-database-fill', custom: 'donnees' },
-    interactions: { title: '4. Interactions × données', icon: 'bi bi-arrow-left-right', custom: 'crud' },
-    affichage: { title: '5. Affichage & objectifs', icon: 'bi bi-display', type: 'list', addLabel: '+ Vue', item: [
-      { key: 'nom', label: 'Nom de la vue', type: 'text' },
-      { key: 'objectif', label: 'Objectif', type: 'text' },
-      { key: 'type', label: 'Type', type: 'select', options: ['liste','détail','dashboard','formulaire','autre'] },
-      { key: 'donnees', label: 'Données affichées', type: 'textarea' },
+    acteurs: { title: '3. Qui sont les utilisateurs ?', icon: 'bi bi-people-fill', type: 'list', addLabel: '+ Utilisateur', item: [
+      { key: 'role', label: 'Rôle métier (ex : auditeur, responsable, client)', type: 'text' },
+      { key: 'description', label: 'Que fait cette personne, son contexte', type: 'textarea' },
     ]},
-    regles: { title: '6. Règles de gestion', icon: 'bi bi-list-check', type: 'list', addLabel: '+ Règle', item: [
-      { key: 'regle', label: 'Règle', type: 'textarea' },
-      { key: 'portee', label: 'Portée', type: 'select', options: ['globale','par entité'] },
-      { key: 'severite', label: 'Sévérité', type: 'select', options: ['bloquante','avertissement'] },
+    informations: { title: '4. Quelles sont les informations gérées ?', icon: 'bi bi-database-fill', type: 'list', addLabel: '+ Objet métier', item: [
+      { key: 'objet', label: 'Objet métier (ex : clients, dossiers, factures)', type: 'text' },
+      { key: 'infos', label: 'Les informations importantes de cet objet (en langage courant)', type: 'textarea' },
+      { key: 'precisions', label: 'Précisions (optionnel)', type: 'textarea' },
     ]},
-    logigramme: { title: '7. Logigramme', icon: 'bi bi-signpost-2-split', custom: 'mermaid' },
-    m2m: { title: '8. Intégrations M2M', icon: 'bi bi-plug-fill', type: 'list', addLabel: '+ Intégration', item: [
-      { key: 'app', label: 'App partenaire', type: 'text' },
-      { key: 'direction', label: 'Direction', type: 'select', options: ['consomme','expose'] },
-      { key: 'endpoint', label: 'Endpoint', type: 'text' },
-      { key: 'description', label: 'Description', type: 'textarea' },
+    actions: { title: '5. Que font les utilisateurs avec ces informations ?', icon: 'bi bi-arrow-left-right', type: 'list', addLabel: '+ Action', item: [
+      { key: 'acteur', label: 'Qui (acteur)', type: 'text' },
+      { key: 'action', label: 'Action (ex : crée, consulte, modifie, valide, supprime…)', type: 'text' },
+      { key: 'objet', label: 'Sur quel objet', type: 'text' },
+      { key: 'detail', label: 'Détail / condition (optionnel)', type: 'textarea' },
     ]},
-    fonctions: { title: '9. Fonctions / backend nécessaires', icon: 'bi bi-gear-fill', custom: 'fonctions' },
-    exigences: { title: '10. Exigences non-fonctionnelles', icon: 'bi bi-bullseye', type: 'object', fields: [
-      { key: 'perf', label: 'Performance', type: 'textarea' },
-      { key: 'securite', label: 'Sécurité', type: 'textarea' },
-      { key: 'contraintes', label: 'Contraintes', type: 'textarea' },
-      { key: 'dependances', label: 'Dépendances', type: 'textarea' },
+    ecrans: { title: '6. Quels écrans / parcours sont attendus ?', icon: 'bi bi-display', type: 'list', addLabel: '+ Écran / parcours', item: [
+      { key: 'nom', label: 'Nom de l\'écran ou du parcours', type: 'text' },
+      { key: 'objectif', label: 'Ce que l\'utilisateur y fait / objectif', type: 'textarea' },
+      { key: 'precisions', label: 'Précisions (optionnel)', type: 'textarea' },
+    ]},
+    regles: { title: '7. Quelles sont les règles à respecter ?', icon: 'bi bi-list-check', type: 'list', addLabel: '+ Règle', item: [
+      { key: 'regle', label: 'La règle / contrainte (en langage métier)', type: 'textarea' },
+      { key: 'precisions', label: 'Précisions (optionnel)', type: 'textarea' },
+    ]},
+    processus: { title: '8. Quel est le processus / déroulement ?', icon: 'bi bi-signpost-2-split', custom: 'mermaid' },
+    echanges: { title: '9. Avec quels autres systèmes échanger ?', icon: 'bi bi-plug-fill', type: 'list', addLabel: '+ Échange', item: [
+      { key: 'systeme', label: 'Système / application', type: 'text' },
+      { key: 'flux', label: 'Quel échange (ex : « synchro clients depuis le CRM »)', type: 'textarea' },
+    ]},
+    exigences: { title: '10. Quelles sont les exigences & contraintes ?', icon: 'bi bi-shield-check', type: 'object', fields: [
+      { key: 'performance', label: 'Attentes de performance / rapidité', type: 'textarea' },
+      { key: 'acces', label: 'Accès & sécurité (qui peut voir quoi, confidentialité)', type: 'textarea' },
+      { key: 'contraintes', label: 'Contraintes (réglementaires, organisationnelles…)', type: 'textarea' },
+      { key: 'autres', label: 'Autres exigences', type: 'textarea' },
     ]},
   };
   const SCHEMA_ORDER = Object.keys(SCHEMA);
@@ -227,40 +226,37 @@
     return {
       meta: { version: '1.0', updatedAt: new Date().toISOString().slice(0,10) },
       sections: {
-        identite: { app:'', slug:'', objectif:'', contexte:'', fait:'', neFaitPas:'' },
+        objectif: { app:'', objectif:'', contexte:'', pourQui:'' },
+        situation: { existant:'', etapes:'', douleurs:'' },
         acteurs: [],
-        donnees: [],
-        interactions: [],
-        affichage: [],
+        informations: [],
+        actions: [],
+        ecrans: [],
         regles: [],
-        logigramme: { mermaid: 'flowchart TD\n    A([Déclencheur]) --> B{Décision}\n    B -->|Oui| C[Étape 1]\n    B -->|Non| D[Étape 2]\n    C --> E([Résultat])\n    D --> E' },
-        m2m: [],
-        fonctions: [],
-        exigences: { perf:'', securite:'', contraintes:'', dependances:'' },
+        processus: { mermaid: 'flowchart TD\n    A([Déclencheur]) --> B{Décision}\n    B -->|Oui| C[Étape 1]\n    B -->|Non| D[Étape 2]\n    C --> E([Résultat])\n    D --> E' },
+        echanges: [],
+        exigences: { performance:'', acces:'', contraintes:'', autres:'' },
       }
     };
   }
   let state = DEFAULT_STATE();
   let dirty = false;
-  const CUSTOM_RENDERERS = {}; // rempli tâches 4-6
+  const CUSTOM_RENDERERS = {};
 
   // ============================================================ HELPERS UI
   const $ = (id) => document.getElementById(id);
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
-
+  function slugize(n) { return (n||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'app'; }
   function markDirty(){ dirty = true; }
   function clearDirty(){ dirty = false; }
 
-  // Une section est "commencée" si elle contient au moins une valeur non vide
+  // Une section est « commencée » si elle contient au moins une valeur non vide
   function sectionIsEmpty(key) {
     const s = SCHEMA[key];
     const v = state.sections[key];
     if (s.type === 'object') return s.fields.every(f => !(v[f.key] && String(v[f.key]).trim()));
     if (s.type === 'list') return !v.some(it => Object.values(it).some(x => x && String(x).trim()));
     if (s.custom === 'mermaid') return !(v.mermaid && v.mermaid.trim());
-    if (s.custom === 'donnees') return !v.some(e => (e.nom && e.nom.trim()) || e.champs.some(c => c.nom && c.nom.trim()));
-    if (s.custom === 'crud') return !v.some(r => ['c','r','u','d'].some(a => r[a] && r[a].length));
-    if (s.custom === 'fonctions') return !v.some(f => (f.endpoint && f.endpoint.trim()) || (f.description && f.description.trim()));
     return true;
   }
 
@@ -292,7 +288,6 @@
     return sec;
   }
 
-  // Rend le contenu du body (utilisé aussi pour re-render après +/- sur listes)
   function renderSectionBody(key, body) {
     if (!body) body = $('sec-' + key).querySelector('.acc-body');
     body.innerHTML = '';
@@ -314,8 +309,7 @@
 
   function renderField(sectionKey, f) {
     const wrap = el('div', 'field');
-    const lbl = el('label', null, f.label + (f.required ? ' <span class="req">*</span>' : ''));
-    wrap.appendChild(lbl);
+    wrap.appendChild(el('label', null, f.label + (f.required ? ' <span class="req">*</span>' : '')));
     let input;
     if (f.type === 'textarea') input = el('textarea');
     else if (f.type === 'select') { input = el('select'); f.options.forEach(o => { const op = el('option'); op.value = o; op.textContent = o; input.appendChild(op); }); }
@@ -324,7 +318,7 @@
     input.addEventListener('input', () => {
       state.sections[sectionKey][f.key] = input.value;
       markDirty();
-      if (sectionKey === 'identite') updateTitle();
+      if (sectionKey === 'objectif') updateTitle();
       updateSectionIndicator(sectionKey);
       updateProgress();
       setExportEnabled();
@@ -357,12 +351,11 @@
     const head = el('div', 'list-item-head');
     const titleTxt = (item[s.item[0].key] && String(item[s.item[0].key]).trim()) || ('Élément ' + (idx+1));
     head.appendChild(el('span', 'title', titleTxt));
-    const del = el('button', 'btn btn-danger btn-small', 'Supprimer');
+    const del = el('button', 'btn btn-danger btn-small', '<i class="bi bi-x"></i> Supprimer');
     del.addEventListener('click', () => {
       state.sections[sectionKey].splice(idx, 1);
       markDirty();
       rerenderSectionBody(sectionKey);
-      if (sectionKey === 'donnees') { resyncAfterDonnees(); }
       setExportEnabled();
     });
     head.appendChild(del);
@@ -419,168 +412,12 @@
     $('progress').textContent = done + '/' + total + ' sections';
   }
   function updateTitle() {
-    const app = state.sections.identite.app || state.sections.identite.slug;
+    const app = state.sections.objectif.app;
     $('app-title').textContent = app ? ('Cahier des charges — ' + app) : 'Nouveau cahier des charges';
   }
-  function setExportEnabled() { /* activé dès la 1ère saisie ; reste tjrs dispo en pratique */ }
+  function setExportEnabled() { /* les exports sont activés dans initChrome */ }
 
-  // ============================================================ RESYNC (placeholder, implémenté tâche 4)
-  function resyncAfterDonnees() { if (typeof rerenderInteractions === 'function') rerenderInteractions(); }
-
-  // ============================================================ §3 DONNEES (builder d'entités)
-  const CHAMP_TYPES = ['text','number','bool','date','datetime','relation','json','file'];
-  const CHAMP_ROLES = ['id','info','relation'];
-  CUSTOM_RENDERERS.donnees = function (key, s) {
-    const wrap = el('div');
-    const arr = state.sections.donnees;
-    if (arr.length === 0) wrap.appendChild(el('p', 'hint', 'Aucune entité. Cliquez sur « + Entité » pour définir le modèle de données.'));
-    arr.forEach((ent, idx) => wrap.appendChild(renderEntityCard(key, idx)));
-    const add = el('button', 'btn btn-secondary btn-small', '+ Entité');
-    add.addEventListener('click', () => {
-      arr.push({ nom:'', description:'', champs: [] });
-      markDirty();
-      rerenderSectionBody(key);
-      resyncAfterDonnees();
-      setExportEnabled();
-    });
-    wrap.appendChild(add);
-    return wrap;
-  };
-  function renderEntityCard(sectionKey, idx) {
-    const ent = state.sections.donnees[idx];
-    const card = el('div', 'entity-card');
-    const head = el('div', 'list-item-head');
-    head.appendChild(el('span', 'title', (ent.nom && ent.nom.trim()) || ('Entité ' + (idx+1))));
-    const del = el('button', 'btn btn-danger btn-small', 'Supprimer l\'entité');
-    del.addEventListener('click', () => {
-      state.sections.donnees.splice(idx, 1);
-      markDirty();
-      rerenderSectionBody(sectionKey);
-      resyncAfterDonnees();
-      setExportEnabled();
-    });
-    head.appendChild(del); card.appendChild(head);
-
-    const nomF = el('div', 'field');
-    nomF.appendChild(el('label', null, 'Nom de l\'entité'));
-    const nomI = el('input'); nomI.type = 'text'; nomI.value = ent.nom || '';
-    nomI.addEventListener('input', () => {
-      ent.nom = nomI.value;
-      head.querySelector('.title').textContent = ent.nom.trim() || ('Entité ' + (idx+1));
-      markDirty(); updateSectionIndicator(sectionKey); updateProgress();
-      resyncAfterDonnees(); setExportEnabled();
-    });
-    nomF.appendChild(nomI); card.appendChild(nomF);
-
-    const descF = el('div', 'field');
-    descF.appendChild(el('label', null, 'Description'));
-    const descI = el('textarea'); descI.value = ent.description || '';
-    descI.addEventListener('input', () => { ent.description = descI.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); });
-    descF.appendChild(descI); card.appendChild(descF);
-
-    card.appendChild(el('label', null, 'Champs'));
-    ent.champs.forEach((c, ci) => card.appendChild(renderChampRow(sectionKey, idx, ci)));
-    const addChamp = el('button', 'btn btn-secondary btn-small', '+ Champ');
-    addChamp.addEventListener('click', () => {
-      ent.champs.push({ nom:'', type:'text', role:'info', note:'' });
-      markDirty(); rerenderSectionBody(sectionKey);
-    });
-    card.appendChild(addChamp);
-    return card;
-  }
-  function renderChampRow(sectionKey, entIdx, ci) {
-    const ent = state.sections.donnees[entIdx];
-    const c = ent.champs[ci];
-    const row = el('div', 'champ-row');
-    const mkField = (labelText, makeInput) => {
-      const cell = el('div'); cell.appendChild(el('label', null, labelText));
-      cell.appendChild(makeInput()); return cell;
-    };
-    row.appendChild(mkField('Nom', () => {
-      const i = el('input'); i.type = 'text'; i.value = c.nom || '';
-      i.addEventListener('input', () => { c.nom = i.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); });
-      return i;
-    }));
-    row.appendChild(mkField('Type', () => {
-      const sel = el('select'); CHAMP_TYPES.forEach(t => { const o = el('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
-      sel.value = c.type || 'text';
-      sel.addEventListener('change', () => { c.type = sel.value; markDirty(); });
-      return sel;
-    }));
-    row.appendChild(mkField('Rôle', () => {
-      const sel = el('select'); CHAMP_ROLES.forEach(t => { const o = el('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
-      sel.value = c.role || 'info';
-      sel.addEventListener('change', () => { c.role = sel.value; markDirty(); });
-      return sel;
-    }));
-    row.appendChild(mkField('Note', () => {
-      const i = el('input'); i.type = 'text'; i.value = c.note || '';
-      i.addEventListener('input', () => { c.note = i.value; markDirty(); });
-      return i;
-    }));
-    const delCell = el('div');
-    const del = el('button', 'btn btn-danger btn-small', '<i class="bi bi-x"></i>');
-    del.addEventListener('click', () => { ent.champs.splice(ci, 1); markDirty(); rerenderSectionBody(sectionKey); });
-    delCell.appendChild(del); row.appendChild(delCell);
-    return row;
-  }
-
-  // ============================================================ §4 INTERACTIONS (matrice CRUD)
-  const ROLES = ['viewer','user','manager','admin'];
-  const ACTIONS = [['c','Créer'],['r','Lire'],['u','Modifier'],['d','Supprimer']];
-  function entitiesFromState() { return state.sections.donnees.map(e => e.nom).filter(n => n && n.trim()); }
-  function syncInteractionsToEntities() {
-    const names = entitiesFromState();
-    const existing = {}; state.sections.interactions.forEach(r => { existing[r.entite] = r; });
-    state.sections.interactions = names.map(n => existing[n] || { entite: n, c:[], r:[], u:[], d:[] });
-  }
-  function rerenderInteractions() {
-    const body = $('sec-interactions') && $('sec-interactions').querySelector('.acc-body');
-    if (!body) return;
-    syncInteractionsToEntities();
-    renderSectionBody('interactions', body);
-    updateSectionIndicator('interactions'); updateProgress();
-  }
-  CUSTOM_RENDERERS.crud = function (key, s) {
-    syncInteractionsToEntities();
-    const wrap = el('div');
-    const rows = state.sections.interactions;
-    if (rows.length === 0) { wrap.appendChild(el('p', 'hint', 'Définissez des entités en §3 Données pour alimenter la matrice.')); return wrap; }
-    const table = el('table', 'crud-table');
-    const thead = el('thead'); const htr = el('tr');
-    htr.appendChild(el('th', null, 'Entité'));
-    ACTIONS.forEach(a => htr.appendChild(el('th', null, a[1] + ' (rôles)')));
-    thead.appendChild(htr); table.appendChild(thead);
-    const tbody = el('tbody');
-    rows.forEach((row, ri) => {
-      const tr = el('tr');
-      tr.appendChild(el('td', null, row.entite));
-      ACTIONS.forEach(a => {
-        const td = el('td');
-        const box = el('div', 'crud-actions');
-        ROLES.forEach(role => {
-          const lab = el('label');
-          const cb = el('input'); cb.type = 'checkbox'; cb.value = role;
-          cb.checked = row[a[0]].indexOf(role) !== -1;
-          cb.addEventListener('change', () => {
-            const arr = row[a[0]];
-            if (cb.checked) { if (arr.indexOf(role) === -1) arr.push(role); }
-            else { const i = arr.indexOf(role); if (i !== -1) arr.splice(i,1); }
-            markDirty(); updateSectionIndicator('interactions'); updateProgress(); setExportEnabled();
-          });
-          lab.appendChild(cb); lab.appendChild(document.createTextNode(role));
-          box.appendChild(lab);
-        });
-        td.appendChild(box); tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody); wrap.appendChild(table);
-    wrap.appendChild(el('p', 'hint', 'Cochez, pour chaque entité et action, les rôles autorisés.'));
-    return wrap;
-  };
-
-  // ============================================================ §7 LOGIGRAMME (Mermaid)
+  // ============================================================ §8 PROCESSUS (Mermaid)
   let mermaidReady = false;
   if (window.mermaid) { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' }); mermaidReady = true; } catch(e){ mermaidReady = false; } }
   let renderTimer = null;
@@ -588,105 +425,31 @@
     const wrap = el('div');
     const grid = el('div', 'mermaid-wrap');
     const ta = el('textarea');
-    ta.value = state.sections.logigramme.mermaid || '';
+    ta.value = state.sections[key].mermaid || '';
     ta.setAttribute('spellcheck', 'false');
     const preview = el('div'); preview.id = 'mermaid-preview';
     grid.appendChild(ta); grid.appendChild(preview);
     wrap.appendChild(grid);
-
-    const cheats = el('div', 'cheatsheet',
+    wrap.appendChild(el('div', 'cheatsheet',
       '<strong>Antisèche :</strong> flowchart TD (top-down) ou LR (left-right). ' +
       'Nœuds : <code>A[Texte]</code>, <code>B{Décision}</code>, <code>C([Arrondi])</code>, <code>D((Cercle))</code>. ' +
       'Liens : <code>A --&gt; B</code>, <code>A --&gt;|Oui| B</code>, <code>C -. pointillé .-&gt; D</code>. Subgraph : <code>subgraph Nom ... end</code>.'
-    );
-    wrap.appendChild(cheats);
-
+    ));
     function doRender() {
       const code = ta.value;
-      state.sections.logigramme.mermaid = code;
+      state.sections[key].mermaid = code;
       if (!mermaidReady || !code.trim()) { preview.innerHTML = '<span class="hint">Aperçu indisponible (Mermaid non chargé ou code vide).</span>'; return; }
       const id = 'mmd-' + Date.now();
       window.mermaid.render(id, code).then(res => { preview.innerHTML = res.svg; })
         .catch(err => { preview.innerHTML = '<span class="hint" style="color:var(--error)">Erreur Mermaid : ' + String(err.message || err).replace(/[<>]/g,'') + '</span>'; });
     }
     ta.addEventListener('input', () => {
-      markDirty(); updateSectionIndicator('logigramme'); updateProgress(); setExportEnabled();
+      markDirty(); updateSectionIndicator(key); updateProgress(); setExportEnabled();
       clearTimeout(renderTimer); renderTimer = setTimeout(doRender, 300);
     });
     setTimeout(doRender, 50);
     return wrap;
   };
-
-  // ============================================================ §9 FONCTIONS (pré-remplissables)
-  const METHODS = ['GET','POST','PUT','PATCH','DELETE'];
-  function slugize(n) { return (n||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'entite'; }
-  CUSTOM_RENDERERS.fonctions = function (key, s) {
-    const wrap = el('div');
-    const bar = el('div'); bar.style.marginBottom = 'var(--hub-space-3, 12px)';
-    const prefill = el('button', 'btn btn-secondary btn-small', '<i class="bi bi-arrow-repeat"></i> Pré-remplir depuis §3 + §4');
-    prefill.addEventListener('click', () => { prefillFonctions(); rerenderSectionBody(key); });
-    bar.appendChild(prefill);
-    wrap.appendChild(bar);
-
-    const arr = state.sections.fonctions;
-    if (arr.length === 0) wrap.appendChild(el('p', 'hint', 'Aucune fonction. Pré-remplissez depuis les données/interactions, ou ajoutez manuellement.'));
-    arr.forEach((f, idx) => wrap.appendChild(renderFonctionRow(key, idx)));
-    const add = el('button', 'btn btn-secondary btn-small', '+ Fonction');
-    add.addEventListener('click', () => { arr.push({ endpoint:'', methode:'GET', description:'', suggere:false }); markDirty(); rerenderSectionBody(key); setExportEnabled(); });
-    wrap.appendChild(add);
-    return wrap;
-  };
-  function renderFonctionRow(sectionKey, idx) {
-    const f = state.sections.fonctions[idx];
-    const row = el('div', 'list-item');
-    const head = el('div', 'list-item-head');
-    const title = el('span', 'title', (f.endpoint && f.endpoint.trim()) ? (f.methode + ' ' + f.endpoint) : ('Fonction ' + (idx+1)));
-    if (f.suggere) title.appendChild(el('span', 'hint', '  [suggéré]'));
-    head.appendChild(title);
-    const del = el('button', 'btn btn-danger btn-small', 'Supprimer');
-    del.addEventListener('click', () => { state.sections.fonctions.splice(idx,1); markDirty(); rerenderSectionBody(sectionKey); setExportEnabled(); });
-    head.appendChild(del); row.appendChild(head);
-
-    const grid = el('div', 'list-grid');
-    const mkField = (labelText, makeInput) => { const cell = el('div','field'); cell.appendChild(el('label',null,labelText)); cell.appendChild(makeInput()); return cell; };
-    grid.appendChild(mkField('Endpoint', () => {
-      const i = el('input'); i.type='text'; i.value = f.endpoint || '';
-      i.addEventListener('input', () => { f.endpoint = i.value; head.querySelector('.title').firstChild.textContent = (f.endpoint.trim()? f.methode+' '+f.endpoint : 'Fonction '+(idx+1)); markDirty(); updateSectionIndicator(sectionKey); updateProgress(); setExportEnabled(); });
-      return i;
-    }));
-    grid.appendChild(mkField('Méthode', () => {
-      const sel = el('select'); METHODS.forEach(m => { const o=el('option'); o.value=m; o.textContent=m; sel.appendChild(o); });
-      sel.value = f.methode || 'GET';
-      sel.addEventListener('change', () => { f.methode = sel.value; head.querySelector('.title').firstChild.textContent = (f.endpoint.trim()? f.methode+' '+f.endpoint : 'Fonction '+(idx+1)); markDirty(); });
-      return sel;
-    }));
-    grid.appendChild(mkField('Description', () => {
-      const i = el('input'); i.type='text'; i.value = f.description || '';
-      i.addEventListener('input', () => { f.description = i.value; markDirty(); updateSectionIndicator(sectionKey); updateProgress(); setExportEnabled(); });
-      return i;
-    }));
-    row.appendChild(grid);
-    return row;
-  }
-  // Génère les endpoints CRUD suggérés à partir de §3 (entités) et §4 (actions cochées), sans écraser l'existant.
-  function prefillFonctions() {
-    syncInteractionsToEntities();
-    const existing = new Set(state.sections.fonctions.filter(f => !f.suggere).map(f => f.methode + ' ' + f.endpoint));
-    // on retire d'abord les anciennes suggestions pour éviter les doublons
-    state.sections.fonctions = state.sections.fonctions.filter(f => !f.suggere);
-    state.sections.interactions.forEach(row => {
-      const base = '/api/' + slugize(row.entite);
-      const map = { c:['POST', base], r:['GET', base], u:['PUT', base + '/{id}'], d:['DELETE', base + '/{id}'] };
-      ['c','r','u','d'].forEach(act => {
-        if (row[act] && row[act].length) {
-          const m = map[act][0], ep = map[act][1];
-          const sig = m + ' ' + ep;
-          if (!existing.has(sig)) state.sections.fonctions.push({ endpoint: ep, methode: m, description: row.entite + ' — ' + ACTIONS.find(a=>a[0]===act)[1] + ' (' + row[act].join(', ') + ')', suggere: true });
-        }
-      });
-    });
-    markDirty(); updateSectionIndicator('fonctions'); updateProgress(); setExportEnabled();
-  }
 
   // ============================================================ EXPORT MARKDOWN
   function download(filename, text, mime) {
@@ -697,106 +460,57 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function esc(s) { return String(s == null ? '' : s).replace(/\r\n|\n|\r/g, ' ').replace(/\|/g, '\\|'); }
+  function listMd(s) {
+    const items = String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
+    return items.length ? items.map(i => '- ' + esc(i)).join('\n') + '\n' : '_—_\n';
+  }
+  function tableMd(rows, keys, headers) {
+    if (!rows || !rows.length) return '_Aucun._\n';
+    let t = '|' + headers.map(h => esc(h)).join('|') + '|\n' + '|' + headers.map(() => '---').join('|') + '|\n';
+    rows.forEach(r => { t += '|' + keys.map(k => esc(r[k] || '')).join('|') + '|\n'; });
+    return t;
+  }
   function exportMarkdown() {
     const S = state.sections;
-    const meta = state.meta;
-    const app = S.identite.app || '(sans nom)';
-    let md = '';
-    md += '# Cahier des charges — ' + app + '\n\n';
-    md += '> Slug : `' + (S.identite.slug || '') + '` · Version doc : ' + (meta.version || '1.0') + ' · Maj : ' + (meta.updatedAt || '') + '\n\n---\n\n';
+    const app = S.objectif.app || '(sans nom)';
+    let md = '# Cahier des charges — ' + app + '\n\n';
+    md += '> Spécification métier. La couche technique (modèle de données, endpoints, écrans) sera dérivée par l\'agent.\n\n---\n\n';
 
-    // §1
-    md += '## 1. Identité & contexte\n\n';
-    md += '- **Objectif** : ' + (S.identite.objectif || '—') + '\n';
-    md += '- **Contexte métier** : ' + (S.identite.contexte || '—') + '\n\n';
-    md += '**Périmètre**\n\n';
-    md += '- ✅ Fait : ' + (S.identite.fait || '—') + '\n';
-    md += '- 🚫 Ne fait pas : ' + (S.identite.neFaitPas || '—') + '\n\n---\n\n';
+    md += '## 1. À quoi sert cette application ?\n\n';
+    md += '- **Objectif** : ' + (S.objectif.objectif || '—') + '\n';
+    md += '- **Contexte / problème** : ' + (S.objectif.contexte || '—') + '\n';
+    md += '- **Pour qui** : ' + (S.objectif.pourQui || '—') + '\n\n---\n\n';
 
-    // §2 acteurs
-    md += '## 2. Acteurs & rôles\n\n';
-    if (S.acteurs.length) {
-      md += '| Rôle | Libellé métier | Description |\n|---|---|---|\n';
-      S.acteurs.forEach(a => { md += '| ' + esc(a.role) + ' | ' + esc(a.libelle) + ' | ' + esc(a.description) + ' |\n'; });
-    } else md += '_Aucun._';
-    md += '\n\n---\n\n';
-
-    // §3 données
-    md += '## 3. Données (modèle)\n\n';
-    if (S.donnees.length) {
-      S.donnees.forEach(ent => {
-        md += '### Entité : ' + esc(ent.nom || '(sans nom)') + '\n\n';
-        if (ent.description) md += '_' + esc(ent.description) + '_\n\n';
-        if (ent.champs.length) {
-          md += '| Champ | Type | Rôle | Note |\n|---|---|---|---|\n';
-          ent.champs.forEach(c => { md += '| ' + esc(c.nom) + ' | ' + esc(c.type) + ' | ' + esc(c.role) + ' | ' + esc(c.note) + ' |\n'; });
-        } else md += '_Aucun champ._\n';
-        md += '\n';
-      });
-    } else md += '_Aucune entité._\n';
+    md += '## 2. Comment ça se passe aujourd\'hui ?\n\n';
+    md += '- **Existant** : ' + (S.situation.existant || '—') + '\n';
+    md += '- **Étapes actuelles** :\n' + listMd(S.situation.etapes);
+    md += '- **Points de douleur** :\n' + listMd(S.situation.douleurs);
     md += '\n---\n\n';
 
-    // §4 interactions (matrice)
-    md += '## 4. Interactions × données (CRUD par rôle)\n\n';
-    syncInteractionsToEntities();
-    if (S.interactions.length) {
-      md += '| Entité | Créer | Lire | Modifier | Supprimer |\n|---|---|---|---|---|\n';
-      S.interactions.forEach(r => { md += '| ' + esc(r.entite) + ' | ' + esc(r.c.join(', ')) + ' | ' + esc(r.r.join(', ')) + ' | ' + esc(r.u.join(', ')) + ' | ' + esc(r.d.join(', ')) + ' |\n'; });
-    } else md += '_Aucune._\n';
+    md += '## 3. Qui sont les utilisateurs ?\n\n' + tableMd(S.acteurs, ['role','description'], ['Rôle métier','Description']) + '\n---\n\n';
+    md += '## 4. Quelles sont les informations gérées ?\n\n' + tableMd(S.informations, ['objet','infos','precisions'], ['Objet métier','Informations importantes','Précisions']) + '\n---\n\n';
+    md += '## 5. Que font les utilisateurs avec ces informations ?\n\n' + tableMd(S.actions, ['acteur','action','objet','detail'], ['Acteur','Action','Objet','Détail']) + '\n---\n\n';
+    md += '## 6. Quels écrans / parcours sont attendus ?\n\n' + tableMd(S.ecrans, ['nom','objectif','precisions'], ['Écran / parcours','Objectif','Précisions']) + '\n---\n\n';
+    md += '## 7. Quelles sont les règles à respecter ?\n\n' + tableMd(S.regles, ['regle','precisions'], ['Règle','Précisions']) + '\n---\n\n';
+
+    md += '## 8. Quel est le processus / déroulement ?\n\n';
+    if (S.processus.mermaid && S.processus.mermaid.trim()) md += '```mermaid\n' + S.processus.mermaid + '\n```\n'; else md += '_Aucun._\n';
     md += '\n---\n\n';
 
-    // §5 affichage
-    md += '## 5. Affichage & objectifs\n\n';
-    if (S.affichage.length) {
-      md += '| Vue | Objectif | Type | Données affichées |\n|---|---|---|---|\n';
-      S.affichage.forEach(v => { md += '| ' + esc(v.nom) + ' | ' + esc(v.objectif) + ' | ' + esc(v.type) + ' | ' + esc(v.donnees) + ' |\n'; });
-    } else md += '_Aucune._\n';
-    md += '\n---\n\n';
+    md += '## 9. Avec quels autres systèmes échanger ?\n\n' + tableMd(S.echanges, ['systeme','flux'], ['Système','Échange']) + '\n---\n\n';
 
-    // §6 règles
-    md += '## 6. Règles de gestion\n\n';
-    if (S.regles.length) {
-      md += '| Règle | Portée | Sévérité |\n|---|---|---|\n';
-      S.regles.forEach(r => { md += '| ' + esc(r.regle) + ' | ' + esc(r.portee) + ' | ' + esc(r.severite) + ' |\n'; });
-    } else md += '_Aucune._\n';
-    md += '\n---\n\n';
-
-    // §7 logigramme
-    md += '## 7. Logigramme\n\n';
-    if (S.logigramme.mermaid && S.logigramme.mermaid.trim()) {
-      md += '```mermaid\n' + S.logigramme.mermaid + '\n```\n';
-    } else md += '_Aucun._\n';
-    md += '\n---\n\n';
-
-    // §8 M2M
-    md += '## 8. Intégrations M2M\n\n';
-    if (S.m2m.length) {
-      md += '| App partenaire | Direction | Endpoint | Description |\n|---|---|---|---|\n';
-      S.m2m.forEach(m => { md += '| ' + esc(m.app) + ' | ' + esc(m.direction) + ' | ' + esc(m.endpoint) + ' | ' + esc(m.description) + ' |\n'; });
-    } else md += '_Aucune._\n';
-    md += '\n---\n\n';
-
-    // §9 fonctions
-    md += '## 9. Fonctions / backend nécessaires\n\n';
-    if (S.fonctions.length) {
-      md += '| Méthode | Endpoint | Description | Origine |\n|---|---|---|---|\n';
-      S.fonctions.forEach(f => { md += '| ' + esc(f.methode) + ' | ' + esc(f.endpoint) + ' | ' + esc(f.description) + ' | ' + (f.suggere ? 'suggéré' : 'manuel') + ' |\n'; });
-    } else md += '_Aucune._\n';
-    md += '\n---\n\n';
-
-    // §10 exigences
-    md += '## 10. Exigences non-fonctionnelles\n\n';
-    md += '- **Performance** : ' + (S.exigences.perf || '—') + '\n';
-    md += '- **Sécurité** : ' + (S.exigences.securite || '—') + '\n';
+    md += '## 10. Quelles sont les exigences & contraintes ?\n\n';
+    md += '- **Performance** : ' + (S.exigences.performance || '—') + '\n';
+    md += '- **Accès & sécurité** : ' + (S.exigences.acces || '—') + '\n';
     md += '- **Contraintes** : ' + (S.exigences.contraintes || '—') + '\n';
-    md += '- **Dépendances** : ' + (S.exigences.dependances || '—') + '\n\n';
+    md += '- **Autres** : ' + (S.exigences.autres || '—') + '\n\n';
 
     md += '---\n\n_Généré par le canevas de cahier des charges du template POULIDOR._\n';
     download('cahier-des-charges.md', md, 'text/markdown');
     clearDirty();
   }
 
-  // ============================================================ EXPORT / IMPORT JSON
+  // ============================================================ EXPORT / IMPORT JSON (round-trip)
   function showImportError(msg){ const e = $('import-error'); e.textContent = msg; e.classList.add('show'); }
   function hideImportError(){ const e = $('import-error'); e.classList.remove('show'); e.textContent = ''; }
   function exportJSON() {
@@ -804,18 +518,14 @@
     download('cahier-des-charges.json', JSON.stringify(state, null, 2), 'application/json');
     clearDirty();
   }
-  // Valide la forme minimale du state importé (clés de sections présentes)
   function validateState(obj) {
     if (!obj || typeof obj !== 'object') throw new Error('racine non-objet');
     if (!obj.sections || typeof obj.sections !== 'object') throw new Error('sections manquantes');
-    SCHEMA_ORDER.forEach(k => {
-      if (!(k in obj.sections)) throw new Error('section manquante : ' + k);
-    });
+    SCHEMA_ORDER.forEach(k => { if (!(k in obj.sections)) throw new Error('section manquante : ' + k); });
     return obj;
   }
   function loadState(newState) {
     validateState(newState);
-    // normalise vers DEFAULT_STATE pour les clés manquantes (robustesse)
     const base = DEFAULT_STATE();
     base.meta = Object.assign(base.meta, newState.meta || {});
     SCHEMA_ORDER.forEach(k => {
@@ -823,89 +533,47 @@
       const sv = SCHEMA[k];
       if (sv.type === 'object') base.sections[k] = Object.assign(base.sections[k], v || {});
       else if (sv.type === 'list') base.sections[k] = Array.isArray(v) ? v : [];
-      else base.sections[k] = v || base.sections[k];
+      else base.sections[k] = (v && typeof v === 'object' && typeof v.mermaid === 'string') ? { mermaid: v.mermaid } : base.sections[k];
     });
-    // Harden custom-section shapes against hand-edited/foreign JSON
-    if (Array.isArray(base.sections.donnees)) base.sections.donnees = base.sections.donnees.map(e => ({ nom: e.nom || '', description: e.description || '', champs: Array.isArray(e.champs) ? e.champs.map(c => ({ nom: c.nom || '', type: c.type || 'text', role: c.role || 'info', note: c.note || '' })) : [] }));
-    if (Array.isArray(base.sections.interactions)) base.sections.interactions = base.sections.interactions.map(r => ({ entite: r.entite || '', c: Array.isArray(r.c) ? r.c : [], r: Array.isArray(r.r) ? r.r : [], u: Array.isArray(r.u) ? r.u : [], d: Array.isArray(r.d) ? r.d : [] }));
     state = base;
     renderAll();
     clearDirty();
   }
-  function importJSON(text) {
-    const obj = JSON.parse(text);
-    loadState(obj);
-  }
+  function importJSON(text) { loadState(JSON.parse(text)); }
 
-  // ============================================================ BOOTSTRAP AGENT (manifest dérivé)
-  const TYPE_MAP = { text:'string', number:'number', bool:'boolean', date:'date', datetime:'datetime', relation:'relation', json:'json', file:'file' };
-  function normType(t){ return TYPE_MAP[t] || 'string'; }
+  // ============================================================ SPÉCIFICATION AGENT (manifest métier dérivé)
   function buildBootstrap() {
-    syncInteractionsToEntities();
     const S = state.sections;
-    const splitLines = (s) => String(s||'').split('\n').map(x => x.trim()).filter(Boolean);
-    const entities = (S.donnees || [])
-      .filter(e => e.nom && e.nom.trim())
-      .map(e => ({
-        name: e.nom.trim(),
-        slug: slugize(e.nom),
-        description: e.description || '',
-        fields: (e.champs || []).map(c => {
-          const isId = (c.role === 'id');
-          return {
-            name: (c.nom || '').trim(),
-            slug: slugize(c.nom),
-            type: normType(c.type),
-            is_identifier: isId,
-            required: isId,
-            role: c.role || 'info',
-            note: c.note || ''
-          };
-        }).filter(f => f.name)
-      }));
-    const permissions = (S.interactions || []).map(r => ({
-      entity: r.entite, slug: slugize(r.entite),
-      create: (r.c || []).slice(), read: (r.r || []).slice(), update: (r.u || []).slice(), delete: (r.d || []).slice()
-    }));
-    const ACT_METHOD = { c:['POST','/api/{slug}'], r:['GET','/api/{slug}'], u:['PUT','/api/{slug}/{id}'], d:['DELETE','/api/{slug}/{id}'] };
-    const ACT_NAME = { c:'create', r:'read', u:'update', d:'delete' };
-    const endpoints = [];
-    (S.interactions || []).forEach(r => {
-      const slug = slugize(r.entite);
-      ['c','r','u','d'].forEach(act => {
-        const roles = r[act] || [];
-        if (roles.length) {
-          const entry = ACT_METHOD[act];
-          endpoints.push({ method: entry[0], path: entry[1].replace('{slug}', slug), entity: r.entite, action: ACT_NAME[act], roles: roles.slice() });
-        }
-      });
-    });
+    const splitLines = (s) => String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
     return {
       schema_version: '1.0',
-      type: 'poulidor-app-bootstrap',
+      type: 'poulidor-app-business-spec',
+      note: "Spécification métier (non technique). L'agent Jellycode dérive la couche technique (modèle de données, endpoints, permissions, écrans) à partir de cette description.",
       generated_at: new Date().toISOString(),
       app: {
-        name: S.identite.app || '',
-        slug: S.identite.slug || slugize(S.identite.app),
-        objectif: S.identite.objectif || '',
-        contexte: S.identite.contexte || '',
-        perimetre: { fait: splitLines(S.identite.fait), neFaitPas: splitLines(S.identite.neFaitPas) }
+        name: S.objectif.app || '',
+        slug: slugize(S.objectif.app),
+        objectif: S.objectif.objectif || '',
+        contexte: S.objectif.contexte || '',
+        pour_qui: S.objectif.pourQui || '',
       },
-      roles: (S.acteurs || []).map(a => ({ role: a.role, libelle: a.libelle || '', description: a.description || '' })),
-      entities: entities,
-      permissions: permissions,
-      endpoints: endpoints,
-      views: (S.affichage || []).map(v => ({ name: v.nom || '', objectif: v.objectif || '', type: v.type || '', data: v.donnees || '' })),
-      business_rules: (S.regles || []).map(r => ({ rule: r.regle || '', scope: r.portee || 'globale', severity: r.severite || 'bloquante' })),
-      flows: { mermaid: (S.logigramme && S.logigramme.mermaid) || '' },
-      integrations: (S.m2m || []).map(m => ({ app: m.app || '', direction: m.direction || 'consomme', endpoint: m.endpoint || '', description: m.description || '' })),
-      function_notes: (S.fonctions || []).map(f => ({ method: f.methode || 'GET', path: f.endpoint || '', description: f.description || '', origin: f.suggere ? 'suggested' : 'manual' })),
-      non_functional: { performance: S.exigences.perf || '', security: S.exigences.securite || '', constraints: S.exigences.contraintes || '', dependencies: S.exigences.dependances || '' }
+      situation_actuelle: {
+        existant: S.situation.existant || '',
+        etapes: splitLines(S.situation.etapes),
+        points_de_douleur: splitLines(S.situation.douleurs),
+      },
+      acteurs: (S.acteurs || []).map(a => ({ role_metier: a.role || '', description: a.description || '' })),
+      objets_metier: (S.informations || []).map(o => ({ objet: o.objet || '', informations: o.infos || '', precisions: o.precisions || '' })),
+      actions: (S.actions || []).map(a => ({ acteur: a.acteur || '', action: a.action || '', objet: a.objet || '', detail: a.detail || '' })),
+      ecrans_parcours: (S.ecrans || []).map(e => ({ nom: e.nom || '', objectif: e.objectif || '', precisions: e.precisions || '' })),
+      regles_metier: (S.regles || []).map(r => ({ regle: r.regle || '', precisions: r.precisions || '' })),
+      processus: { mermaid: (S.processus && S.processus.mermaid) || '' },
+      echanges: (S.echanges || []).map(e => ({ systeme: e.systeme || '', flux: e.flux || '' })),
+      exigences: { performance: S.exigences.performance || '', acces_securite: S.exigences.acces || '', contraintes: S.exigences.contraintes || '', autres: S.exigences.autres || '' },
     };
   }
   function exportBootstrap() {
-    const manifest = buildBootstrap();
-    download('cahier-des-charges.bootstrap.json', JSON.stringify(manifest, null, 2), 'application/json');
+    download('cahier-des-charges.bootstrap.json', JSON.stringify(buildBootstrap(), null, 2), 'application/json');
     clearDirty();
   }
 
@@ -921,8 +589,10 @@
     });
     $('btn-theme').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Mode clair' : 'Mode sombre';
     $('btn-print').addEventListener('click', function(){ window.print(); });
+
     $('btn-md').addEventListener('click', exportMarkdown);
     $('btn-json-export').addEventListener('click', exportJSON);
+    $('btn-bootstrap').addEventListener('click', exportBootstrap);
     $('btn-json-import').addEventListener('click', () => { hideImportError(); $('json-file').click(); });
     $('json-file').addEventListener('change', (ev) => {
       const file = ev.target.files[0]; if (!file) return;
@@ -934,13 +604,13 @@
       reader.readAsText(file);
       ev.target.value = '';
     });
-    // les exports sont toujours disponibles (un brouillon partiel reste exportable)
+
+    // exports toujours disponibles (un brouillon partiel reste exportable)
     $('btn-md').disabled = false;
     $('btn-json-export').disabled = false;
     window.addEventListener('beforeunload', (ev) => {
       if (dirty) { ev.preventDefault(); ev.returnValue = ''; }
     });
-    $('btn-bootstrap').addEventListener('click', exportBootstrap);
     renderAll();
   })();
   </script>
