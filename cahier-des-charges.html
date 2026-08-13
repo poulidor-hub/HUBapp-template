@@ -92,6 +92,8 @@
     .sommaire-list a:hover { background: var(--bg-primary); }
     .ind { width: 10px; text-align: center; color: var(--text-secondary); }
     .ind.filled { color: var(--success); }
+    .attribution { margin-top: var(--hub-space-4, 16px); padding-top: var(--hub-space-3, 12px); border-top: 1px solid var(--border); font-size: var(--hub-font-size-xs, 12px); color: var(--text-secondary); line-height: 1.5; }
+    .attribution a { color: var(--accent); }
 
     main#sections { grid-area: main; padding: var(--hub-space-6, 24px); max-width: 900px; }
 
@@ -165,7 +167,7 @@
     </div>
   </header>
   <div id="import-error" role="alert"></div>
-  <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul></aside>
+  <aside id="sommaire"><h2>Sommaire</h2><ul class="sommaire-list" id="sommaire-list"></ul><p class="attribution">© 2026 <strong>POULIDOR</strong> Audit &amp; Développement<br><span class="hint">Outil interne — <a href="LICENSE.md">licence</a></span></p></aside>
   <main id="sections"></main>
   <script>
   // ============================================================ SCHEMA (100 % métier)
@@ -174,6 +176,8 @@
   const SCHEMA = {
     objectif: { title: '1. À quoi sert cette application ?', icon: 'bi bi-bullseye', type: 'object', fields: [
       { key: 'app', label: 'Nom de l\'application', type: 'text', required: true },
+      { key: 'auteur', label: 'Auteur (nom / prénom) — qui crée l\'application', type: 'text' },
+      { key: 'mainteneur', label: 'Mainteneur du code (nom / prénom)', type: 'text' },
       { key: 'objectif', label: 'Objectif métier (en une phrase)', type: 'text', required: true },
       { key: 'contexte', label: 'Contexte, problème à résoudre', type: 'textarea' },
       { key: 'pourQui', label: 'Pour qui (bénéficiaires)', type: 'textarea' },
@@ -226,7 +230,7 @@
     return {
       meta: { version: '1.0', updatedAt: new Date().toISOString().slice(0,10) },
       sections: {
-        objectif: { app:'', objectif:'', contexte:'', pourQui:'' },
+        objectif: { app:'', auteur:'', mainteneur:'', objectif:'', contexte:'', pourQui:'' },
         situation: { existant:'', etapes:'', douleurs:'' },
         acteurs: [],
         informations: [],
@@ -413,7 +417,10 @@
   }
   function updateTitle() {
     const app = state.sections.objectif.app;
-    $('app-title').textContent = app ? ('Cahier des charges — ' + app) : 'Nouveau cahier des charges';
+    const auteur = state.sections.objectif.auteur;
+    let t = app ? ('Cahier des charges — ' + app) : 'Nouveau cahier des charges';
+    if (app && auteur && auteur.trim()) t += ' · ' + auteur.trim();
+    $('app-title').textContent = t;
   }
   function setExportEnabled() { /* les exports sont activés dans initChrome */ }
 
@@ -474,7 +481,8 @@
     const S = state.sections;
     const app = S.objectif.app || '(sans nom)';
     let md = '# Cahier des charges — ' + app + '\n\n';
-    md += '> Spécification métier. La couche technique (modèle de données, endpoints, écrans) sera dérivée par l\'agent.\n\n---\n\n';
+    md += '> Spécification métier. La couche technique (modèle de données, endpoints, écrans) sera dérivée par l\'agent.\n\n';
+    md += '**Auteur** : ' + (S.objectif.auteur || '—') + '  ·  **Mainteneur du code** : ' + (S.objectif.mainteneur || '—') + '\n\n---\n\n';
 
     md += '## 1. À quoi sert cette application ?\n\n';
     md += '- **Objectif** : ' + (S.objectif.objectif || '—') + '\n';
@@ -505,7 +513,7 @@
     md += '- **Contraintes** : ' + (S.exigences.contraintes || '—') + '\n';
     md += '- **Autres** : ' + (S.exigences.autres || '—') + '\n\n';
 
-    md += '---\n\n_Généré par le canevas de cahier des charges du template POULIDOR._\n';
+    md += '---\n\n© 2026 POULIDOR Audit & Développement — Outil interne (tous droits réservés). Généré par le canevas de cahier des charges.\n';
     download('cahier-des-charges.md', md, 'text/markdown');
     clearDirty();
   }
@@ -548,11 +556,14 @@
     return {
       schema_version: '1.0',
       type: 'poulidor-app-business-spec',
+      attribution: '© 2026 POULIDOR Audit & Développement — Outil interne (tous droits réservés).',
       note: "Spécification métier (non technique). L'agent Jellycode dérive la couche technique (modèle de données, endpoints, permissions, écrans) à partir de cette description.",
       generated_at: new Date().toISOString(),
       app: {
         name: S.objectif.app || '',
         slug: slugize(S.objectif.app),
+        auteur: S.objectif.auteur || '',
+        mainteneur: S.objectif.mainteneur || '',
         objectif: S.objectif.objectif || '',
         contexte: S.objectif.contexte || '',
         pour_qui: S.objectif.pourQui || '',
