@@ -503,6 +503,61 @@
     return row;
   }
 
+  // ============================================================ §4 INTERACTIONS (matrice CRUD)
+  const ROLES = ['viewer','user','manager','admin'];
+  const ACTIONS = [['c','Créer'],['r','Lire'],['u','Modifier'],['d','Supprimer']];
+  function entitiesFromState() { return state.sections.donnees.map(e => e.nom).filter(n => n && n.trim()); }
+  function syncInteractionsToEntities() {
+    const names = entitiesFromState();
+    const existing = {}; state.sections.interactions.forEach(r => { existing[r.entite] = r; });
+    state.sections.interactions = names.map(n => existing[n] || { entite: n, c:[], r:[], u:[], d:[] });
+  }
+  function rerenderInteractions() {
+    const body = $('sec-interactions') && $('sec-interactions').querySelector('.acc-body');
+    if (!body) return;
+    syncInteractionsToEntities();
+    renderSectionBody('interactions', body);
+    updateSectionIndicator('interactions'); updateProgress();
+  }
+  CUSTOM_RENDERERS.crud = function (key, s) {
+    syncInteractionsToEntities();
+    const wrap = el('div');
+    const rows = state.sections.interactions;
+    if (rows.length === 0) { wrap.appendChild(el('p', 'hint', 'Définissez des entités en §3 Données pour alimenter la matrice.')); return wrap; }
+    const table = el('table', 'crud-table');
+    const thead = el('thead'); const htr = el('tr');
+    htr.appendChild(el('th', null, 'Entité'));
+    ACTIONS.forEach(a => htr.appendChild(el('th', null, a[1] + ' (rôles)')));
+    thead.appendChild(htr); table.appendChild(thead);
+    const tbody = el('tbody');
+    rows.forEach((row, ri) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, row.entite));
+      ACTIONS.forEach(a => {
+        const td = el('td');
+        const box = el('div', 'crud-actions');
+        ROLES.forEach(role => {
+          const lab = el('label');
+          const cb = el('input'); cb.type = 'checkbox'; cb.value = role;
+          cb.checked = row[a[0]].indexOf(role) !== -1;
+          cb.addEventListener('change', () => {
+            const arr = row[a[0]];
+            if (cb.checked) { if (arr.indexOf(role) === -1) arr.push(role); }
+            else { const i = arr.indexOf(role); if (i !== -1) arr.splice(i,1); }
+            markDirty(); updateSectionIndicator('interactions'); updateProgress(); setExportEnabled();
+          });
+          lab.appendChild(cb); lab.appendChild(document.createTextNode(role));
+          box.appendChild(lab);
+        });
+        td.appendChild(box); tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody); wrap.appendChild(table);
+    wrap.appendChild(el('p', 'hint', 'Cochez, pour chaque entité et action, les rôles autorisés.'));
+    return wrap;
+  };
+
   // ============================================================ THEME / PRINT / INIT
   (function initChrome(){
     var p = new URLSearchParams(location.search).get('theme');
