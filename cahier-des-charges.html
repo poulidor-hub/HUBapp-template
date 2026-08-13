@@ -835,6 +835,12 @@
       reader.readAsText(file);
       ev.target.value = '';
     });
+    // les exports sont toujours disponibles (un brouillon partiel reste exportable)
+    $('btn-md').disabled = false;
+    $('btn-json-export').disabled = false;
+    window.addEventListener('beforeunload', (ev) => {
+      if (dirty) { ev.preventDefault(); ev.returnValue = ''; }
+    });
     renderAll();
   })();
   </script>
