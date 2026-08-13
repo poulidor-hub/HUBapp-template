@@ -9,21 +9,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [2.11.0] — 13 août 2026
 
-### ⚡ Canevas de cahier des charges interactif
+### ⚡ Canevas de cahier des charges (100 % métier)
 
-- **Ajouté** : `cahier-des-charges.html` à la racine du template — outil dev autonome
-  (HTML/CSS/JS vanilla, fonctionne en `file://`, sans backend ni build) pour structurer
+- **Ajouté** : `cahier-des-charges.html` à la racine du template — outil autonome
+  (HTML/CSS/JS vanilla, fonctionne en `file://`, sans backend ni build) pour décrire
   le besoin métier d'une nouvelle app en amont du code, à remplir en atelier (dev + métier).
-  - 10 sections structurées : identité & contexte, acteurs & rôles, données (builder
-    d'entités/champs), interactions × données (matrice CRUD par rôle), affichage &
-    objectifs, règles de gestion, logigramme (Mermaid, aperçu live), intégrations M2M,
-    fonctions/backend nécessaires (pré-remplissables depuis les données/interactions),
-    exigences non-fonctionnelles.
+  - **Canevas 100 % métier** : aucune question technique — l'agent Jellycode dérive la
+    couche technique (modèle de données, endpoints, permissions, écrans) depuis la
+    spécification produite.
+  - 10 questions métier : à quoi sert l'app, comment ça se passe aujourd'hui (existant
+    + points de douleur), qui sont les utilisateurs, quelles informations sont gérées,
+    que font les utilisateurs, quels écrans/parcours, quelles règles, quel processus
+    (logigramme Mermaid), avec quels systèmes échanger, quelles exigences & contraintes.
   - Layout hybride (accordéons + sommaire sticky + indicateurs de remplissage).
   - Exports : **Markdown** (cahier des charges livrable), **export/import JSON**
-    (round-trip pour guide vivant), **export Bootstrap agent** (manifest JSON dérivé
-    orienté construction : entités, permissions, endpoints REST + rôles — destiné à
-    être ingéré par l'agent Jellycode pour scaffolder une app).
+    (round-trip pour guide vivant), **Spécification agent** (manifest JSON métier
+    destiné à être ingéré par l'agent Jellycode pour scaffolder l'app).
   - Thème clair/sombre via tokens HUBCSS + Bootstrap Icons ; impression PDF ;
     anti-perte (`beforeunload`).
 - **Ajouté** : section README documentant l'outil et son usage en atelier.

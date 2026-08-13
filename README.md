@@ -4,14 +4,18 @@ Template d'application avec authentification Hub pour le développement rapide d
 
 ## 📋 Canevas de cahier des charges
 
-Un outil de conception (pur HTML statique) pour structurer le besoin métier d'une
+Un outil de conception (pur HTML statique) pour décrire le **besoin métier** d'une
 nouvelle application **en amont du code**, à remplir en atelier (dev + métier).
+Le canevas est **100 % métier** : il ne contient aucune question technique —
+l'**agent Jellycode dérive la couche technique** (modèle de données, endpoints,
+permissions, écrans) à partir de la spécification produite.
 
 **Usage :**
 1. Ouvrir `cahier-des-charges.html` dans un navigateur (double-clic, fonctionne hors-ligne sauf le logigramme Mermaid qui nécessite un CDN).
-2. Remplir les 10 sections (identité, acteurs, données, interactions CRUD, affichage, règles de gestion, logigramme, M2M, fonctions backend, exigences non-fonctionnelles).
-3. **Exporter Markdown** → ranger le `cahier-des-charges.md` dans le `docs/` de l'app.
-4. Pour reprendre l'édition plus tard : **Exporter JSON**, puis **Importer JSON** à la session suivante.
+2. Répondre aux 10 questions métier : à quoi sert l'app, comment ça se passe aujourd'hui, qui sont les utilisateurs, quelles informations sont gérées, que font les utilisateurs, quels écrans/parcours, quelles règles, quel processus (logigramme), avec quels systèmes échanger, quelles exigences & contraintes.
+3. **Exporter Markdown** → cahier des charges livrable (à ranger dans le `docs/` de l'app).
+4. **Spécification agent (JSON)** → manifest métier structuré destiné à être ingéré par l'agent Jellycode pour scaffolder l'app.
+5. Pour reprendre l'édition plus tard : **Exporter JSON**, puis **Importer JSON** à la session suivante.
 
 Aucun backend, aucune persistance locale — l'export est la seule sauvegarde. Thème clair/sombre via le bouton dédié (préférence dans l'URL).
 
