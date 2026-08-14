@@ -7,6 +7,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.11.1] — 14 août 2026
+
+### ⚡ Sécurité — durcissement des conteneurs (audit #21)
+
+- **Modifié** : `docker-compose.yml` — `security_opt: no-new-privileges:true` et
+  `cap_drop: ALL` sur les trois services (pattern `HUB_base`) :
+  - **postgres** : capabilities minimales restaurées uniquement
+    (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID` — l'image démarre en root
+    puis bascule sur l'utilisateur postgres) ;
+  - **api** : zéro capability (l'image tourne en `appuser` et écoute sur 8000,
+    port non privilégié) ;
+  - **frontend** : `cap_add: NET_BIND_SERVICE` seul (bind des ports 80/443).
+- **Modifié** : `Dockerfile.frontend` — conteneur frontend **100 % non-root**
+  (`USER nginx`, uid 101) : répertoires cache/logs/`conf.d` pré-chownés au build,
+  plus aucun besoin de `CAP_CHOWN`/`CAP_DAC_OVERRIDE` au runtime (pattern
+  `HUB_base/frontend/Dockerfile`). NB : l'auto-génération de certificats HTTPS
+  suppose un montage `./ssl` accessible à l'uid 101 (`make ssl`).
+- **Validé** : tests de boot réels sous options durcies — API (uid 1000,
+  `/api/health` healthy), frontend (uid 101, HTTP 200) ; variantes compose
+  base/https/dev vérifiées via `docker compose config`.
+- **Non propagé** aux apps existantes du parc (effectif à la prochaine migration
+  template de chaque app).
+
+---
+
 ## [2.11.0] — 13 août 2026
 
 ### ⚡ Canevas de cahier des charges (100 % métier)
