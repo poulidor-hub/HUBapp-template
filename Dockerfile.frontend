@@ -60,6 +60,20 @@ RUN chmod +x /docker-entrypoint.sh
 # Copier les fichiers buildés depuis le stage builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# === Durcissement (audit sécurité #21) — pattern HUB_base/frontend ===
+# Conteneur 100% non-root : nginx tourne en utilisateur "nginx" (uid 101).
+# - les répertoires de cache/logs et conf.d sont chownés au build (nginx y écrit
+#   au runtime sans jamais avoir besoin de CAP_CHOWN/CAP_DAC_OVERRIDE) ;
+# - le compose fournit uniquement CAP_NET_BIND_SERVICE pour binder 80/443 ;
+# - l'entrypoint (docker-entrypoint.sh) reste compatible : il écrit dans
+#   /etc/nginx/conf.d (chowné) et /tmp (1777).
+# NB : l'auto-génération de certificats dans /etc/nginx/ssl nécessite un montage
+# rw accessible à l'uid 101 (le montage par défaut ./ssl:ro impose `make ssl`).
+RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
+
+USER nginx
+
 # Exposer les ports HTTP et HTTPS
 EXPOSE 80 443
 
