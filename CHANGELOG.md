@@ -7,6 +7,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.11.2] — 14 août 2026
+
+### ⚡ AuthContext — purge du refresh token périmé au lancement (bug « onglet qui se referme »)
+
+- **Corrigé** : au lancement d'une app depuis le HUB, un access token frais arrive via
+  `?access_token=` **sans** `refresh_token` associé. L'ancien refresh token localStorage
+  (session précédente) avait été consommé par la rotation du HUB et était révoqué : au
+  premier refresh de l'app → 401 → `logout()` → `hub?action=logout` → `window.close()` →
+  l'onglet se refermait aussitôt (il fallait recliquer). Depuis la réduction des access
+  tokens à 30 min (ex-480), le bug était quasi systématique.
+- **Modifié** : `getInitialToken()` purge désormais le refresh token localStorage quand un
+  token de lancement arrive sans refresh token associé (périmé par construction).
+- **Documenté** : le skill de migration `migrate-app-template` (section D.3.1 + checklist
+  G.2) couvre la détection et la vérification de ce bug pour les apps legacy.
+
+---
+
 ## [2.11.1] — 14 août 2026
 
 ### ⚡ Sécurité — durcissement des conteneurs (audit #21)
