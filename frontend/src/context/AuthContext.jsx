@@ -41,6 +41,15 @@ function getInitialToken() {
     localStorage.setItem(config.storageKeys.accessToken, urlToken)
     if (urlRefreshToken) {
       localStorage.setItem(config.storageKeys.refreshToken, urlRefreshToken)
+    } else {
+      // Token de lancement SANS refresh token associé (flux de lancement HUB).
+      // Le refresh token localStorage provient alors d'une session précédente :
+      // il a été consommé par la rotation du HUB (rotation à chaque refresh) et
+      // est donc révoqué. Le conserver provoquerait un 401 au prochain refresh
+      // → logout() → fermeture immédiate de l'onglet au lancement suivant
+      // (bug « onglet qui se referme, il faut recliquer »).
+      console.log('🧹 Refresh token localStorage périmé (lancement sans refresh_token) — purge')
+      localStorage.removeItem(config.storageKeys.refreshToken)
     }
     // Nettoyer l'URL (sans reload)
     window.history.replaceState({}, document.title, window.location.pathname)
