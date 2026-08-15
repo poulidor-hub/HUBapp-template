@@ -81,6 +81,9 @@ services:
       - UPLOADS_DIR=/app/uploads
     volumes:
       - uploads_data:/app/uploads
+      # Partagé avec le frontend (./ssl:/etc/nginx/ssl) — permet à cert_sync.py
+      # de réécrire les certs HTTPS émis par la PKI du HUB, visibles de nginx.
+      - ./ssl:/app/ssl
     ports:
       - "${API_PORT:-9045}:8000"
     depends_on:

@@ -1088,6 +1088,19 @@ class HubClient:
             max_retries=max_retries,
         )
 
+    async def fetch_app_cert(self) -> Optional[dict]:
+        """
+        Récupère le certificat HTTPS émis par la PKI du HUB pour cette app.
+
+        Appelle POST /api/apps/cert/issue (Bearer token M2M + X-Slug) et
+        retourne le dict {cert, key, ca, san, fingerprint} (PEM str), ou None
+        si le HUB est injoignable / n'a pas émis de certificat.
+        """
+        data = await self.call_hub_endpoint("/api/apps/cert/issue", method="POST")
+        if data and "error" not in data and data.get("cert"):
+            return data
+        return None
+
     async def report_sync(self, target_slug: str) -> None:
         """Signale au hub qu'une synchro M2M vient de réussir avec ``target_slug``.
 

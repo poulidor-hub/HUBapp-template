@@ -23,6 +23,7 @@ import os
 from config import get_settings, APP_VERSION
 from database import init_db, close_db, apply_migrations
 from hub_client import hub_client
+from cert_sync import cert_sync_loop
 from outbox import outbox_service
 from hub_auth import (
     hub_auth,
@@ -171,6 +172,11 @@ async def lifespan(app: FastAPI):
     outbox_service.start_worker()
     app.state.outbox_worker_active = True
     logger.info("📦 Worker outbox démarré")
+
+    # 8. Re-synchro périodique des certs HTTPS émis par la PKI du HUB
+    #    (boucle no-op par itération si HTTPS_ENABLED=false)
+    app.state.cert_sync_task = asyncio.create_task(cert_sync_loop())
+    logger.info("🔐 Tâche de synchro des certs HTTPS démarrée (toutes les 6h)")
     
     startup_duration = (datetime.now(timezone.utc) - startup_time).total_seconds()
     logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
@@ -188,6 +194,14 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     
+    cert_sync_task = getattr(app.state, 'cert_sync_task', None)
+    if cert_sync_task and not cert_sync_task.done():
+        cert_sync_task.cancel()
+        try:
+            await cert_sync_task
+        except asyncio.CancelledError:
+            pass
+
     await outbox_service.stop_worker()
     await outbox_service.cleanup_old_messages()
     
