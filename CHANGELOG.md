@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.12.0] — 15 août 2026
+
+### ⚡ Re-synchro périodique des certificats HTTPS depuis la PKI du HUB
+
+- **Ajouté** : module `backend/cert_sync.py` — boucle de fond (synchro immédiate au démarrage puis toutes les 6h) qui récupère le certificat émis par la PKI du HUB et réécrit `ssl/` (`server.crt`/`server.key`/`ca.crt`) uniquement si le contenu a changé. No-op par cycle si `HTTPS_ENABLED=false` (vérifié à chaque itération pour réagir au changement de config sans restart).
+- **Ajouté** : `hub_client.fetch_app_cert()` — `POST /api/apps/cert/issue` (token M2M) → `{cert, key, ca, san, fingerprint}` ou `None` si le HUB n'a pas émis de certificat.
+- **Ajouté** : après réécriture, reload nginx best-effort (`docker exec … nginx -s reload`, utile en dev) ; en prod (pas de socket docker), avertissement « restart du frontend requis » — la rotation du cert du HUB (changement d'IP, rotation de CA) se propage ainsi sans intervention manuelle.
+- **Ajouté** : tâche `cert_sync_loop` lancée au startup de `backend/main.py` et annulée au shutdown ; volume `./ssl:/app/ssl` partagé hôte ↔ backend ↔ frontend dans `docker-compose.yml`.
+- **Tests** : `test_cert_sync.py` — pas de réécriture à l'identique, mise à jour sur changement, no-op sans HTTPS.
+
+---
+
 ## [2.11.2] — 14 août 2026
 
 ### ⚡ AuthContext — purge du refresh token périmé au lancement (bug « onglet qui se referme »)
