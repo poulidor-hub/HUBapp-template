@@ -186,3 +186,11 @@ networks:
   app-network:
     name: ${APP_SLUG:-mon-app}-network
     driver: bridge
+    ipam:
+      config:
+        # Sous-réseau attribué par le Hub (pool APP_SUBNET_POOL, défaut 10.50.0.0/16).
+        # Rempli par ACTIONS/PYTHON/allocate_ports.py à la première exécution de
+        # `make up`/`make build` (champ `subnet` de /api/apps/allocate-ports).
+        # Épinglage obligatoire : le pool Docker par défaut (172.16/12) est saturé
+        # et retombe sur 192.168.16.0/20, qui chevauche le VPN du routeur.
+        - subnet: ${APP_SUBNET:?APP_SUBNET manquant — lancez `make sync-env` (allocation via le Hub)}

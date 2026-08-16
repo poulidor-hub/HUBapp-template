@@ -45,8 +45,9 @@ def main() -> int:
 
     api_port = env.get("API_PORT", "").strip()
     frontend_port = env.get("FRONTEND_PORT", "").strip()
-    if api_port and frontend_port:
-        print(f"✅ Ports déjà définis (API={api_port}, FRONTEND={frontend_port}) — pas d'allocation.")
+    subnet = env.get("APP_SUBNET", "").strip()
+    if api_port and frontend_port and subnet:
+        print(f"✅ Ports et sous-réseau déjà définis (API={api_port}, FRONTEND={frontend_port}, SUBNET={subnet}) — pas d'allocation.")
         return 0
 
     hub_host = env.get("HUB_HOST", "").strip()
@@ -80,12 +81,15 @@ def main() -> int:
     api = str(data["api_port"])
     frontend = str(data["frontend_port"])
     https = str(data["frontend_https_port"])
+    subnet = str(data.get("subnet") or "").strip()
 
     set_env_var(ENV_PATH, "API_PORT", api)
     set_env_var(ENV_PATH, "FRONTEND_PORT", frontend)
     set_env_var(ENV_PATH, "FRONTEND_HTTPS_PORT", https)
+    if subnet:
+        set_env_var(ENV_PATH, "APP_SUBNET", subnet)
 
-    print(f"✅ Ports alloués par le Hub: API={api}, FRONTEND={frontend}, HTTPS={https}")
+    print(f"✅ Ports alloués par le Hub: API={api}, FRONTEND={frontend}, HTTPS={https}, SUBNET={subnet or '—'}")
     return 0
 
 
