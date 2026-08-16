@@ -7,6 +7,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.13.0] — 16 août 2026
+
+### ⚡ Épinglage du sous-réseau Docker de l'app (allocation par le Hub)
+
+- **Ajouté** : variable `APP_SUBNET` dans `.env.example` — sous-réseau Docker de l'app (CIDR, ex: `10.50.0.0/24`). Laissée vide, elle est allouée automatiquement par le Hub à la première exécution de `make up`/`make build` (pool `APP_SUBNET_POOL`, défaut `10.50.0.0/16` — voir HUB_base v3.32.0).
+- **Ajouté** : `ACTIONS/PYTHON/allocate_ports.py` récupère le champ `subnet` de `POST /api/apps/allocate-ports` et l'écrit dans `.env` ; le shortcut « déjà défini » exige désormais ports **et** sous-réseau (remplissage paresseux pour les apps antérieures à la feature).
+- **Ajouté** : `docker-compose.yml` — le réseau `app-network` épingle son sous-réseau via IPAM (`${APP_SUBNET:?…}` avec message d'erreur explicite). L'épinglage est obligatoire : le pool Docker par défaut (`172.16/12`) est saturé sur l'hôte et retombe sur `192.168.16.0/20`, en conflit avec le VPN WireGuard du routeur (`192.168.27.0/24`).
+- **⚠ Migration** (apps existantes syncées sur ce template) : `APP_SUBNET` manquant fait échouer `docker compose up` avec l'erreur explicite — relancer `make sync-env` (l'allocation est automatique et idempotente par app).
+
+---
+
 ## [2.12.0] — 15 août 2026
 
 ### ⚡ Re-synchro périodique des certificats HTTPS depuis la PKI du HUB
