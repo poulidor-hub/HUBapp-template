@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.14.0] — 17 août 2026
+
+### 🆕 INITIALISE.py — flag `--yes` (mode non-interactif)
+
+- **Ajouté** : `python INITIALISE.py --profile client.json --yes` confirme automatiquement le récapitulatif de configuration — le mode profil restait bloqué sur une confirmation finale `(O/n)`, causant `EOFError`/traceback en non-interactif (CI, harness, scripts d'automatisation). Le récapitulatif reste affiché avant confirmation.
+- **Amélioré** : stdin fermé **sans** `--yes` → message explicite (« relancez avec --yes ») et annulation propre au lieu d'un traceback.
+
 ## [2.13.0] — 16 août 2026
 
 ### ⚡ Épinglage du sous-réseau Docker de l'app (allocation par le Hub)
