@@ -19,6 +19,8 @@ Usage :
     python ACTIONS/PYTHON/INITIALISE.py --interactive             # Mode interactif
     python ACTIONS/PYTHON/INITIALISE.py --profile client.json     # Mode profil
     python ACTIONS/PYTHON/INITIALISE.py "Mon App" --demo          # Auto + garder démo
+    python ACTIONS/PYTHON/INITIALISE.py --profile client.json --yes  # Non-interactif
+                                                                  # (confirme sans prompt)
 
 Compatible Linux / Windows / macOS.
 """
@@ -145,6 +147,7 @@ def parse_cli_options(argv: List[str]) -> dict:
     profile_path = None
     interactive = False
     app_name = None
+    assume_yes = False
     filtered_args = []
     skip_next = False
 
@@ -157,6 +160,9 @@ def parse_cli_options(argv: List[str]) -> dict:
                 raise ValueError("L'option --profile attend un chemin de fichier JSON.")
             profile_path = Path(argv[index + 1]).expanduser().resolve()
             skip_next = True
+            continue
+        if arg in ("-y", "--yes"):
+            assume_yes = True
             continue
         if arg == "--interactive":
             interactive = True
@@ -183,6 +189,7 @@ def parse_cli_options(argv: List[str]) -> dict:
         "profile_path": profile_path,
         "app_name": app_name,
         "interactive": interactive,
+        "assume_yes": assume_yes,
     }
 
 
@@ -471,7 +478,7 @@ def collect_app_info_auto(app_name: str, clean_demo: bool = True, force_slug: st
     return config
 
 
-def confirm_settings(config: dict) -> bool:
+def confirm_settings(config: dict, assume_yes: bool = False) -> bool:
     print(f"\n{Colors.BOLD}📋 Récapitulatif de la configuration{Colors.ENDC}")
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
     print(f"  TYPE:             {Colors.GREEN}{config['APP_KIND_LABEL']}{Colors.ENDC}")
@@ -491,7 +498,14 @@ def confirm_settings(config: dict) -> bool:
     if config.get('CLEAN_DEMO'):
         print(f"  NETTOYAGE DEMO:   {Colors.GREEN}Oui{Colors.ENDC}")
     print(f"{Colors.CYAN}{'─' * 50}{Colors.ENDC}")
-    response = input(f"\n{Colors.YELLOW}Confirmer ces paramètres ? (O/n): {Colors.ENDC}").strip().lower()
+    if assume_yes:
+        print(f"{Colors.GREEN}✓ Confirmé automatiquement (--yes){Colors.ENDC}")
+        return True
+    try:
+        response = input(f"\n{Colors.YELLOW}Confirmer ces paramètres ? (O/n): {Colors.ENDC}").strip().lower()
+    except EOFError:
+        print(f"\n{Colors.RED}✗ Entrée non interactive (stdin fermé) — relancez avec --yes pour confirmer automatiquement.{Colors.ENDC}")
+        return False
     return response in ('', 'o', 'oui', 'y', 'yes')
 
 
@@ -2282,7 +2296,7 @@ def main():
 
     clean_mode = config.get('CLEAN_DEMO', clean_mode)
 
-    if not confirm_settings(config):
+    if not confirm_settings(config, assume_yes=parsed_options.get("assume_yes", False)):
         print(f"\n{Colors.YELLOW}Opération annulée.{Colors.ENDC}")
         sys.exit(0)
 
