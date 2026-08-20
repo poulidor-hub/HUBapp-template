@@ -7,6 +7,20 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.15.0] — 20 août 2026
+
+### 🔄 sync-env — découverte automatique de l'IP du Hub
+
+- **Ajouté** : `make sync-env` découvre et met à jour `HUB_HOST` automatiquement via `GET /api/config/hub-host` du Hub (candidats ordonnés : `HUB_HOST` courant, `localhost`, `127.0.0.1`, IP locale, `host.docker.internal`). Évite l'édition manuelle du `.env` quand le serveur change d'IP.
+- **Ajouté** : nouvelle cible `make sync-hub-host` pour gérer explicitement un changement d'IP (découverte auto + prompt interactif de secours, ou `make sync-hub-host HUB_HOST=x.x.x.x` pour forcer / CI / multi-serveur).
+- **Ajouté** : script `ACTIONS/PYTHON/sync_hub_host.py` (stdlib uniquement) + tests `ACTIONS/PYTHON/test_sync_hub_host.py`.
+- **Ajouté** : bootstrap du `.env` au premier démarrage — `make dev` / `make up` / `make build` créent le `.env` depuis `.env.example` s'il est absent (message `🆕 Premier démarrage`), puis continuent. Le template est désormais démarrable immédiatement après `git clone`, sans édition manuelle.
+- **Corrigé** : `sync_hub_host.py` ne crée plus de `.env` partiel en l'absence de `.env` (garde défensive — la création du `.env` reste du ressort du bootstrap Makefile / `INITIALISE.py`).
+- **Corrigé** : `.PHONY` du Makefile complété (13→toutes les cibles documentées).
+- **Sécurité** : `sync-env` reste non-bloquant — si le Hub est injoignable, il conserve `HUB_HOST` courant en silence (jamais de prompt intempestif sur `make up`).
+
+---
+
 ## [2.14.0] — 17 août 2026
 
 ### 🆕 INITIALISE.py — flag `--yes` (mode non-interactif)

@@ -17,7 +17,11 @@ ifneq (,$(wildcard ./.env))
 	export
 endif
 
-.PHONY: help dev up-dev build up down down-dev restart logs test lint clean refresh-design-seed sync-hub-tooling sync-hub-tooling-check
+.PHONY: help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
+        restart restart-api restart-frontend logs logs-api logs-db \
+        test test-cov test-docker test-docker-cov health health-detailed version \
+        db-shell clean clean-all init ai-index bump-patch bump-minor bump-major \
+        refresh-design-seed sync-hub-tooling sync-hub-tooling-check
 
 COMPOSE      = docker compose -f docker-compose.yml
 COMPOSE_DEV  = docker compose -f docker-compose.yml -f docker-compose.dev.yml
@@ -34,6 +38,8 @@ help: ## Afficher cette aide
 # === SSL / HTTPS ===
 
 sync-env: ## Allouer les ports via le Hub si absents, puis synchroniser FRONTEND_HTTPS_PORT et APP_VERSION
+	@if [ ! -f .env ]; then cp .env.example .env && echo "🆕 Premier démarrage : .env créé depuis .env.example — adaptez APP_SLUG, HUB_HOST et les secrets (POSTGRES_PASSWORD) si besoin."; fi
+	@python3 ACTIONS/PYTHON/sync_hub_host.py --quiet
 	@python3 ACTIONS/PYTHON/allocate_ports.py || { echo "❌ Allocation des ports échouée"; exit 1; }
 	@frontend_port=$$(grep -E '^FRONTEND_PORT=' .env | tail -n 1 | cut -d '=' -f2); \
 	if ! echo "$$frontend_port" | grep -Eq '^[0-9]+$$'; then \
@@ -59,6 +65,13 @@ sync-env: ## Allouer les ports via le Hub si absents, puis synchroniser FRONTEND
 	fi; \
 	echo "🔢 Ports synchronisés: HTTP=$$frontend_port, HTTPS=$$frontend_https_port"; \
 	echo "🏷️ Version synchronisée: $$app_version"
+
+sync-hub-host: ## Synchroniser l'IP du Hub (découverte auto, ou make sync-hub-host HUB_HOST=x.x.x.x)
+ifeq ($(origin HUB_HOST),command line)
+	@python3 ACTIONS/PYTHON/sync_hub_host.py --hub-host $(HUB_HOST)
+else
+	@python3 ACTIONS/PYTHON/sync_hub_host.py
+endif
 
 ssl: ## Générer les certificats SSL (pour HTTPS)
 	@bash scripts/generate-ssl.sh
