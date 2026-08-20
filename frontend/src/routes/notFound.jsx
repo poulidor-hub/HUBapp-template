@@ -6,7 +6,7 @@ export default function NotFoundPage() {
     <div className="card">
       <h2>404 — Page introuvable</h2>
       <p>La page demandée n'existe pas.</p>
-      <Link to="/" style={{ color: 'var(--color-primary)' }}>
+      <Link to="/" style={{ color: 'var(--accent)' }}>
         ← Retour à l'accueil
       </Link>
     </div>

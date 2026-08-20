@@ -19,7 +19,7 @@ export default function HomePage() {
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3>Outils de développement</h3>
         <p>
-          <Link to="/demo/form" style={{ color: 'var(--color-primary)' }}>
+          <Link to="/demo/form" style={{ color: 'var(--accent)' }}>
             → Démo TanStack Form (avec DevTools)
           </Link>
         </p>

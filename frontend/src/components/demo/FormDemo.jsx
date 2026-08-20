@@ -24,7 +24,7 @@ export default function FormDemo() {
   return (
     <div className="card">
       <h2>Nouveau client (démo)</h2>
-      <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
         Formulaire TanStack Form avec validation. Les devtools montrent l'état en temps réel.
       </p>
 
@@ -53,7 +53,7 @@ export default function FormDemo() {
                 style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--color-danger)', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -82,7 +82,7 @@ export default function FormDemo() {
                 style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--color-danger)', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -111,7 +111,7 @@ export default function FormDemo() {
                 style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--color-danger)', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -158,7 +158,7 @@ export default function FormDemo() {
                 Réinitialiser
               </button>
               {!state.isValid && (
-                <span style={{ color: 'var(--color-danger)', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
                   {Object.keys(state.fieldErrors).length} erreur(s)
                 </span>
               )}

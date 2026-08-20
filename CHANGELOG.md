@@ -28,6 +28,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Corrigé** : `ReactQueryDevtools` désormais conditionné à `import.meta.env.DEV` (précédemment inconditionnel) ; suppression du port redondant dans `docker-compose.dev.yml` (conflit avec le port de base) ; `Dockerfile.frontend.dev` expose le port 80 (au lieu de 3000) pour correspondre au mapping du docker-compose de base.
 - **Packages** : deps `@tanstack/react-router` ^1.170, `@tanstack/react-form` ^1.33 ; devDeps `@tanstack/react-router-devtools` ^1.167, `@tanstack/react-form-devtools` ^0.2.31, `msw` ^2.15.
 
+### 🧹 Nettoyage de merge
+
+- **Réaligné** : `frontend/package.json` (resté à 2.11.2) et `APP_VERSION` du `.env.example` (resté à 2.11.0) sur la version réelle du template — les releases 2.12→2.14 n'avaient pas propagé ces fichiers dérivés.
+- **Corrigé** : les nouveaux fichiers de la branche devtools utilisaient d'anciennes variables CSS inexistantes (`--color-primary`, `--color-text-secondary`, `--color-danger`) → remplacées par les alias actuels (`--accent`, `--text-secondary`, `--error`) dans `routes/index.jsx`, `routes/notFound.jsx`, `demo/FormDemo.jsx`.
+- **Régénéré** : `frontend/package-lock.json` à partir du lock de `main` + nouvelles dépendances devtools (jamais de merge manuel du lock).
+
 ---
 
 ## [2.14.0] — 17 août 2026
