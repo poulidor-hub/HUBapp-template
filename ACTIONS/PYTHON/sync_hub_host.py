@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Découverte et synchronisation de l'IP du Hub.
+
+Appelé par `make sync-env` (mode --quiet, silencieux/non-bloquant) et par
+`make sync-hub-host` (mode interactif, avec prompt de secours, ou --hub-host X
+pour forcer). Interroge GET /api/config/hub-host du Hub.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import socket
+import sys
+import urllib.request
+from pathlib import Path
+
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+
+def read_env(path: Path) -> dict:
+    """Parse un .env (clé=valeur). Ignore commentaires (#) et lignes vides."""
+    env = {}
+    if not path.exists():
+        return env
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        env[key.strip()] = value.strip()
+    return env
+
+
+def set_env_var(path: Path, key: str, value: str) -> bool:
+    """Écrit key=value dans le .env. Retourne True si la valeur a changé."""
+    lines = path.read_text().splitlines() if path.exists() else []
+    found = False
+    changed = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            if line != f"{key}={value}":
+                lines[i] = f"{key}={value}"
+                changed = True
+            found = True
+            break
+    if not found:
+        lines.append(f"{key}={value}")
+        changed = True
+    if changed:
+        path.write_text("\n".join(lines) + "\n")
+    return changed
+
+
+def get_local_ip() -> str | None:
+    """Détection IP locale via socket UDP vers 8.8.8.8.
+    Exclut les IP en 172.x (interfaces internes Docker)."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        return None
+    if ip.startswith("172."):
+        return None  # interface interne Docker
+    return ip
+
+
+def query_hub_host(host: str, port: str, timeout: float = 1.5) -> str | None:
+    """GET http://{host}:{port}/api/config/hub-host → retourne le champ 'host', ou None."""
+    url = f"http://{host}:{port}/api/config/hub-host"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+        host_val = data.get("host")
+        if isinstance(host_val, str) and host_val.strip():
+            return host_val.strip()
+        return None
+    except Exception:
+        return None
+
+
+def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float = 1.5) -> str | None:
+    """Itère les candidats dans l'ordre, retourne le 1er 'host' non-None. None si tous injoignables."""
+    for host in candidates:
+        if not host or not host.strip():
+            continue
+        result = query_hub_host(host.strip(), hub_api_port, timeout)
+        if result:
+            return result
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Découverte/synchronisation de l'IP du Hub via GET /api/config/hub-host."
+    )
+    parser.add_argument("--quiet", action="store_true",
+                        help="mode silencieux non-bloquant (utilisé par sync-env)")
+    parser.add_argument("--hub-host", default=None,
+                        help="force l'IP/hostname ; saute la découverte")
+    args = parser.parse_args(argv)
+
+    # Garde : ne jamais créer de .env de zéro (rôle de INITIALISE.py / make dev qui
+    # bootstrappe depuis .env.example). Sans .env on s'abstient proprement.
+    if not ENV_PATH.exists():
+        if not args.quiet:
+            print(
+                f"ℹ️ Aucun .env trouvé ({ENV_PATH.name}). Lancez `make dev` ou `make up` "
+                f"pour le créer depuis .env.example, ou copiez-le manuellement."
+            )
+        return 0
+
+    env = read_env(ENV_PATH)
+    hub_api_port = (env.get("HUB_API_PORT") or "8000").strip() or "8000"
+    current = (env.get("HUB_HOST") or "").strip()
+
+    # --- Override explicite : écriture directe, découverte sautée ---
+    if args.hub_host is not None:
+        new = args.hub_host.strip()
+        if not new:
+            print("❌ --hub-host vide ignoré")
+            return 1
+        if new != current:
+            set_env_var(ENV_PATH, "HUB_HOST", new)
+            print(f"🔄 HUB_HOST forcé: {current or '(vide)'} → {new}")
+        elif not args.quiet:
+            print(f"✅ HUB_HOST déjà à jour ({new})")
+        return 0
+
+    # --- Découverte via candidats ordonnés ---
+    local_ip = get_local_ip()
+    raw_candidates = [current, "localhost", "127.0.0.1", local_ip, "host.docker.internal"]
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for c in raw_candidates:
+        if c and c.strip() and c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    discovered = discover_hub_host(candidates, hub_api_port)
+
+    if discovered:
+        if discovered != current:
+            set_env_var(ENV_PATH, "HUB_HOST", discovered)
+            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {discovered}")
+        elif not args.quiet:
+            print(f"✅ HUB_HOST déjà à jour ({discovered})")
+        return 0
+
+    # --- Hub injoignable ---
+    if args.quiet:
+        return 0  # silence, on garde current
+
+    # mode interactif : prompt de secours
+    try:
+        saisie = input(
+            f"❌ Hub injoignable via {candidates}. "
+            f"Saisissez la nouvelle IP/hostname (Entrée = garder '{current}', Ctrl+C = annuler) : "
+        ).strip()
+    except EOFError:
+        print("❌ Pas de TTY interactif. Relancez avec : make sync-hub-host HUB_HOST=<ip>")
+        return 1
+    if saisie and saisie != current:
+        set_env_var(ENV_PATH, "HUB_HOST", saisie)
+        print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {saisie}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

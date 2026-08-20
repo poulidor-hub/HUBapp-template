@@ -7,6 +7,35 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.15.0] — 20 août 2026
+
+### 🔄 sync-env — découverte automatique de l'IP du Hub
+
+- **Ajouté** : `make sync-env` découvre et met à jour `HUB_HOST` automatiquement via `GET /api/config/hub-host` du Hub (candidats ordonnés : `HUB_HOST` courant, `localhost`, `127.0.0.1`, IP locale, `host.docker.internal`). Évite l'édition manuelle du `.env` quand le serveur change d'IP.
+- **Ajouté** : nouvelle cible `make sync-hub-host` pour gérer explicitement un changement d'IP (découverte auto + prompt interactif de secours, ou `make sync-hub-host HUB_HOST=x.x.x.x` pour forcer / CI / multi-serveur).
+- **Ajouté** : script `ACTIONS/PYTHON/sync_hub_host.py` (stdlib uniquement) + tests `ACTIONS/PYTHON/test_sync_hub_host.py`.
+- **Ajouté** : bootstrap du `.env` au premier démarrage — `make dev` / `make up` / `make build` créent le `.env` depuis `.env.example` s'il est absent (message `🆕 Premier démarrage`), puis continuent. Le template est désormais démarrable immédiatement après `git clone`, sans édition manuelle.
+- **Corrigé** : `sync_hub_host.py` ne crée plus de `.env` partiel en l'absence de `.env` (garde défensive — la création du `.env` reste du ressort du bootstrap Makefile / `INITIALISE.py`).
+- **Corrigé** : `.PHONY` du Makefile complété (13→toutes les cibles documentées).
+- **Sécurité** : `sync-env` reste non-bloquant — si le Hub est injoignable, il conserve `HUB_HOST` courant en silence (jamais de prompt intempestif sur `make up`).
+
+### 🧪 Stack de développement frontend — MSW, TanStack Router, TanStack Form
+
+- **Ajouté** : MSW (Mock Service Worker) pour développer le frontend sans backend — handlers mockés interceptant les requêtes fetch en mode dev via un Service Worker. Conditionné à `import.meta.env.DEV`, tree-shaké en production.
+- **Ajouté** : TanStack Router (routing code-based) remplaçant le mono-page `App.jsx`. Routes : `/` (accueil), `/demo/form` (démo formulaire), `$` (404). Layout dans `routes/root.jsx`.
+- **Ajouté** : TanStack Form avec composant démo `FormDemo` (validation SIRET, email, nom) — pattern de référence pour les formulaires d'app.
+- **Ajouté** : TanStack React Query DevTools et TanStack Router DevTools, conditionnés à `import.meta.env.DEV`, positionnés à droite et bas-gauche.
+- **Corrigé** : `ReactQueryDevtools` désormais conditionné à `import.meta.env.DEV` (précédemment inconditionnel) ; suppression du port redondant dans `docker-compose.dev.yml` (conflit avec le port de base) ; `Dockerfile.frontend.dev` expose le port 80 (au lieu de 3000) pour correspondre au mapping du docker-compose de base.
+- **Packages** : deps `@tanstack/react-router` ^1.170, `@tanstack/react-form` ^1.33 ; devDeps `@tanstack/react-router-devtools` ^1.167, `@tanstack/react-form-devtools` ^0.2.31, `msw` ^2.15.
+
+### 🧹 Nettoyage de merge
+
+- **Réaligné** : `frontend/package.json` (resté à 2.11.2) et `APP_VERSION` du `.env.example` (resté à 2.11.0) sur la version réelle du template — les releases 2.12→2.14 n'avaient pas propagé ces fichiers dérivés.
+- **Corrigé** : les nouveaux fichiers de la branche devtools utilisaient d'anciennes variables CSS inexistantes (`--color-primary`, `--color-text-secondary`, `--color-danger`) → remplacées par les alias actuels (`--accent`, `--text-secondary`, `--error`) dans `routes/index.jsx`, `routes/notFound.jsx`, `demo/FormDemo.jsx`.
+- **Régénéré** : `frontend/package-lock.json` à partir du lock de `main` + nouvelles dépendances devtools (jamais de merge manuel du lock).
+
+---
+
 ## [2.14.0] — 17 août 2026
 
 ### 🆕 INITIALISE.py — flag `--yes` (mode non-interactif)
@@ -143,7 +172,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Migration doc** : `hub-mcp-usage` 207→56 lignes — catalogue 65 outils MCP → `docs/HUB_MCP.md` (155 lignes). Mini-skill = permissions SA/standalone + MCP vs code direct.
 - **Allègements** : `hub-oidc-manager` 462→387 (doc code coupée), `release-sync` 57→44 (renvoie release-on-main), `create-hub-app` Phase E/F → pointeurs.
 - **Corrections** : `app-dependencies` front-matter ajouté (zombie invisible), `jellycode.md` listing skills à jour (+app-dependencies, ~65 outils MCP, cache headers `immutable`).
-
 ## [2.7.0] - 23 juillet 2026
 
 ### ⚡ Santé — version et uptime dans /api/health basique

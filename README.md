@@ -162,6 +162,24 @@ synchronisation via `scripts/bump_version.py`, puis `git commit`. Options utiles
 - **API Docs** : http://localhost:9045/api/docs
 - **Health** : http://localhost:9045/api/health
 
+## Changement d'IP du serveur (Hub + apps sur le même serveur)
+
+Quand le serveur change d'IP, `make sync-env` (donc `make up` / `make dev` / `make build`)
+découvre et met à jour `HUB_HOST` automatiquement via l'endpoint `GET /api/config/hub-host`
+du Hub. En cas d'échec (Hub arrêté), la valeur courante est conservée silencieusement.
+
+Pour gérer explicitement un changement d'IP :
+
+```bash
+make sync-hub-host                       # découverte auto + prompt de secours si Hub injoignable
+make sync-hub-host HUB_HOST=192.168.1.200  # force une IP précise (CI/scripts, multi-serveur)
+make up                                  # redémarre avec la nouvelle IP
+```
+
+**Multi-serveur** (app sur un autre serveur que le Hub) : la découverte inclut toujours l'ancien
+`HUB_HOST` comme candidat, donc une app distante reste stable tant que le Hub distant répond.
+Si le Hub distant déménage, utilisez `make sync-hub-host HUB_HOST=<nouvelle IP du Hub>`.
+
 ## 🔐 Endpoints par rôle
 
 | Endpoint | Rôle minimum | Description |
