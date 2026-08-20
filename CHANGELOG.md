@@ -19,6 +19,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Corrigé** : `.PHONY` du Makefile complété (13→toutes les cibles documentées).
 - **Sécurité** : `sync-env` reste non-bloquant — si le Hub est injoignable, il conserve `HUB_HOST` courant en silence (jamais de prompt intempestif sur `make up`).
 
+### 🧪 Stack de développement frontend — MSW, TanStack Router, TanStack Form
+
+- **Ajouté** : MSW (Mock Service Worker) pour développer le frontend sans backend — handlers mockés interceptant les requêtes fetch en mode dev via un Service Worker. Conditionné à `import.meta.env.DEV`, tree-shaké en production.
+- **Ajouté** : TanStack Router (routing code-based) remplaçant le mono-page `App.jsx`. Routes : `/` (accueil), `/demo/form` (démo formulaire), `$` (404). Layout dans `routes/root.jsx`.
+- **Ajouté** : TanStack Form avec composant démo `FormDemo` (validation SIRET, email, nom) — pattern de référence pour les formulaires d'app.
+- **Ajouté** : TanStack React Query DevTools et TanStack Router DevTools, conditionnés à `import.meta.env.DEV`, positionnés à droite et bas-gauche.
+- **Corrigé** : `ReactQueryDevtools` désormais conditionné à `import.meta.env.DEV` (précédemment inconditionnel) ; suppression du port redondant dans `docker-compose.dev.yml` (conflit avec le port de base) ; `Dockerfile.frontend.dev` expose le port 80 (au lieu de 3000) pour correspondre au mapping du docker-compose de base.
+- **Packages** : deps `@tanstack/react-router` ^1.170, `@tanstack/react-form` ^1.33 ; devDeps `@tanstack/react-router-devtools` ^1.167, `@tanstack/react-form-devtools` ^0.2.31, `msw` ^2.15.
+
 ---
 
 ## [2.14.0] — 17 août 2026
@@ -157,7 +166,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Migration doc** : `hub-mcp-usage` 207→56 lignes — catalogue 65 outils MCP → `docs/HUB_MCP.md` (155 lignes). Mini-skill = permissions SA/standalone + MCP vs code direct.
 - **Allègements** : `hub-oidc-manager` 462→387 (doc code coupée), `release-sync` 57→44 (renvoie release-on-main), `create-hub-app` Phase E/F → pointeurs.
 - **Corrections** : `app-dependencies` front-matter ajouté (zombie invisible), `jellycode.md` listing skills à jour (+app-dependencies, ~65 outils MCP, cache headers `immutable`).
-
 ## [2.7.0] - 23 juillet 2026
 
 ### ⚡ Santé — version et uptime dans /api/health basique
