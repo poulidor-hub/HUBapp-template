@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ---
 
+## [2.15.1] — 22 août 2026
+
+### ⚡ Self-healing M2M côté client
+
+- `_recover_credentials()` utilise `POST /api/apps/register` (voie trusted, le Hub fait tourner le secret ou recrée le SA) au lieu de `POST /api/apps/me/regenerate-secret` — voie morte depuis le durcissement H9 (cet endpoint exige un token M2M valide, or le secret est précisément ce qu'on a perdu).
+- Payload recover complet, parité avec `_do_register` (inclut `frontend_https_port` : sans lui, le self-healing mid-life d'une app HTTPS écrasait le port HTTPS côté Hub et repassait l'URL en http).
+- Cooldown 30 s + `_resync_lock` conservés sur le nouveau chemin ; le secret n'est jamais loggé.
+
+---
+
 ## [2.15.0] — 20 août 2026
 
 ### 🔄 sync-env — découverte automatique de l'IP du Hub
