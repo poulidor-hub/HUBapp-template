@@ -337,30 +337,57 @@ class HubClient:
     async def _recover_credentials(self) -> bool:
         """
         Récupère les credentials d'une app déjà enregistrée.
+
+        Chemin de self-healing : ré-enregistrement trusted (POST /api/apps/register).
+        Le Hub fait tourner le secret si le SA existe, ou le recrée s'il a
+        disparu (T1). regenerate-secret n'est plus utilisé : il exige un token
+        M2M valide — or le secret est précisément ce qu'on a perdu (H9).
         Utilise un lock pour éviter les régénérations concurrentes.
         """
         async with self._resync_lock:
-            logger.debug(f"🔐 Lock acquis pour régénération des credentials")
+            logger.debug("🔐 Lock acquis pour régénération des credentials")
             try:
                 client = await self._get_client()
-                logger.info(f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret (X-Slug: {self.settings.APP_SLUG})")
-                response = await client.post(
-                    f"{self.settings.hub_api_internal_url}/api/apps/me/regenerate-secret",
-                    headers={"X-Slug": self.settings.APP_SLUG}
+                payload = {
+                    "slug": self.settings.APP_SLUG,
+                    "name": self.settings.APP_NAME,
+                    "description": self.settings.APP_DESCRIPTION,
+                    "api_port": self.settings.API_PORT,
+                    "frontend_port": self.settings.FRONTEND_PORT,
+                    "is_shared": self.settings.IS_SHARED,
+                    "version": APP_VERSION,
+                    "custom_host": self.settings.app_host,
+                }
+                logger.info(
+                    f"🔄 Appel Hub: POST /api/apps/register "
+                    f"(self-healing, slug: {self.settings.APP_SLUG})"
                 )
-                
+                response = await client.post(
+                    f"{self.settings.hub_api_internal_url}/api/apps/register",
+                    json=payload,
+                )
+
                 if response.status_code == 200:
                     data = response.json()
+                    creds = data.get("credentials", data)
+                    if not creds.get("client_secret"):
+                        logger.error(
+                            "❌ Register n'a pas retourné de client_secret "
+                            "(Hub sans correctif T1 ?)"
+                        )
+                        return False
                     self._credentials = HubCredentials(
-                        client_id=data["client_id"],
-                        client_secret=data["client_secret"]
+                        client_id=creds["client_id"],
+                        client_secret=creds["client_secret"],
                     )
                     self._last_resync_attempt = datetime.now(timezone.utc)
                     self._resync_count += 1
                     # Sauvegarder pour les autres workers
                     self._save_credentials_to_file()
-                    logger.info(f"✅ Credentials régénérés pour '{self.settings.APP_SLUG}' (resync #{self._resync_count})")
-                    logger.debug(f"   Client ID: {self._credentials.client_id}")
+                    logger.info(
+                        f"✅ Credentials récupérés via register pour "
+                        f"'{self.settings.APP_SLUG}' (resync #{self._resync_count})"
+                    )
                     return True
                 elif response.status_code == 404:
                     logger.warning(
@@ -370,7 +397,10 @@ class HubClient:
                     self._clear_cached_credentials()
                     return await self._do_register()
                 else:
-                    logger.error(f"❌ Impossible de récupérer les credentials: {response.status_code} - {response.text}")
+                    logger.error(
+                        f"❌ Impossible de récupérer les credentials: "
+                        f"{response.status_code} - {response.text}"
+                    )
                     return False
             except httpx.RequestError as e:
                 logger.error(
@@ -380,7 +410,7 @@ class HubClient:
                 )
                 return False
             finally:
-                logger.debug(f"🔓 Lock libéré")
+                logger.debug("🔓 Lock libéré")
     
     async def _auto_resync(self) -> bool:
         """
