@@ -358,6 +358,11 @@ class HubClient:
                     "version": APP_VERSION,
                     "custom_host": self.settings.app_host,
                 }
+                # Envoyer le port HTTPS si HTTPS est activé (parité avec _do_register :
+                # le register mid-life met à jour l'app côté Hub — sans ce champ, le Hub
+                # écrase frontend_https_port à None et repasse l'URL en http)
+                if self.settings.HTTPS_ENABLED and self.settings.FRONTEND_HTTPS_PORT:
+                    payload["frontend_https_port"] = self.settings.FRONTEND_HTTPS_PORT
                 logger.info(
                     f"🔄 Appel Hub: POST /api/apps/register "
                     f"(self-healing, slug: {self.settings.APP_SLUG})"

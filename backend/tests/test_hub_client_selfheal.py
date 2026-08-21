@@ -5,7 +5,7 @@ regenerate-secret (voie morte : exige un token M2M valide, or le secret
 est précisément ce qu'on a perdu).
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from hub_client import HubClient
 
