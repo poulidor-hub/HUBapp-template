@@ -155,7 +155,7 @@ def test_main_image_missing_returns_1(tmp_path, capsys):
          patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
          patch.object(cif, "run", side_effect=fake):
         assert cif.main() == 1
-    assert "absente" in capsys.readouterr().out
+    assert "introuvable" in capsys.readouterr().out
 
 
 def test_main_dev_mode_returns_0(tmp_path, capsys):
@@ -183,3 +183,19 @@ def test_main_docker_error_returns_2(tmp_path, capsys):
         assert cif.main() == 2
     captured = capsys.readouterr()
     assert "erreur" in (captured.out + captured.err).lower()
+
+
+def test_main_fs_error_returns_2(tmp_path, capsys):
+    """TOCTOU : fichier source supprimé entre rglob et stat → OSError, pas exit 1."""
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", side_effect=OSError("race")):
+        assert cif.main() == 2
+    captured = capsys.readouterr()
+    assert "race" in (captured.out + captured.err)
+
+
+def test_container_is_dev_null_mounts_returns_false(tmp_path):
+    """docker inspect rend "null" pour un conteneur sans mounts → pas de crash."""
+    fake = _make_fake_run({"inspect": "null"})
+    with patch.object(cif, "run", side_effect=fake):
+        assert cif.container_is_dev(tmp_path, "abc123") is False

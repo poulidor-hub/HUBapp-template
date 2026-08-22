@@ -94,7 +94,7 @@ def run(cmd: list[str]) -> str:
 def container_is_dev(root: Path, container_id: str) -> bool:
     """True si le conteneur api monte ./backend vers /app (overlay dev)."""
     mounts_json = run(["docker", "inspect", "--format", "{{json .Mounts}}", container_id])
-    for mount in json.loads(mounts_json or "[]"):
+    for mount in json.loads(mounts_json) or []:
         if mount.get("Destination") == "/app":
             try:
                 if Path(mount.get("Source", "")).resolve() == (root / "backend").resolve():
@@ -111,7 +111,11 @@ def image_created_ts(image_id: str) -> float:
 
 
 def main() -> int:
-    newest = find_newest_source(ROOT)
+    try:
+        newest = find_newest_source(ROOT)
+    except OSError as exc:
+        print(f"❌ Erreur fs : {exc}", file=sys.stderr)
+        return 2
     if newest is None:
         print("⚠️  Aucune source surveillée (backend/ absent ?) — garde ignorée.")
         return 0
@@ -125,7 +129,7 @@ def main() -> int:
 
         image_id = run([*COMPOSE_BASE, "images", "-q", "api"])
         if not image_id:
-            print("📦 Image api absente — rebuild requis.")
+            print("📦 Image api introuvable (jamais buildée ou conteneur non créé) — rebuild requis.")
             return 1
         image_ts = image_created_ts(image_id)
     except (RuntimeError, ValueError) as exc:
