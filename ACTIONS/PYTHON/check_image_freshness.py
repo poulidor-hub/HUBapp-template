@@ -3,8 +3,15 @@
 
 Appelé par la cible Makefile `ensure-api-fresh` (avant test-docker /
 test-docker-cov). Compare le mtime le plus récent des sources surveillées
-(backend/**, Dockerfile.backend, VERSION — caches exclus) avec la date de
-création de l'image Docker du service api.
+(backend/**, Dockerfile.backend, VERSION — caches exclus) avec la date du
+dernier rebuild assuré : le stamp `.api-image.stamp` (posé par le Makefile
+après un rebuild réussi), avec repli sur la date de création de l'image
+Docker (`.Created`) si le stamp est absent.
+
+Le stamp est nécessaire car BuildKit réutilise le cache quand le contenu
+des sources ne change pas (ex. `touch` seul) : l'image re-buildée garde
+alors son ancien `.Created` et la comparaison mtime/`.Created` bouclerait
+sur du rebuild infini alors que l'image est, à contenu identique, à jour.
 
 En mode dev (backend monté dans /app via docker-compose.dev.yml), la garde
 est ignorée : les tests exécutent la source montée, fraîche par construction.
@@ -40,6 +47,9 @@ EXCLUDED_NAME_PREFIXES = (".coverage",)
 
 # Sources hors backend/ qui influencent l'image api
 EXTRA_WATCHED = ("Dockerfile.backend", "VERSION")
+
+# Stamp posé par le Makefile (ensure-api-fresh / build) après un rebuild réussi.
+STAMP_FILE = ".api-image.stamp"
 
 
 def is_excluded(path: Path) -> bool:
@@ -131,23 +141,32 @@ def main() -> int:
         if not image_id:
             print("📦 Image api introuvable (jamais buildée ou conteneur non créé) — rebuild requis.")
             return 1
-        image_ts = image_created_ts(image_id)
-    except (RuntimeError, ValueError) as exc:
+
+        # Référence de fraîcheur : stamp du dernier rebuild assuré (fiable même
+        # si BuildKit réutilise le cache), sinon .Created de l'image.
+        stamp = ROOT / STAMP_FILE
+        if stamp.is_file():
+            ref_ts = stamp.stat().st_mtime
+            ref_origin = "rebuild assuré"
+        else:
+            ref_ts = image_created_ts(image_id)
+            ref_origin = "build image"
+    except (RuntimeError, ValueError, OSError) as exc:
         print(f"❌ Erreur docker : {exc}", file=sys.stderr)
         return 2
 
     src_path, src_ts = newest
-    if src_ts > image_ts:
+    if src_ts > ref_ts:
         src_dt = datetime.fromtimestamp(src_ts, tz=timezone.utc)
-        img_dt = datetime.fromtimestamp(image_ts, tz=timezone.utc)
+        ref_dt = datetime.fromtimestamp(ref_ts, tz=timezone.utc)
         print(f"🔨 Image api périmée — source plus récente : {src_path.relative_to(ROOT)}")
         print(f"   Source : {src_dt.isoformat(timespec='seconds')}")
-        print(f"   Image  : {img_dt.isoformat(timespec='seconds')}")
+        print(f"   Référence ({ref_origin}) : {ref_dt.isoformat(timespec='seconds')}")
         print("♻️  Rebuild automatique avant les tests…")
         return 1
 
-    img_dt = datetime.fromtimestamp(image_ts, tz=timezone.utc)
-    print(f"✅ Image api à jour (build {img_dt.isoformat(timespec='seconds')}).")
+    ref_dt = datetime.fromtimestamp(ref_ts, tz=timezone.utc)
+    print(f"✅ Image api à jour ({ref_origin} {ref_dt.isoformat(timespec='seconds')}).")
     return 0
 
 

@@ -57,6 +57,9 @@ env/
 venv/
 ENV/
 env.bak/
+
+# Stamp de fraîcheur image api (ensure-api-fresh)
+.api-image.stamp
 venv.bak/
 
 # IDE

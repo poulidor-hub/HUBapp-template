@@ -199,3 +199,48 @@ def test_container_is_dev_null_mounts_returns_false(tmp_path):
     fake = _make_fake_run({"inspect": "null"})
     with patch.object(cif, "run", side_effect=fake):
         assert cif.container_is_dev(tmp_path, "abc123") is False
+
+
+# --- stamp de build (bug BuildKit : touch sans changement de contenu) ---
+
+def test_main_stamp_newer_than_sources_returns_0(tmp_path, capsys):
+    """Stamp posé par ensure-api-fresh après rebuild : même si BuildKit réutilise
+    le cache (image .Created ancien), le stamp fait foi — pas de double rebuild."""
+    src = tmp_path / "backend" / "main.py"
+    stamp = tmp_path / cif.STAMP_FILE
+    stamp.touch()
+    _set_mtime(stamp, 5000)  # plus récent que la source (100)
+    fake = _make_fake_run({"ps": "", "images": "sha256:abc"})  # pas d'appel "image"
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 0
+    assert "à jour" in capsys.readouterr().out
+
+
+def test_main_stamp_older_than_sources_returns_1(tmp_path, capsys):
+    """Source modifiée après le dernier rebuild assuré → périmée."""
+    src = tmp_path / "backend" / "main.py"
+    stamp = tmp_path / cif.STAMP_FILE
+    stamp.touch()
+    _set_mtime(stamp, 50)  # plus ancien que la source (100)
+    fake = _make_fake_run({"ps": "", "images": "sha256:abc"})
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 1
+    assert "périmée" in capsys.readouterr().out
+
+
+def test_main_stamp_present_but_image_missing_returns_1(tmp_path, capsys):
+    """Image supprimée (clean-all) mais stamp restant → rebuild quand même."""
+    src = tmp_path / "backend" / "main.py"
+    stamp = tmp_path / cif.STAMP_FILE
+    stamp.touch()
+    _set_mtime(stamp, 5000)
+    fake = _make_fake_run({"ps": "", "images": ""})
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 1
+    assert "introuvable" in capsys.readouterr().out
