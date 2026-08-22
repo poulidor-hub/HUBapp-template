@@ -1,4 +1,5 @@
 import React from 'react'
+import { User } from 'lucide-react'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
@@ -13,7 +14,7 @@ function UserCard() {
 
   return (
     <div className="card">
-      <h2>👤 Utilisateur connecté</h2>
+      <h2><User className="hub-icon" aria-hidden="true" /> Utilisateur connecté</h2>
       <div className="user-info">
         <div className="user-info-item">
           <label>Nom d'utilisateur</label>

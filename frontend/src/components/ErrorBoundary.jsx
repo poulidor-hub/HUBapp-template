@@ -1,4 +1,5 @@
 import React from 'react'
+import { ShieldAlert } from 'lucide-react'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -17,14 +18,14 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <h2>Une erreur inattendue est survenue</h2>
-          <p style={{ color: 'var(--text-secondary, #666)' }}>
+        <div className="error-boundary">
+          <h2><ShieldAlert className="hub-icon" aria-hidden="true" /> Une erreur inattendue est survenue</h2>
+          <p>
             {this.state.error?.message || 'Erreur inconnue'}
           </p>
           <button
+            className="btn btn-secondary"
             onClick={() => this.setState({ hasError: false, error: null })}
-            style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}
           >
             Réessayer
           </button>

@@ -16,10 +16,10 @@ export default function HomePage() {
         <h2>Bienvenue {user?.username || user?.sub} !</h2>
         <p>Votre application est prête. Commencez à développer ici.</p>
       </div>
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <div className="card">
         <h3>Outils de développement</h3>
         <p>
-          <Link to="/demo/form" style={{ color: 'var(--accent)' }}>
+          <Link to="/demo/form" className="app-link">
             → Démo TanStack Form (avec DevTools)
           </Link>
         </p>

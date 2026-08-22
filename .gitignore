@@ -101,3 +101,6 @@ uploads/
 
 # Backups générés par ACTIONS/.../BACKUP_DB
 backups/
+
+# Worktrees agents (cf. .opencode/skills/agent-isolation-git)
+.worktrees/
