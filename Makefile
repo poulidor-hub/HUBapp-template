@@ -137,7 +137,8 @@ test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python3 -m pytest --cov=. --cov-report=html -v
 
 ensure-api-fresh: ## (interne) Rebuilder l'image api si les sources sont plus récentes
-	@python3 ACTIONS/PYTHON/check_image_freshness.py; rc=$$?; \
+	@case "$(MAKEFLAGS)" in *n*) echo "[dry-run] ensure-api-fresh sauté"; exit 0;; esac; \
+	python3 ACTIONS/PYTHON/check_image_freshness.py; rc=$$?; \
 	if [ $$rc -eq 1 ]; then \
 		$(MAKE) sync-env && $(COMPOSE) build api && $(COMPOSE) up -d api; \
 	elif [ $$rc -ne 0 ]; then exit $$rc; fi
