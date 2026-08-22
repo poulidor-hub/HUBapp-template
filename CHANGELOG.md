@@ -5,6 +5,20 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.16.0] — 23 août 2026
+
+### ⚡ Garde de fraîcheur d'image pour `make test-docker`
+
+- **Ajouté** : `ACTIONS/PYTHON/check_image_freshness.py` (stdlib uniquement) + `test_check_image_freshness.py` (18 tests) — compare le mtime le plus récent des sources surveillées (`backend/**` caches exclus, `Dockerfile.backend`, `VERSION`) à la date du dernier rebuild assuré. Codes de sortie `0`/`1`/`2` (frais · périmé/absent → rebuild · erreur bloquante).
+- **Ajouté** : cible interne `ensure-api-fresh`, prérequis de `test-docker` / `test-docker-cov` — auto-rebuild transparent (`sync-env` → `build api` → `up -d api`) quand l'image est périmée ; respecte le dry-run (`make -n` saute la garde).
+- **Mode dev** (`backend` monté dans `/app`) : garde ignorée, le conteneur dev n'est jamais recréé.
+- **Stamp `.api-image.stamp`** : posé par `ensure-api-fresh` et `build` après un rebuild réussi, comparé aux sources (repli sur `.Created` de l'image si absent). Corrige la boucle de rebuild infinie quand BuildKit réutilise le cache (`touch` sans changement de contenu → même image ID, même `.Created`, comparaison périmée pour toujours). Ignoré via `.gitignore`.
+- **Corrigé (robustesse)** : TOCTOU fs → exit 2 ; `docker inspect` rendant `null` pour les mounts ; message dédié « image introuvable ».
+- **Corrigé (build)** : `backend/VERSION` parasite — mountpoint vide créé par le montage `./VERSION:/app/VERSION:ro` du compose dev imbriqué dans `./backend:/app` — entrait dans le contexte de build et `COPY backend/ .` écrasait `/app/VERSION` (crash FastAPI `assert self.version`). Triple défense : `.dockerignore` exclut `backend/VERSION`, `COPY VERSION` déplacé après `COPY backend/`, `.gitignore`.
+- Docs : spec + plan d'implémentation (`docs/superpowers/`). Validation end-to-end 4 scénarios (frais / périmé+rebuild / mode dev / cov) — aucun double rebuild, conteneur dev intact.
+
+---
+
 ## [2.15.2] — 22 août 2026
 
 ### ⚡ Conformité HUBCSS du template (audit complet)
