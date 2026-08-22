@@ -5,6 +5,20 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.15.2] — 22 août 2026
+
+### ⚡ Conformité HUBCSS du template (audit complet)
+
+- **Badges de rôle** (`.role-*`) : recette HUBCSS `*-soft` + couleur DS — corrige l'illisibilité en dark mode (10 hex en dur sans variante dark).
+- **Badges catégorie** (`.category-*`) : tokens `*-soft` + suppression des 5 overrides `[data-theme="dark"]` manuels (interdits — le dark est géré par les tokens).
+- `.data-error` : `danger-soft`/`danger` au lieu de `#ffebee`/`#c62828` + override dark supprimé.
+- Tous les `rgba()` en dur remplacés par les tokens `--hub-color-*-soft` ; box-shadows par `--shadow-hub`/`--shadow-hub-raised` ; radius par `--radius-hub{,-sm,-full}` ; `monospace` par `--hub-font-mono` ; typos par `--hub-font-size-*`/`--hub-font-weight-*` (le blanc sur bouton plein reste la recette officielle `.hub-button` du DS).
+- **`alert()` éradiqué** : TokenCard → feedback bouton « Copié », FormDemo → résultat inline `.test-result`, AuthContext `force_logout` → banner urgent via MessageBanner (2 s de lecture avant redirection Hub).
+- **Emojis UI → Lucide React** (`className="hub-icon"`) : DataTable, TokenCard, UserCard, M2MTests, EndpointTests, MessageArchive, ErrorBoundary.
+- **Styles inline → classes** : M2MTests refondu (`.card-intro`, `.card-actions`, `.m2m-*`, `.endpoint-*`, `.service-actions`), FormDemo (`.demo-form-*` + inputs `.data-input`/`.data-select`), ErrorBoundary, liens `.app-link`, utilitaire `.sr-only`.
+- `.gitignore` : ignore `.worktrees/` (worktrees agents).
+- Vérifs : `npm run build` OK (bundle 21.67 kB CSS), zéro hex/rgba/emoji/alert/inline résiduel.
+
 ---
 
 ## [2.15.1] — 22 août 2026
