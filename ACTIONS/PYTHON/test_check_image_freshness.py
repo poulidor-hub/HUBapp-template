@@ -96,3 +96,90 @@ def test_parse_rfc3339_nanoseconds_truncated():
     dt = cif.parse_rfc3339("2026-08-22T14:35:02.123456789Z")
     assert dt.microsecond == 123456
     assert dt.tzinfo is not None
+
+
+# --- couche docker (mockée) ---
+
+def _make_fake_run(script):
+    """Fabrique un fake de cif.run piloté par un dictionnaire {fragment: sortie}."""
+    def fake_run(cmd):
+        for fragment, out in script.items():
+            if fragment in cmd:
+                if isinstance(out, Exception):
+                    raise out
+                return out
+        raise AssertionError(f"commande inattendue: {cmd}")
+    return fake_run
+
+
+def test_run_raises_on_nonzero():
+    fake = type("R", (), {"returncode": 1, "stdout": "", "stderr": "boom"})()
+    with patch.object(cif, "subprocess") as mock_sp:
+        mock_sp.run.return_value = fake
+        with pytest.raises(RuntimeError, match="boom"):
+            cif.run(["docker", "ps"])
+
+
+def test_main_fresh_returns_0(tmp_path, capsys):
+    src = tmp_path / "backend" / "main.py"
+    fake = _make_fake_run({
+        "ps": "",
+        "images": "sha256:abc",
+        "image": "2026-08-22T14:35:02.123456789Z",
+    })
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 0
+    assert "à jour" in capsys.readouterr().out
+
+
+def test_main_stale_returns_1(tmp_path, capsys):
+    src = tmp_path / "backend" / "main.py"
+    fake = _make_fake_run({
+        "ps": "",
+        "images": "sha256:abc",
+        "image": "1970-01-01T00:00:01Z",
+    })
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 1
+    assert "périmée" in capsys.readouterr().out
+
+
+def test_main_image_missing_returns_1(tmp_path, capsys):
+    src = tmp_path / "backend" / "main.py"
+    fake = _make_fake_run({"ps": "", "images": ""})
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 1
+    assert "absente" in capsys.readouterr().out
+
+
+def test_main_dev_mode_returns_0(tmp_path, capsys):
+    src = tmp_path / "backend" / "main.py"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.touch()
+    _set_mtime(src, 9999999999)  # périmé si la garde s'appliquait
+    import json
+    mounts = json.dumps([
+        {"Type": "bind", "Source": str(tmp_path / "backend"), "Destination": "/app"}
+    ])
+    fake = _make_fake_run({"ps": "abc123", "inspect": mounts})
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 0
+    assert "Mode dev" in capsys.readouterr().out
+
+
+def test_main_docker_error_returns_2(tmp_path, capsys):
+    src = tmp_path / "backend" / "main.py"
+    fake = _make_fake_run({"ps": RuntimeError("docker: Cannot connect to the daemon")})
+    with patch.object(cif, "ROOT", tmp_path), \
+         patch.object(cif, "find_newest_source", return_value=(src, 100.0)), \
+         patch.object(cif, "run", side_effect=fake):
+        assert cif.main() == 2
+    captured = capsys.readouterr()
+    assert "erreur" in (captured.out + captured.err).lower()

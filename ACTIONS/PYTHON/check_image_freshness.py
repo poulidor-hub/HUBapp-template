@@ -16,6 +16,7 @@ Codes de sortie :
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -80,3 +81,71 @@ def parse_rfc3339(value: str) -> datetime:
         tz_suffix = tail[len(digits):]
         value = f"{head}.{digits[:6]}{tz_suffix}"
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def run(cmd: list[str]) -> str:
+    """Exécute une commande, retourne stdout stripé. RuntimeError si échec."""
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"échec : {' '.join(cmd)}\n{proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+def container_is_dev(root: Path, container_id: str) -> bool:
+    """True si le conteneur api monte ./backend vers /app (overlay dev)."""
+    mounts_json = run(["docker", "inspect", "--format", "{{json .Mounts}}", container_id])
+    for mount in json.loads(mounts_json or "[]"):
+        if mount.get("Destination") == "/app":
+            try:
+                if Path(mount.get("Source", "")).resolve() == (root / "backend").resolve():
+                    return True
+            except OSError:
+                continue
+    return False
+
+
+def image_created_ts(image_id: str) -> float:
+    """Timestamp Unix de création de l'image (docker image inspect .Created)."""
+    created = run(["docker", "image", "inspect", "--format", "{{.Created}}", image_id])
+    return parse_rfc3339(created).timestamp()
+
+
+def main() -> int:
+    newest = find_newest_source(ROOT)
+    if newest is None:
+        print("⚠️  Aucune source surveillée (backend/ absent ?) — garde ignorée.")
+        return 0
+
+    try:
+        # Conteneur api existant (running ou arrêté) ? → détection mode dev
+        container_id = run([*COMPOSE_BASE, "ps", "-aq", "api"])
+        if container_id and container_is_dev(ROOT, container_id):
+            print("🧪 Mode dev détecté (backend monté dans /app) — garde ignorée.")
+            return 0
+
+        image_id = run([*COMPOSE_BASE, "images", "-q", "api"])
+        if not image_id:
+            print("📦 Image api absente — rebuild requis.")
+            return 1
+        image_ts = image_created_ts(image_id)
+    except (RuntimeError, ValueError) as exc:
+        print(f"❌ Erreur docker : {exc}", file=sys.stderr)
+        return 2
+
+    src_path, src_ts = newest
+    if src_ts > image_ts:
+        src_dt = datetime.fromtimestamp(src_ts, tz=timezone.utc)
+        img_dt = datetime.fromtimestamp(image_ts, tz=timezone.utc)
+        print(f"🔨 Image api périmée — source plus récente : {src_path.relative_to(ROOT)}")
+        print(f"   Source : {src_dt.isoformat(timespec='seconds')}")
+        print(f"   Image  : {img_dt.isoformat(timespec='seconds')}")
+        print("♻️  Rebuild automatique avant les tests…")
+        return 1
+
+    img_dt = datetime.fromtimestamp(image_ts, tz=timezone.utc)
+    print(f"✅ Image api à jour (build {img_dt.isoformat(timespec='seconds')}).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
