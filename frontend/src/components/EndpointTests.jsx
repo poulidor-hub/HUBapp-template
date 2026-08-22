@@ -1,16 +1,21 @@
 import React, { useState } from 'react'
+import {
+  BookOpen, Check, ClipboardList, Crown, Eye, FlaskConical, Info,
+  Lock, Package, Rocket, User, XCircle,
+} from 'lucide-react'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
+// icon: composant Lucide (affiché via className="hub-icon")
 const ENDPOINTS = [
-  { name: '📖 Public', endpoint: '/api/public', description: 'Aucune authentification requise', icon: '📖' },
-  { name: '🔒 Protected', endpoint: '/api/protected', description: 'Token valide requis (tout rôle)', icon: '🔒' },
-  { name: '👁️ Viewer+', endpoint: '/api/viewer-only', description: 'Rôle minimum: viewer', role: 'viewer', icon: '👁️' },
-  { name: '👤 User+', endpoint: '/api/user-only', description: 'Rôle minimum: user', role: 'user', icon: '👤' },
-  { name: '📋 Manager+', endpoint: '/api/manager-only', description: 'Rôle minimum: manager', role: 'manager', icon: '📋' },
-  { name: '👑 Admin', endpoint: '/api/admin-only', description: 'Rôle requis: admin', role: 'admin', icon: '👑' },
-  { name: 'ℹ️ Mon profil', endpoint: '/api/me', description: 'Token valide requis', icon: 'ℹ️' },
-  { name: '📦 Items', endpoint: '/api/items', description: 'Public (items publics) / Auth (+ ses items)', icon: '📦' }
+  { name: 'Public', endpoint: '/api/public', description: 'Aucune authentification requise', icon: BookOpen },
+  { name: 'Protected', endpoint: '/api/protected', description: 'Token valide requis (tout rôle)', icon: Lock },
+  { name: 'Viewer+', endpoint: '/api/viewer-only', description: 'Rôle minimum: viewer', role: 'viewer', icon: Eye },
+  { name: 'User+', endpoint: '/api/user-only', description: 'Rôle minimum: user', role: 'user', icon: User },
+  { name: 'Manager+', endpoint: '/api/manager-only', description: 'Rôle minimum: manager', role: 'manager', icon: ClipboardList },
+  { name: 'Admin', endpoint: '/api/admin-only', description: 'Rôle requis: admin', role: 'admin', icon: Crown },
+  { name: 'Mon profil', endpoint: '/api/me', description: 'Token valide requis', icon: Info },
+  { name: 'Items', endpoint: '/api/items', description: 'Public (items publics) / Auth (+ ses items)', icon: Package },
 ]
 
 function EndpointTests() {
@@ -80,18 +85,20 @@ function EndpointTests() {
   return (
     <>
       <div className="card">
-        <h2>🧪 Test des endpoints par rôle</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '15px' }}>
+        <h2><FlaskConical className="hub-icon" aria-hidden="true" /> Test des endpoints par rôle</h2>
+        <p className="card-intro">
           Cliquez sur "Tester" pour vérifier votre accès à chaque endpoint.
         </p>
-        
+
         <div className="test-grid">
-          {ENDPOINTS.map(({ name, endpoint, description, role }) => (
+          {ENDPOINTS.map(({ name, endpoint, description, role, icon: Icon }) => (
             <div key={endpoint} className="test-item">
               <h3>
-                <span>{name}</span>
-                <button 
-                  className="btn btn-small btn-primary" 
+                <span className="service-info">
+                  <Icon className="hub-icon" aria-hidden="true" /> {name}
+                </span>
+                <button
+                  className="btn btn-small btn-primary"
                   onClick={() => testEndpoint(endpoint)}
                   disabled={loading[endpoint]}
                 >
@@ -108,10 +115,11 @@ function EndpointTests() {
               </div>
               {results[endpoint] && (
                 <div className={`test-result ${results[endpoint].success ? 'success' : 'error'}`}>
-                  {results[endpoint].success 
-                    ? `✅ ${results[endpoint].status} OK` 
-                    : `❌ ${results[endpoint].status} ${results[endpoint].data}`
-                  }
+                  {results[endpoint].success ? (
+                    <><Check className="hub-icon" aria-hidden="true" /> {results[endpoint].status} OK</>
+                  ) : (
+                    <><XCircle className="hub-icon" aria-hidden="true" /> {results[endpoint].status} {results[endpoint].data}</>
+                  )}
                   {results[endpoint].success && (
                     <><br /><small>{results[endpoint].data}</small></>
                   )}
@@ -123,8 +131,8 @@ function EndpointTests() {
       </div>
 
       <div className="card">
-        <h2>🚀 Actions rapides</h2>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <h2><Rocket className="hub-icon" aria-hidden="true" /> Actions rapides</h2>
+        <div className="card-actions">
           <button className="btn btn-primary" onClick={runAllTests}>
             Tester tous les endpoints
           </button>
@@ -132,7 +140,7 @@ function EndpointTests() {
             Effacer les résultats
           </button>
           <a href={`${config.apiUrl}/api/docs`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
-            📚 Documentation API
+            <BookOpen className="hub-icon" aria-hidden="true" /> Documentation API
           </a>
         </div>
       </div>

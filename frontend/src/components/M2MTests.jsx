@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react'
+import {
+  Activity, AlertTriangle, Check, FlaskConical, Info, Lightbulb, Link2,
+  List, Loader2, RefreshCw, Search, Target, XCircle,
+} from 'lucide-react'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
@@ -289,35 +293,40 @@ function M2MTests() {
 
   return (
     <div className="card m2m-tests">
-      <h2>🔗 Tests M2M (Machine-to-Machine)</h2>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '15px' }}>
+      <h2><Link2 className="hub-icon" aria-hidden="true" /> Tests M2M (Machine-to-Machine)</h2>
+      <p className="card-intro">
         Section réservée aux administrateurs - Test de la communication inter-services via le Hub.
       </p>
 
       {/* Erreur globale */}
       {error && (
-        <div className="test-result error" style={{ marginBottom: '15px' }}>
-          ⚠️ {error}
+        <div className="test-result error">
+          <AlertTriangle className="hub-icon" aria-hidden="true" /> {error}
         </div>
       )}
 
       {/* Statut M2M de l'application */}
       <div className="m2m-section">
-        <h3>📊 Statut M2M de l'application</h3>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-          <button 
-            className="btn btn-small btn-secondary" 
+        <h3><Activity className="hub-icon" aria-hidden="true" /> Statut M2M de l'application</h3>
+        <div className="m2m-toolbar">
+          <button
+            className="btn btn-small btn-secondary"
             onClick={fetchM2MStatus}
             disabled={loading.status}
           >
-            {loading.status ? '...' : '🔄 Actualiser'}
+            {loading.status
+              ? <Loader2 className="hub-icon" aria-hidden="true" />
+              : <RefreshCw className="hub-icon" aria-hidden="true" />}
+            {' '}{loading.status ? 'Chargement...' : 'Actualiser'}
           </button>
         </div>
-        
+
         {m2mStatus && (
           <div className="m2m-status-card">
             <div className={`status-badge ${m2mStatus.registered ? 'success' : 'error'}`}>
-              {m2mStatus.registered ? '✅ Enregistré' : '❌ Non enregistré'}
+              {m2mStatus.registered
+                ? <><Check className="hub-icon" aria-hidden="true" /> Enregistré</>
+                : <><XCircle className="hub-icon" aria-hidden="true" /> Non enregistré</>}
             </div>
             {m2mStatus.client_id && (
               <div className="status-detail">
@@ -325,11 +334,11 @@ function M2MTests() {
               </div>
             )}
             <div className="status-detail">
-              <strong>Token M2M:</strong> 
+              <strong>Token M2M:</strong>
               {m2mStatus.can_get_token ? (
-                <span className="text-success"> ✅ Disponible</span>
+                <span className="text-success"><Check className="hub-icon" aria-hidden="true" /> Disponible</span>
               ) : (
-                <span className="text-error"> ❌ Indisponible</span>
+                <span className="text-error"><XCircle className="hub-icon" aria-hidden="true" /> Indisponible</span>
               )}
             </div>
             {m2mStatus.token_preview && (
@@ -347,28 +356,31 @@ function M2MTests() {
       </div>
 
       {/* Découverte des services */}
-      <div className="m2m-section" style={{ marginTop: '20px' }}>
-        <h3>🔍 Services M2M disponibles</h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9em', marginBottom: '10px' }}>
+      <div className="m2m-section m2m-section-spaced">
+        <h3><Search className="hub-icon" aria-hidden="true" /> Services M2M disponibles</h3>
+        <p className="card-intro">
           Interroge le Hub pour découvrir les APIs partagées (is_shared_service=true).
         </p>
-        
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-          <button 
-            className="btn btn-primary" 
+
+        <div className="m2m-actions">
+          <button
+            className="btn btn-primary"
             onClick={discoverServices}
             disabled={loading.discover || !m2mStatus?.can_get_token}
           >
-            {loading.discover ? '⏳ Recherche...' : '🔍 Découvrir les services'}
+            {loading.discover
+              ? <Loader2 className="hub-icon" aria-hidden="true" />
+              : <Search className="hub-icon" aria-hidden="true" />}
+            {' '}{loading.discover ? 'Recherche...' : 'Découvrir les services'}
           </button>
-          
+
           {sharedServices.length > 0 && (
-            <button 
-              className="btn btn-secondary" 
+            <button
+              className="btn btn-secondary"
               onClick={testAllServices}
               disabled={Object.values(loading.test).some(v => v)}
             >
-              🧪 Tester tous
+              <FlaskConical className="hub-icon" aria-hidden="true" /> Tester tous
             </button>
           )}
         </div>
@@ -383,7 +395,7 @@ function M2MTests() {
                     <strong>{service.name || service.slug}</strong>
                     <span className="service-slug">({service.slug})</span>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div className="service-actions">
                     {/* Dropdown de sélection d'endpoint */}
                     <select
                       className="endpoint-select"
@@ -392,15 +404,6 @@ function M2MTests() {
                         ...prev,
                         [service.slug]: e.target.value
                       }))}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                        background: 'var(--bg-primary)',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.85em',
-                        minWidth: '180px'
-                      }}
                     >
                       {ENDPOINT_CATEGORIES.map(category => (
                         <optgroup key={category} label={`── ${category} ──`}>
@@ -415,27 +418,25 @@ function M2MTests() {
                         </optgroup>
                       ))}
                     </select>
-                    <button 
+                    <button
                       className="btn btn-small btn-primary"
                       onClick={() => testService(service)}
                       disabled={loading.test[service.slug]}
                     >
-                      {loading.test[service.slug] ? '...' : '🧪 Tester'}
+                      {loading.test[service.slug]
+                        ? <Loader2 className="hub-icon" aria-hidden="true" />
+                        : <FlaskConical className="hub-icon" aria-hidden="true" />}
+                      {' '}{loading.test[service.slug] ? 'Test...' : 'Tester'}
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Description de l'endpoint sélectionné */}
                 {(() => {
                   const ep = AVAILABLE_ENDPOINTS.find(e => e.value === (selectedEndpoints[service.slug] || '/api/health'))
                   return ep?.description ? (
-                    <div style={{ 
-                      fontSize: '0.8em', 
-                      color: 'var(--text-secondary)', 
-                      marginBottom: '8px',
-                      fontStyle: 'italic'
-                    }}>
-                      💡 {ep.description}
+                    <div className="endpoint-hint">
+                      <Lightbulb className="hub-icon" aria-hidden="true" /> {ep.description}
                     </div>
                   ) : null
                 })()}
@@ -451,16 +452,17 @@ function M2MTests() {
                 {/* Résultat du test */}
                 {testResults[service.slug] && (
                   <div className={`test-result ${testResults[service.slug].success ? 'success' : 'error'}`}>
-                    <div style={{ marginBottom: '4px', fontSize: '0.85em', color: 'var(--text-secondary)' }}>
-                      🎯 Endpoint testé: <code>{testResults[service.slug].endpoint || '/api/health'}</code>
+                    <div className="test-endpoint-label">
+                      <Target className="hub-icon" aria-hidden="true" />
+                      Endpoint testé: <code>{testResults[service.slug].endpoint || '/api/health'}</code>
                     </div>
                     {testResults[service.slug].success ? (
                       <>
-                        ✅ <strong>{testResults[service.slug].status}</strong> OK
+                        <Check className="hub-icon" aria-hidden="true" /> <strong>{testResults[service.slug].status}</strong> OK
                         <span className="test-time">({testResults[service.slug].timestamp})</span>
                         {testResults[service.slug].response && (
                           <pre className="test-response">
-                            {typeof testResults[service.slug].response === 'string' 
+                            {typeof testResults[service.slug].response === 'string'
                               ? testResults[service.slug].response.substring(0, 300)
                               : JSON.stringify(testResults[service.slug].response, null, 2).substring(0, 300)}
                           </pre>
@@ -468,7 +470,7 @@ function M2MTests() {
                       </>
                     ) : (
                       <>
-                        ❌ <strong>{testResults[service.slug].status || 'Erreur'}</strong>
+                        <XCircle className="hub-icon" aria-hidden="true" /> <strong>{testResults[service.slug].status || 'Erreur'}</strong>
                         <span className="test-time">({testResults[service.slug].timestamp})</span>
                         {testResults[service.slug].response && (
                           <div className="test-error">
@@ -490,7 +492,7 @@ function M2MTests() {
         ) : (
           <div className="empty-state">
             {loading.discover ? (
-              <p>⏳ Recherche des services en cours...</p>
+              <p><Loader2 className="hub-icon" aria-hidden="true" /> Recherche des services en cours...</p>
             ) : (
               <p>Cliquez sur "Découvrir les services" pour interroger le Hub.</p>
             )}
@@ -499,24 +501,24 @@ function M2MTests() {
       </div>
 
       {/* Info sur le fonctionnement */}
-      <div className="m2m-info" style={{ marginTop: '20px', padding: '15px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-        <h4 style={{ margin: '0 0 10px 0' }}>ℹ️ Comment ça fonctionne</h4>
-        <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
+      <div className="m2m-info">
+        <h4><Info className="hub-icon" aria-hidden="true" /> Comment ça fonctionne</h4>
+        <ul>
           <li><strong>Découverte</strong>: Appelle <code>GET /api/apps/discover</code> sur le Hub avec un token M2M</li>
           <li><strong>Endpoints</strong>: Sélectionnez l'endpoint à tester via le dropdown (basé sur le template HUBapp)</li>
           <li><strong>Test</strong>: Effectue un appel M2M vers l'endpoint sélectionné du service cible</li>
           <li><strong>Authentification</strong>: Utilise le Service Account de cette application</li>
         </ul>
-        
-        <details style={{ marginTop: '10px' }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-primary)' }}>
-            📋 Liste des endpoints disponibles ({AVAILABLE_ENDPOINTS.length})
+
+        <details className="endpoint-list-details">
+          <summary>
+            <List className="hub-icon" aria-hidden="true" /> Liste des endpoints disponibles ({AVAILABLE_ENDPOINTS.length})
           </summary>
-          <div style={{ marginTop: '10px', fontSize: '0.9em' }}>
+          <div className="endpoint-list">
             {ENDPOINT_CATEGORIES.map(category => (
-              <div key={category} style={{ marginBottom: '10px' }}>
-                <strong style={{ color: 'var(--accent)' }}>{category}</strong>
-                <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px' }}>
+              <div key={category} className="endpoint-category">
+                <strong>{category}</strong>
+                <ul>
                   {AVAILABLE_ENDPOINTS
                     .filter(ep => ep.category === category)
                     .map(ep => (

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Check, Database, Pencil, Plus, RefreshCw, Sprout, Trash2, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useApiQuery } from '../hooks/useApiQuery'
 import { useApiMutation } from '../hooks/useApiMutation'
@@ -165,8 +166,8 @@ function DataTable() {
 
   return (
     <div className="card">
-      <h2>📊 Données de Test (Backup)</h2>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '15px' }}>
+      <h2><Database className="hub-icon" aria-hidden="true" /> Données de Test (Backup)</h2>
+      <p className="card-intro">
         Tableau de données partagées pour tester le système de backup.
         {!isAuthenticated && " Connectez-vous pour modifier les données."}
       </p>
@@ -184,31 +185,31 @@ function DataTable() {
           ))}
         </select>
 
-        <button 
-          className="btn btn-secondary btn-small" 
+        <button
+          className="btn btn-secondary btn-small"
           onClick={() => refetch()}
           disabled={loading}
         >
-          🔄 Rafraîchir
+          <RefreshCw className="hub-icon" aria-hidden="true" /> Rafraîchir
         </button>
 
         {canEdit && (
           <>
-            <button 
-              className="btn btn-primary btn-small" 
+            <button
+              className="btn btn-primary btn-small"
               onClick={() => setShowAddForm(!showAddForm)}
               disabled={actionLoading}
             >
-              ➕ Ajouter
+              <Plus className="hub-icon" aria-hidden="true" /> Ajouter
             </button>
-            
-            <button 
-              className="btn btn-secondary btn-small" 
+
+            <button
+              className="btn btn-secondary btn-small"
               onClick={handleSeed}
               disabled={actionLoading}
               title="Créer des données de test initiales"
             >
-              🌱 Initialiser
+              <Sprout className="hub-icon" aria-hidden="true" /> Initialiser
             </button>
           </>
         )}
@@ -217,7 +218,7 @@ function DataTable() {
       {/* Erreur */}
       {(error || mutationError) && (
         <div className="data-error">
-          ❌ {error || mutationError}
+          <span>{error || mutationError}</span>
         </div>
       )}
 
@@ -250,14 +251,16 @@ function DataTable() {
               ))}
             </select>
             <button type="submit" className="btn btn-primary btn-small" disabled={actionLoading}>
-              ✓
+              <Check className="hub-icon" aria-hidden="true" />
+              <span className="sr-only">Valider</span>
             </button>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-small" 
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
               onClick={() => setShowAddForm(false)}
             >
-              ✗
+              <X className="hub-icon" aria-hidden="true" />
+              <span className="sr-only">Annuler</span>
             </button>
           </div>
         </form>
@@ -272,7 +275,7 @@ function DataTable() {
           {canEdit && (
             <p>
               <button className="btn btn-primary" onClick={handleSeed}>
-                🌱 Initialiser des données de test
+                <Sprout className="hub-icon" aria-hidden="true" /> Initialiser des données de test
               </button>
             </p>
           )}
@@ -329,18 +332,22 @@ function DataTable() {
                       <td>{item.last_modified_by}</td>
                       <td>{formatDate(item.updated_at)}</td>
                       <td className="data-actions">
-                        <button 
-                          className="btn btn-primary btn-small" 
+                        <button
+                          className="btn btn-primary btn-small"
                           onClick={() => handleUpdate(item.id)}
                           disabled={actionLoading}
+                          title="Valider les modifications"
                         >
-                          ✓
+                          <Check className="hub-icon" aria-hidden="true" />
+                          <span className="sr-only">Valider</span>
                         </button>
-                        <button 
-                          className="btn btn-secondary btn-small" 
+                        <button
+                          className="btn btn-secondary btn-small"
                           onClick={cancelEdit}
+                          title="Annuler les modifications"
                         >
-                          ✗
+                          <X className="hub-icon" aria-hidden="true" />
+                          <span className="sr-only">Annuler</span>
                         </button>
                       </td>
                     </>
@@ -358,19 +365,23 @@ function DataTable() {
                       <td className="data-date">{formatDate(item.updated_at)}</td>
                       {canEdit && (
                         <td className="data-actions">
-                          <button 
-                            className="btn btn-secondary btn-small" 
+                          <button
+                            className="btn btn-secondary btn-small"
                             onClick={() => startEdit(item)}
                             disabled={actionLoading}
+                            title="Modifier cette entrée"
                           >
-                            ✏️
+                            <Pencil className="hub-icon" aria-hidden="true" />
+                            <span className="sr-only">Modifier</span>
                           </button>
-                          <button 
-                            className="btn btn-danger btn-small" 
+                          <button
+                            className="btn btn-danger btn-small"
                             onClick={() => handleDelete(item.id)}
                             disabled={actionLoading}
+                            title="Supprimer cette entrée"
                           >
-                            🗑️
+                            <Trash2 className="hub-icon" aria-hidden="true" />
+                            <span className="sr-only">Supprimer</span>
                           </button>
                         </td>
                       )}

@@ -1,24 +1,35 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { Check, Copy, KeyRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 function TokenCard() {
   const { user, token } = useAuth()
+  const [copied, setCopied] = useState(false)
 
   if (!user) return null
 
   const copyToken = () => {
-    if (token) {
-      navigator.clipboard.writeText(token)
-      alert('Token copié !')
-    }
+    if (!token) return
+    navigator.clipboard.writeText(token).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   return (
     <div className="card">
       <div className="token-header">
-        <h2>🎟️ Token JWT</h2>
-        <button className="btn btn-small btn-secondary" onClick={copyToken}>
-          Copier
+        <h2><KeyRound className="hub-icon" aria-hidden="true" /> Token JWT</h2>
+        <button
+          className="btn btn-small btn-secondary"
+          onClick={copyToken}
+          disabled={!token}
+        >
+          {copied ? (
+            <><Check className="hub-icon" aria-hidden="true" /> Copié</>
+          ) : (
+            <><Copy className="hub-icon" aria-hidden="true" /> Copier</>
+          )}
         </button>
       </div>
       <div className="token-display">

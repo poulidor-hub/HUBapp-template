@@ -1,7 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 
 export default function FormDemo() {
+  const [submitResult, setSubmitResult] = useState(null)
+
   const form = useForm({
     defaultValues: {
       name: '',
@@ -17,23 +19,29 @@ export default function FormDemo() {
       })
       const data = await res.json()
       console.log('[FormDemo] Submit result:', data)
-      alert(`Client créé (mock) : ${JSON.stringify(data)}`)
+      // Retour inline (pas d'alert()) — style .test-result du template
+      setSubmitResult({
+        ok: res.ok,
+        message: res.ok
+          ? `Client créé (mock) : ${JSON.stringify(data)}`
+          : `Erreur (${res.status}) : ${data?.detail || 'requête refusée'}`,
+      })
     },
   })
 
   return (
     <div className="card">
       <h2>Nouveau client (démo)</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+      <p className="card-intro">
         Formulaire TanStack Form avec validation. Les devtools montrent l'état en temps réel.
       </p>
 
       <form
+        className="demo-form"
         onSubmit={(e) => {
           e.preventDefault()
           form.handleSubmit()
         }}
-        style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}
       >
         <form.Field
           name="name"
@@ -47,13 +55,13 @@ export default function FormDemo() {
               <label htmlFor={field.name}>Nom du client</label>
               <input
                 id={field.name}
+                className="data-input"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
+                <span className="demo-form-error">
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -76,13 +84,13 @@ export default function FormDemo() {
               <input
                 id={field.name}
                 type="email"
+                className="data-input"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
+                <span className="demo-form-error">
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -104,14 +112,14 @@ export default function FormDemo() {
               <label htmlFor={field.name}>SIRET</label>
               <input
                 id={field.name}
+                className="data-input"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="12345678901234"
-                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               />
               {field.state.meta.errors.length > 0 && (
-                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
+                <span className="demo-form-error">
                   {field.state.meta.errors[0]}
                 </span>
               )}
@@ -125,9 +133,9 @@ export default function FormDemo() {
               <label htmlFor={field.name}>Type de compte</label>
               <select
                 id={field.name}
+                className="data-select"
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
-                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
               >
                 <option value="standard">Standard</option>
                 <option value="premium">Premium</option>
@@ -138,33 +146,38 @@ export default function FormDemo() {
 
         <form.Subscribe>
           {(state) => (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div className="demo-form-footer">
               <button
                 type="submit"
+                className="btn btn-primary"
                 disabled={!state.canSubmit || state.isSubmitting}
-                style={{
-                  padding: '0.5rem 1.5rem',
-                  cursor: state.canSubmit ? 'pointer' : 'not-allowed',
-                  opacity: state.canSubmit ? 1 : 0.5,
-                }}
               >
                 {state.isSubmitting ? 'Envoi...' : 'Enregistrer'}
               </button>
               <button
                 type="button"
-                onClick={() => form.reset()}
-                style={{ padding: '0.5rem 1rem' }}
+                className="btn btn-secondary"
+                onClick={() => {
+                  form.reset()
+                  setSubmitResult(null)
+                }}
               >
                 Réinitialiser
               </button>
               {!state.isValid && (
-                <span style={{ color: 'var(--error)', fontSize: '0.8rem' }}>
+                <span className="demo-form-error">
                   {Object.keys(state.fieldErrors).length} erreur(s)
                 </span>
               )}
             </div>
           )}
         </form.Subscribe>
+
+        {submitResult && (
+          <div className={`test-result ${submitResult.ok ? 'success' : 'error'}`}>
+            {submitResult.message}
+          </div>
+        )}
       </form>
     </div>
   )

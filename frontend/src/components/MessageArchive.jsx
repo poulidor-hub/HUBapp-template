@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Check, CheckCheck, Mail, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 /**
@@ -42,7 +43,7 @@ export default function MessageArchive() {
         onClick={togglePanel}
         title="Historique des messages"
       >
-        ✉
+        <Mail className="hub-icon" aria-hidden="true" />
         {unreadCount > 0 && (
           <span className="message-archive-badge">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -65,10 +66,14 @@ export default function MessageArchive() {
                     onClick={markAllMessagesRead}
                     title="Tout marquer comme lu"
                   >
-                    ✓✓
+                    <CheckCheck className="hub-icon" aria-hidden="true" />
+                    <span className="sr-only">Tout marquer comme lu</span>
                   </button>
                 )}
-                <button className="message-archive-close" onClick={togglePanel}>✕</button>
+                <button className="message-archive-close" onClick={togglePanel} title="Fermer">
+                  <X className="hub-icon" aria-hidden="true" />
+                  <span className="sr-only">Fermer</span>
+                </button>
               </div>
             </div>
 
@@ -111,7 +116,7 @@ export default function MessageArchive() {
                             onClick={(e) => handleMarkRead(e, m.id)}
                             className="message-archive-msg-read"
                           >
-                            ✓ Lu
+                            <Check className="hub-icon" aria-hidden="true" /> Lu
                           </button>
                         )}
                       </div>

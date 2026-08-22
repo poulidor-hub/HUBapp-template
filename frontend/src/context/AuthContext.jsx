@@ -237,9 +237,17 @@ export function AuthProvider({ children }) {
             // Déconnexion forcée par l'admin
             if (data.type === 'force_logout') {
               if (data.data?.username === user.sub) {
-                console.log('🚪 Déconnexion forcée par l\'administrateur')
-                alert('Votre session a été révoquée par un administrateur.')
-                logout()
+                console.log('Déconnexion forcée par l\'administrateur')
+                // Notification via MessageBanner (pas d'alert() bloquant),
+                // puis déconnexion après un court délai pour laisser le message lu.
+                setActiveMessages(prev => [{
+                  id: `local-force-logout-${Date.now()}`,
+                  title: 'Session révoquée',
+                  body: 'Votre session a été révoquée par un administrateur. Vous allez être déconnecté.',
+                  priority: 'urgent',
+                  created_at: new Date().toISOString(),
+                }, ...prev])
+                setTimeout(() => logout(), 2000)
               }
             }
             
