@@ -19,7 +19,8 @@ endif
 
 .PHONY: help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
         restart restart-api restart-frontend logs logs-api logs-db \
-        test test-cov test-docker test-docker-cov health health-detailed version \
+        ensure-api-fresh test test-cov test-docker test-docker-cov \
+        health health-detailed version \
         db-shell clean clean-all init ai-index bump-patch bump-minor bump-major \
         refresh-design-seed sync-hub-tooling sync-hub-tooling-check
 
@@ -135,10 +136,16 @@ test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
 test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python3 -m pytest --cov=. --cov-report=html -v
 
-test-docker: ## Lancer pytest dans le conteneur api (env Docker, image runtime)
+ensure-api-fresh: ## (interne) Rebuilder l'image api si les sources sont plus récentes
+	@python3 ACTIONS/PYTHON/check_image_freshness.py; rc=$$?; \
+	if [ $$rc -eq 1 ]; then \
+		$(MAKE) sync-env && $(COMPOSE) build api && $(COMPOSE) up -d api; \
+	elif [ $$rc -ne 0 ]; then exit $$rc; fi
+
+test-docker: ensure-api-fresh ## Lancer pytest dans le conteneur api (env Docker, image runtime)
 	$(COMPOSE) exec api python -m pytest -v
 
-test-docker-cov: ## Pytest + couverture dans le conteneur api
+test-docker-cov: ensure-api-fresh ## Pytest + couverture dans le conteneur api
 	$(COMPOSE) exec api python -m pytest --cov=. --cov-report=term-missing -v
 
 # === SANTÉ ===
