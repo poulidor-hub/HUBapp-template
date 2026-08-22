@@ -32,6 +32,10 @@ frontend/dist/
 .env.*
 !.env.example
 
+# ==== Artefact Docker (mountpoint créé par le compose dev : ./VERSION:/app/VERSION:ro
+# imbriqué dans ./backend:/app — fichier vide, ne doit jamais entrer dans l'image) ====
+backend/VERSION
+
 # ==== OS ====
 .DS_Store
 Thumbs.db

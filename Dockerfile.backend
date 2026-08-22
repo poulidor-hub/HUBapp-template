@@ -38,11 +38,14 @@ RUN pip install --no-cache-dir /tmp/wheels/* && rm -rf /tmp/wheels/
 # Créer un utilisateur non-root (aligné avec le HUB)
 RUN useradd -m -u 1000 appuser
 
+# Copier le code source
+# (AVANT le VERSION : un backend/VERSION parasite — mountpoint créé par le
+# montage ./VERSION:/app/VERSION:ro du compose dev — ne doit jamais écraser
+# la source unique de vérité ; .dockerignore l'exclut aussi par précaution)
+COPY backend/ .
+
 # Copier le fichier VERSION (source unique de vérité)
 COPY VERSION /app/VERSION
-
-# Copier le code source
-COPY backend/ .
 
 # Rendre l'entrypoint exécutable
 RUN chmod +x /app/entrypoint.sh

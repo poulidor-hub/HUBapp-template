@@ -60,6 +60,10 @@ env.bak/
 
 # Stamp de fraîcheur image api (ensure-api-fresh)
 .api-image.stamp
+
+# Artefact Docker : mountpoint créé au démarrage dev (./VERSION:/app/VERSION:ro
+# imbriqué dans ./backend:/app) — backend/VERSION ne doit jamais être commité
+backend/VERSION
 venv.bak/
 
 # IDE
