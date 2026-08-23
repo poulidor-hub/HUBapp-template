@@ -5,6 +5,14 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.17.0] — 23 août 2026
+
+### ✨ Présence utilisateur par app (uptime HUB)
+
+- **Ajouté** : l'URL SSE vers le HUB porte désormais `&app=<slug>` (`config.appSlug`, issu de `VITE_APP_SLUG`). Avec HUB ≥ 3.36.0, le heartbeat SSE (15 s) ouvre/rafraîchit le segment d'usage de l'app côté HUB : l'utilisateur utilisant l'app apparaît dans la page « Uptime utilisateurs » même onglet HUB fermé. Rétro-compatible : le param est ignoré par les HUB plus anciens.
+
+---
+
 ## [2.16.0] — 23 août 2026
 
 ### ⚡ Garde de fraîcheur d'image pour `make test-docker`

@@ -206,7 +206,7 @@ export function AuthProvider({ children }) {
       try {
         // EventSource ne supporte pas les headers custom (Authorization).
         // On passe le token JWT en query param (?token=) pour l'auth.
-        const sseUrl = `${hubApiUrl}/api/events/stream?token=${encodeURIComponent(token)}`
+        const sseUrl = `${hubApiUrl}/api/events/stream?token=${encodeURIComponent(token)}&app=${encodeURIComponent(config.appSlug)}`
         console.log('🔌 Connexion SSE au Hub:', sseUrl.replace(token, '***'))
         eventSource = new EventSource(sseUrl)
         
