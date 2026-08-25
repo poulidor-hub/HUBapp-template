@@ -5,6 +5,15 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.18.0] — 25 août 2026
+
+### ✨ Persona Jellycode + superpowers (opencode)
+
+- **Ajouté** : persona agent `jellycode` (`.opencode/agent/jellycode.md`).
+- **Ajouté** : `default_agent: jellycode` + plugin `superpowers` (pinné) dans `opencode.json`.
+
+---
+
 ## [2.17.0] — 23 août 2026
 
 ### ✨ Présence utilisateur par app (uptime HUB)
