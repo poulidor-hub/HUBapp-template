@@ -5,6 +5,17 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.18.1] — 30 août 2026
+
+### ⚡ Tolérance aux ports Hub vides (hub legacy)
+
+- **Fix boot** : `HUB_API_PORT`/`HUB_FRONTEND_PORT` vides (variables absentes du
+  `.env` sur un hub legacy, substituées en `""` par docker compose) → fallback sur
+  les défauts (8000/80) via validator pydantic `empty_port_to_default`, au lieu
+  d'un crash uvicorn (ValidationError `int_parsing` au démarrage API)
+- `docker-compose.yml` : défauts `${HUB_API_PORT:-8000}` / `${HUB_FRONTEND_PORT:-80}`
+- Test `backend/tests/test_config_env.py` : reproduction du bug (rouge sans le fix)
+
 ## [2.18.0] — 25 août 2026
 
 ### ✨ Persona Jellycode + superpowers (opencode)
