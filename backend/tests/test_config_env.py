@@ -1,0 +1,36 @@
+"""Settings doit tolérer les variables Hub vides (hubs legacy sans HUB_*_PORT dans le .env)."""
+
+import pytest
+from config import Settings
+
+
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    """Isole le test des variables d'environnement réelles."""
+    for var in (
+        "HUB_HOST", "HUB_INTERNAL_HOST", "HUB_API_PORT", "HUB_FRONTEND_PORT",
+        "API_PORT", "FRONTEND_PORT", "APP_HOST",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+class TestEmptyHubPorts:
+    def test_empty_hub_api_port_falls_back_to_default(self, monkeypatch):
+        """HUB_API_PORT vide (subst docker compose) ne doit pas crasher au boot."""
+        monkeypatch.setenv("HUB_API_PORT", "")
+        settings = Settings()
+        assert settings.HUB_API_PORT == 8000
+
+    def test_empty_hub_frontend_port_falls_back_to_default(self, monkeypatch):
+        """HUB_FRONTEND_PORT vide (subst docker compose) ne doit pas crasher au boot."""
+        monkeypatch.setenv("HUB_FRONTEND_PORT", "")
+        settings = Settings()
+        assert settings.HUB_FRONTEND_PORT == 80
+
+    def test_valid_ports_are_kept(self, monkeypatch):
+        """Une valeur réelle fournie par le .env reste prioritaire."""
+        monkeypatch.setenv("HUB_API_PORT", "9000")
+        monkeypatch.setenv("HUB_FRONTEND_PORT", "8080")
+        settings = Settings()
+        assert settings.HUB_API_PORT == 9000
+        assert settings.HUB_FRONTEND_PORT == 8080

@@ -163,6 +163,14 @@ class Settings(BaseSettings):
         if v == '':
             return None
         return v
+
+    @field_validator('HUB_API_PORT', 'HUB_FRONTEND_PORT', mode='before')
+    @classmethod
+    def empty_port_to_default(cls, v, info):
+        """Hub legacy : ces variables peuvent manquer du .env et arriver vides (subst docker compose)."""
+        if v in ('', None):
+            return {'HUB_API_PORT': 8000, 'HUB_FRONTEND_PORT': 80}[info.field_name]
+        return v
     
     class Config:
         env_file = ".env"
