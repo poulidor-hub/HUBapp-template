@@ -68,28 +68,34 @@ def get_local_ip() -> str | None:
     return ip
 
 
-def query_hub_host(host: str, port: str, timeout: float = 1.5) -> str | None:
-    """GET http://{host}:{port}/api/config/hub-host → retourne le champ 'host', ou None."""
+def query_hub_host_full(host: str, port: str, timeout: float = 1.5) -> dict | None:
+    """GET http://{host}:{port}/api/config/hub-host → dict de la réponse, ou None."""
     url = f"http://{host}:{port}/api/config/hub-host"
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
-        host_val = data.get("host")
-        if isinstance(host_val, str) and host_val.strip():
-            return host_val.strip()
-        return None
+        return data if isinstance(data, dict) else None
     except Exception:
         return None
 
 
-def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float = 1.5) -> str | None:
-    """Itère les candidats dans l'ordre, retourne le 1er 'host' non-None. None si tous injoignables."""
+def query_hub_host(host: str, port: str, timeout: float = 1.5) -> str | None:
+    """Compat : champ 'host' de la réponse hub-host."""
+    data = query_hub_host_full(host, port, timeout)
+    if not data:
+        return None
+    host_val = data.get("host")
+    return host_val.strip() if isinstance(host_val, str) and host_val.strip() else None
+
+
+def discover_hub_host(candidates: list[str], hub_api_port: str, timeout: float = 1.5) -> dict | None:
+    """Itère les candidats dans l'ordre, retourne le 1er dict avec 'host' valide. None si tous injoignables."""
     for host in candidates:
         if not host or not host.strip():
             continue
-        result = query_hub_host(host.strip(), hub_api_port, timeout)
-        if result:
+        result = query_hub_host_full(host.strip(), hub_api_port, timeout)
+        if result and isinstance(result.get("host"), str):
             return result
     return None
 
@@ -143,12 +149,55 @@ def main(argv: list[str] | None = None) -> int:
 
     discovered = discover_hub_host(candidates, hub_api_port)
 
+    # Compat : retour legacy (str, anciens mocks/callers de discover_hub_host) normalisé en dict
+    if isinstance(discovered, str):
+        discovered = {"host": discovered}
+
     if discovered:
-        if discovered != current:
-            set_env_var(ENV_PATH, "HUB_HOST", discovered)
-            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {discovered}")
+        # Propagation HUB_HOST (comportement inchangé : message même en --quiet)
+        hub_host_val = discovered.get("host")
+        if isinstance(hub_host_val, str) and hub_host_val.strip() and hub_host_val.strip() != current:
+            set_env_var(ENV_PATH, "HUB_HOST", hub_host_val.strip())
+            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {hub_host_val.strip()}")
         elif not args.quiet:
-            print(f"✅ HUB_HOST déjà à jour ({discovered})")
+            print(f"✅ HUB_HOST déjà à jour ({hub_host_val})")
+
+        # --- Garde d'instance + propagation des ports (hub ≥ annonce api_port) ---
+        announced_api = discovered.get("api_port")
+        announced_front = discovered.get("frontend_port")
+        instance = (discovered.get("instance_id") or "").strip() if isinstance(discovered.get("instance_id"), str) else ""
+
+        if announced_api is None and instance == "":
+            if not args.quiet:
+                print("⚠️ Hub sans annonce de ports/instance (version antérieure) — "
+                      "propagation de l'IP seule ; vérifiez manuellement HUB_API_PORT.")
+            return 0
+
+        stored_instance = (env.get("HUB_INSTANCE_ID") or "").strip()
+        if stored_instance and instance and stored_instance != instance:
+            print(f"❌ ATTENTION: le hub contacté ({current or '?'}) n'est PAS celui du dernier "
+                  f"sync (instance mémorisée {stored_instance} ≠ instance détectée {instance}). "
+                  f"Vérifiez HUB_HOST et HUB_API_PORT — aucune écriture effectuée.")
+            return 1
+
+        # Ports annoncés vs configurés
+        mismatches = []
+        if isinstance(announced_api, int) and str(announced_api) != hub_api_port:
+            set_env_var(ENV_PATH, "HUB_API_PORT", str(announced_api))
+            mismatches.append(f"HUB_API_PORT {hub_api_port} → {announced_api}")
+        if isinstance(announced_front, int):
+            front = (env.get("HUB_FRONTEND_PORT") or "80").strip() or "80"
+            if str(announced_front) != front:
+                set_env_var(ENV_PATH, "HUB_FRONTEND_PORT", str(announced_front))
+                mismatches.append(f"HUB_FRONTEND_PORT {front} → {announced_front}")
+        if instance:
+            set_env_var(ENV_PATH, "HUB_INSTANCE_ID", instance)
+        if mismatches:
+            print(f"⚠️ Mismatch de ports corrigé ({'; '.join(mismatches)}) — "
+                  f"RECRÉEZ les conteneurs de l'app (docker compose up -d --force-recreate) "
+                  f"pour que le proxy nginx et le backend prennent le nouveau port.")
+        elif not args.quiet:
+            print("✅ Ports et instance du Hub alignés")
         return 0
 
     # --- Hub injoignable ---
