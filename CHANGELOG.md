@@ -5,6 +5,23 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.19.0] — 31 août 2026
+
+### 🔄 sync-env : propagation des ports + garde d'identité du Hub
+
+- **Ajouté** : `make sync-env` propage désormais `HUB_API_PORT`/`HUB_FRONTEND_PORT`
+  depuis la réponse `/api/config/hub-host` du Hub (nouvelle réponse enrichie, Hub
+  ≥ 3.43.0) et alerte avec la marche à suivre (« recréez les conteneurs ») quand
+  un mismatch est corrigé.
+- **Ajouté** : garde `HUB_INSTANCE_ID` — l'app mémorise l'identité du Hub au
+  premier sync ; si un sync ultérieur contacte une instance différente (mauvais
+  port/IP, coexistence), sync-env échoue visiblement (exit 1) SANS écrire, au
+  lieu de valider silencieusement le mauvais hub.
+- **Comportement** : hub ancien (réponse sans ports/instance) → warning + 
+  propagation IP seule, inchangé.
+- **Tests** : +5 (première rencontre, mismatch corrigé, mismatch fatal, hub
+  ancien, propagation IP préservée) — 25+5 ACTIONS verts.
+
 ## [2.18.2] — 31 août 2026
 
 ### ⚡ Fiabilité runtime & initialisation (audit ports en dur)
