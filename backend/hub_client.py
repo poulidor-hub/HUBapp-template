@@ -50,7 +50,18 @@ DISCOVERED_SERVICES_CACHE_TTL = 60
 REGISTER_LOCK_FILE = str(_storage_dir / ".hub_register.lock")
 # Fichier de credentials partagé entre workers
 CREDENTIALS_FILE = str(_storage_dir / ".hub_credentials")
-DEPENDS_FILE = Path(__file__).resolve().parent.parent / "depends.yaml"
+# depends.yaml : cherché dans backend/ (copié dans l'image sous /app) puis,
+# à défaut, à la racine du projet (visible uniquement sur l'hôte).
+DEPENDS_BACKEND_FILE = Path(__file__).resolve().parent / "depends.yaml"
+DEPENDS_ROOT_FILE = Path(__file__).resolve().parent.parent / "depends.yaml"
+
+
+def _find_depends_file() -> Optional[Path]:
+    """Retourne le premier depends.yaml existant (backend/ puis racine), sinon None."""
+    for candidate in (DEPENDS_BACKEND_FILE, DEPENDS_ROOT_FILE):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @dataclass
@@ -112,18 +123,19 @@ class HubClient:
         self._discovered_services_fetched_at: Optional[datetime] = None
 
     def _load_depends_yaml(self) -> list:
-        """Lit depends.yaml s'il existe. Retourne [] sinon (pas d'erreur).
+        """Lit depends.yaml (backend/ puis racine) s'il existe. Retourne [] sinon.
 
         Retourne la liste brute d'entrées : [{"slug": "X", "note": "..."}, ...].
         Jamais d'exception — l'app doit démarrer même si le fichier est corrompu.
         """
-        if not DEPENDS_FILE.exists():
+        depends_file = _find_depends_file()
+        if depends_file is None:
             return []
         try:
-            data = yaml.safe_load(DEPENDS_FILE.read_text()) or {}
+            data = yaml.safe_load(depends_file.read_text()) or {}
             return data.get("depends_on", []) or []
         except Exception as e:
-            logger.warning(f"⚠️ depends.yaml illisible: {e}")
+            logger.warning(f"⚠️ depends.yaml illisible ({depends_file}): {e}")
             return []
 
     async def _get_client(self) -> httpx.AsyncClient:

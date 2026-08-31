@@ -1494,6 +1494,58 @@ def has_flag(argv, *flags) -> bool:
     return any(a in flags for a in argv[1:])
 
 
+def set_env_var(env_path, key, value) -> bool:
+    """Écrit key=value dans le .env (remplace ou ajoute). True si modifié."""
+    env_path = Path(env_path)
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    new_line = f"{key}={value}"
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            if line == new_line:
+                return False
+            lines[i] = new_line
+            env_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+            return True
+    lines.append(new_line)
+    env_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    return True
+
+
+def sync_https_port(env_path) -> bool:
+    """Recalcule FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1 (no-op si port absent/vide)."""
+    frontend_port = load_env().get("FRONTEND_PORT", "").strip()
+    if not frontend_port.isdigit():
+        return False
+    return set_env_var(env_path, "FRONTEND_HTTPS_PORT", str(int(frontend_port) + 1))
+
+
+def ensure_env_sync() -> None:
+    """Synchronise le .env avant tout build/up (équivalent de `make sync-env`).
+
+    - sync_hub_host.py --quiet : découverte du Hub (best-effort, non bloquant)
+    - allocate_ports.py        : allocation ports/subnet par le Hub si absents (bloquant)
+    - FRONTEND_HTTPS_PORT      : recalculé = FRONTEND_PORT + 1
+    """
+    root = project_root()
+    env_path = root / ".env"
+    if not env_path.exists():
+        red("✗ .env introuvable — copiez .env.example vers .env puis relancez.")
+        sys.exit(1)
+    actions = root / "ACTIONS" / "PYTHON"
+    subprocess.run(
+        [sys.executable, str(actions / "sync_hub_host.py"), "--quiet"],
+        cwd=str(root), capture_output=True, text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(actions / "allocate_ports.py")],
+        cwd=str(root),
+    )
+    if result.returncode != 0:
+        red("✗ Allocation des ports auprès du Hub échouée — démarrage annulé.")
+        sys.exit(result.returncode or 1)
+    sync_https_port(env_path)
+
+
 def confirm_typed(expected: str) -> bool:
     """Demande à l'utilisateur de retaper `expected` pour confirmer."""
     print(f"\\n\\033[91m⚠  Action destructive — tapez '{expected}' pour confirmer (sinon Entrée pour annuler):\\033[0m")
@@ -1518,13 +1570,15 @@ def _action_template(name: str) -> str:
 Avec --fe / --be : down complet puis build + up -d --no-deps du service ciblé.
 """
 import sys
-from _common import compose, parse_service, cyan, green, red
+from _common import compose, parse_service, ensure_env_sync, cyan, green, red
 
 
 def main():
     svc = parse_service(sys.argv)
     cyan("→ Arrêt complet de la stack")
     compose("down")
+    cyan("→ Synchronisation du .env (allocation ports Hub si besoin)")
+    ensure_env_sync()
     if svc:
         cyan(f"→ Build du service '{svc}' uniquement")
         compose("build", svc)
@@ -1687,7 +1741,7 @@ if __name__ == "__main__":
         return '''"""UPDATE : git pull --ff-only puis build + up -d."""
 import sys
 import subprocess
-from _common import project_root, compose, cyan, green, red, yellow
+from _common import project_root, compose, ensure_env_sync, cyan, green, red, yellow
 
 
 def main():
@@ -1704,6 +1758,8 @@ def main():
     if r.returncode != 0:
         red("✗ git pull a échoué (conflits ou non fast-forward).")
         sys.exit(1)
+    cyan("→ Synchronisation du .env (allocation ports Hub si besoin)")
+    ensure_env_sync()
     cyan("→ Build des images")
     compose("build")
     cyan("→ Up -d")

@@ -8,7 +8,9 @@ from hub_client import HubClient, HubCredentials
 
 def test_load_depends_yaml_returns_empty_when_absent(tmp_path):
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", tmp_path / "nonexistent.yaml"):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", tmp_path / "nonexistent.yaml"), patch(
+        "hub_client.DEPENDS_ROOT_FILE", tmp_path / "nonexistent-root.yaml"
+    ):
         assert client._load_depends_yaml() == []
 
 
@@ -21,7 +23,9 @@ def test_load_depends_yaml_reads_entries(tmp_path):
         "  - slug: exemple-app\n"
     )
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         result = client._load_depends_yaml()
     assert result == [
         {"slug": "exemple-app-2", "note": "Catalogue"},
@@ -33,7 +37,9 @@ def test_load_depends_yaml_returns_empty_when_no_depends_on_key(tmp_path):
     f = tmp_path / "depends.yaml"
     f.write_text("# just a comment\n")
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         assert client._load_depends_yaml() == []
 
 
@@ -41,7 +47,9 @@ def test_load_depends_yaml_returns_empty_on_corrupted_yaml(tmp_path):
     f = tmp_path / "depends.yaml"
     f.write_text("depends_on: [[unclosed")
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         assert client._load_depends_yaml() == []
 
 
@@ -56,7 +64,9 @@ async def test_register_sends_dependencies_to_hub(monkeypatch, tmp_path):
     f.write_text("depends_on:\n  - slug: exemple-app-2\n")
 
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         monkeypatch.setattr(client, "_do_register", lambda: _async_true())
         monkeypatch.setattr(client, "_load_credentials_from_file", lambda: False)
 
@@ -82,7 +92,9 @@ async def test_register_does_not_crash_if_depends_send_fails(monkeypatch, tmp_pa
     f.write_text("depends_on:\n  - slug: exemple-app-2\n")
 
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         monkeypatch.setattr(client, "_do_register", lambda: _async_true())
         monkeypatch.setattr(client, "_load_credentials_from_file", lambda: False)
 
@@ -100,7 +112,9 @@ async def test_register_sends_deps_even_with_cached_credentials(monkeypatch, tmp
     f.write_text("depends_on:\n  - slug: exemple-app-2\n  - slug: exemple-app\n")
 
     client = HubClient()
-    with patch("hub_client.DEPENDS_FILE", f):
+    with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
+        "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
+    ):
         monkeypatch.setattr(client, "_load_credentials_from_file", lambda: True)
 
         calls = []
