@@ -16,6 +16,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_password}
       POSTGRES_DB: ${POSTGRES_DB:-app_db}
+      # Port interne du serveur PostgreSQL, piloté par POSTGRES_PORT (.env).
+      # PGPORT est honoré par le serveur ET les outils clients du conteneur
+      # (psql, pg_dump, pg_isready du healthcheck).
+      PGPORT: ${POSTGRES_PORT:-5432}
       TZ: UTC
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -72,13 +76,16 @@ services:
       - HUB_API_PORT=${HUB_API_PORT:-8000}
       - HUB_FRONTEND_PORT=${HUB_FRONTEND_PORT:-80}
       - POSTGRES_HOST=${APP_SLUG:-mon-app}-postgres
-      - POSTGRES_PORT=5432
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - DEBUG=${DEBUG:-false}
       - IS_SHARED=${IS_SHARED:-false}
       - UPLOADS_DIR=/app/uploads
+      # Répertoire ssl/ vu de cert_sync.py (volume partagé ./ssl:/app/ssl).
+      # Sans cette variable, le défaut résoudrait vers /ssl (hors volume).
+      - SSL_DIR=/app/ssl
     volumes:
       - uploads_data:/app/uploads
       # Partagé avec le frontend (./ssl:/etc/nginx/ssl) — permet à cert_sync.py

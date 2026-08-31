@@ -18,6 +18,7 @@ Reload nginx — choix documenté :
 """
 import asyncio
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -26,7 +27,18 @@ logger = logging.getLogger("cert_sync")
 
 CERT_FILES = {"cert": "server.crt", "key": "server.key", "ca": "ca.crt"}
 SYNC_INTERVAL_SECONDS = 6 * 3600
-_ssl_dir = Path(__file__).resolve().parent.parent / "ssl"
+
+
+def _get_ssl_dir() -> Path:
+    """Répertoire ssl/ où réécrire les certificats.
+
+    - En conteneur : SSL_DIR=/app/ssl (volume ./ssl:/app/ssl, docker-compose.yml).
+    - Sur l'hôte (défaut) : <racine projet>/ssl, soit parent.parent de backend/.
+    """
+    env_dir = os.environ.get("SSL_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return Path(__file__).resolve().parent.parent / "ssl"
 
 
 def _same_content(directory: Path, filename: str, expected: str) -> bool:
@@ -79,11 +91,12 @@ async def sync_certs_once() -> bool:
     data = await hub_client.fetch_app_cert()
     if not data:
         return False
-    _ssl_dir.mkdir(parents=True, exist_ok=True)
+    ssl_dir = _get_ssl_dir()
+    ssl_dir.mkdir(parents=True, exist_ok=True)
     changed = False
     for field, filename in CERT_FILES.items():
         if data.get(field):
-            changed = _write_if_changed(_ssl_dir, filename, data[field]) or changed
+            changed = _write_if_changed(ssl_dir, filename, data[field]) or changed
     if changed:
         logger.info("🔐 Certificats HTTPS re-synchronisés depuis le HUB")
         _reload_nginx()

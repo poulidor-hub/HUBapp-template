@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cert_sync import _same_content, _write_if_changed, CERT_FILES
+from cert_sync import _get_ssl_dir, _same_content, _write_if_changed, CERT_FILES
 
 PEM_CERT = "-----BEGIN CERTIFICATE-----\nCERTPEM\n-----END CERTIFICATE-----\n"
 PEM_KEY = "-----BEGIN PRIVATE KEY-----\nKEYPEM\n-----END PRIVATE KEY-----\n"
@@ -26,13 +26,27 @@ def test_write_if_changed_writes_and_reports(tmp_path):
     assert changed2 is False
 
 
+def test_ssl_dir_default_is_project_root_ssl(monkeypatch):
+    """Sans SSL_DIR : <racine projet>/ssl (le ssl/ monté à la racine du dépôt)."""
+    monkeypatch.delenv("SSL_DIR", raising=False)
+    import cert_sync
+    expected = Path(cert_sync.__file__).resolve().parent.parent / "ssl"
+    assert _get_ssl_dir() == expected
+
+
+def test_ssl_dir_env_override(monkeypatch):
+    """En conteneur, SSL_DIR=/app/ssl (volume ./ssl:/app/ssl) doit être honoré."""
+    monkeypatch.setenv("SSL_DIR", "/app/ssl")
+    assert _get_ssl_dir() == Path("/app/ssl")
+
+
 async def test_sync_certs_once_writes_then_noop(tmp_path, monkeypatch):
     """Intégration : 1er appel écrit les fichiers + reload, 2e appel ne fait rien."""
     import cert_sync
 
     cert_data = {"cert": PEM_CERT, "key": PEM_KEY, "ca": PEM_CA, "san": ["mon-app.local"]}
 
-    monkeypatch.setattr(cert_sync, "_ssl_dir", tmp_path)
+    monkeypatch.setattr(cert_sync, "_get_ssl_dir", lambda: tmp_path)
     monkeypatch.setattr(
         "hub_client.hub_client.fetch_app_cert", AsyncMock(return_value=cert_data)
     )
@@ -57,7 +71,7 @@ async def test_sync_certs_once_no_cert_returns_false(tmp_path, monkeypatch):
     """Si le HUB ne renvoie pas de cert (erreur/réseau), on ne touche à rien."""
     import cert_sync
 
-    monkeypatch.setattr(cert_sync, "_ssl_dir", tmp_path)
+    monkeypatch.setattr(cert_sync, "_get_ssl_dir", lambda: tmp_path)
     monkeypatch.setattr(
         "hub_client.hub_client.fetch_app_cert", AsyncMock(return_value=None)
     )
