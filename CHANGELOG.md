@@ -5,6 +5,35 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.18.2] — 31 août 2026
+
+### ⚡ Fiabilité runtime & initialisation (audit ports en dur)
+
+- **Fix certs PKI** : `cert_sync.py` écrivait dans `/ssl` en conteneur (code à
+  `/app/`, `parent.parent` = racine fs) au lieu du volume `./ssl:/app/ssl` → le
+  renouvellement des certificats HTTPS n'atteignait jamais nginx en prod.
+  Nouveau `_get_ssl_dir()` : honore `SSL_DIR` (=`/app/ssl` via docker-compose),
+  défaut hôte `<racine>/ssl` inchangé.
+- **Fix POSTGRES_PORT** : la variable du `.env` était ignorée (codée en dur
+  `5432` dans l'env api). Désormais propagée : `PGPORT` sur le conteneur postgres
+  (honoré par le serveur ET les outils clients psql/pg_dump/pg_isready),
+  `${POSTGRES_PORT:-5432}` dans l'env api. Portée documentée dans `.env.example`.
+- **Fix actions générées** : `START`/`UPDATE` (INITIALISE.py) appelaient
+  `docker compose` directement, sans `make sync-env` → échec au premier
+  démarrage d'une app initialisée avec ports vides (`APP_SUBNET` requis, ports
+  non alloués). Le `_common.py` généré embarque `ensure_env_sync()`
+  (sync_hub_host → allocate_ports → `FRONTEND_HTTPS_PORT` = FRONTEND_PORT+1),
+  appelé avant tout build/up.
+- **Fix depends.yaml** : cherché dans `backend/` (présent dans l'image sous
+  `/app`) puis à la racine du projet — avant, le fichier n'existait jamais côté
+  conteneur et l'envoi des dépendances au HUB (`_push_deps_to_hub`) était un
+  no-op silencieux.
+- Tests : +10 nouveaux (résolution SSL_DIR, sync-env des actions générées +
+  `_common` généré exécuté, résolution depends.yaml) — 150 backend + 68 ACTIONS
+  verts. Audit de la chaîne des ports (.env → compose → backend → frontend/
+  nginx) : plus aucun port hôte en dur (seuls les ports internes conteneurs
+  restent fixes, jamais exposés).
+
 ## [2.18.1] — 30 août 2026
 
 ### ⚡ Tolérance aux ports Hub vides (hub legacy)
