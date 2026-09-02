@@ -5,6 +5,21 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.3] - 3 septembre 2026
+
+### 🧪 Test de non-duplication pour `update_env.py`
+
+- Nouveau `scripts/test_update_env.py` : 8 cas autonomes (sans Docker ni pytest,
+  `python3 scripts/test_update_env.py`, exit 0/1) verrouillant la fusion B.0 :
+  clés existantes avec valeur intouchées (1 occurrence), orphelines préservées,
+  clé vide remplacée **en place** (position conservée), clé absente ajoutée
+  **une seule fois** (régression du fix 2.20.2), détecteur réseau indisponible
+  (pas d'APP_SUBNET fantôme, dérivée hors-Docker conservée), idempotence
+  (2ᵉ exécution = no-op, aucun backup), invariant « chaque clé exactement une
+  fois après fusion », secrets existants non écrasés.
+- Constat à l'écriture des tests : le comportement du script est correct sur
+  tous les cas — les 2 attentes initialement fausses (comptage de lignes,
+  backup sans écriture) venaient du harnais, pas du fix.
 ## [2.20.2] - 3 septembre 2026
 
 ### 🔧 Corrigé : `update_env.py` perdait silencieusement les clés `filled` absentes du `.env`
