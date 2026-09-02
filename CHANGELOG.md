@@ -5,6 +5,18 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.2] - 3 septembre 2026
+
+### 🔧 Corrigé : `update_env.py` perdait silencieusement les clés `filled` absentes du `.env`
+
+- **Bug** : la phase d'écriture utilisait `re.sub` pour poser les valeurs dérivées
+  (`FRONTEND_HTTPS_PORT`, `APP_SUBNET`) — si la clé était **absente** du `.env`
+  (pas seulement vide, cas exact des vieilles apps ciblées par la migration B.0),
+  aucune ligne n'était remplacée et la valeur n'était jamais écrite, alors que le
+  rapport annonçait « complété » et « ✅ .env fusionné ».
+- **Correctif** : passage à `re.subn` + ajout en fin de fichier quand rien n'a été
+  remplacé. Validé sur le cas réel (app sans `APP_SUBNET` : clé désormais écrite,
+  valeurs critiques inchangées, backup horodaté créé).
 ## [2.20.1] — 2 septembre 2026
 
 ### 🔧 Skill `app-dependencies` aligné sur le modèle atelier réel

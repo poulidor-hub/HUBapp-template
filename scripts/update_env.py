@@ -196,7 +196,12 @@ def main():
 
     content = '\n'.join(env_lines)
     for key, value in filled:
-        content = re.sub(rf'^{key}=.*$', f'{key}={value}', content, flags=re.MULTILINE)
+        content, replaced = re.subn(rf'^{key}=.*$', f'{key}={value}', content, flags=re.MULTILINE)
+        if not replaced:
+            # Clé absente du .env (pas seulement vide — ex. vieille app sans
+            # APP_SUBNET) : re.subn n'a rien remplacé, on l'ajoute en fin de
+            # fichier. Sinon le fill est perdu silencieusement.
+            content = content.rstrip('\n') + '\n\n' + f'{key}={value}' + '\n'
     if new_lines:
         content = content.rstrip('\n') + '\n\n' + '\n'.join(new_lines) + '\n'
     with open(env_path, 'w', encoding='utf-8') as fh:
