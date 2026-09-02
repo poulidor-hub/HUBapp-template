@@ -1,7 +1,7 @@
 ---
 name: app-dependencies
-description: Use when an app calls another app via M2M and you need to declare the dependency (depends.yaml at app root) or instrument report_sync so the Hub dashboard reflects inter-app activity. Triggers on: "déclarer une dépendance inter-apps", "depends.yaml", "report_sync", "mon app appelle une autre app", "instrumenter une synchro", "emmener les deps à l'atelier".
-argument-hint: 'What dependency operation is needed (write depends.yaml, instrument report_sync after M2M, test group resolution at workshop)'
+description: Use when an app calls another app via M2M and you need to declare the dependency (depends.yaml at app root) or instrument report_sync so the Hub dashboard reflects inter-app activity. Triggers on: "déclarer une dépendance inter-apps", "depends.yaml", "report_sync", "mon app appelle une autre app", "instrumenter une synchro".
+argument-hint: 'What dependency operation is needed (write depends.yaml, instrument report_sync after M2M)'
 ---
 
 # Déclarer et instrumenter les dépendances inter-apps
@@ -62,21 +62,25 @@ if result.get("status_code") == 200:
 - Si tu n'appelles jamais `report_sync`, `last_sync_at` reste NULL. Ce n'est pas une
   erreur — le dashboard affichera "jamais synchro (non instrumenté)".
 
-## Tester au workshop
+## Dépendances et atelier
 
-1. Crée ton `depends.yaml`
-2. Lance `hubctl` → menu APPS → Atelier (en mode DEV)
-3. Sélectionne ton app avec `[→]`. Le hubctl propose automatiquement d'emmener les deps.
-4. Valide le groupe complet.
-5. Vérifie : toutes les apps du groupe sont dans `APP_Workshop/` avec le suffixe `-ws`.
+L'atelier (`./hubctl atelier X`, cf. skill `app-workshop-mover`) fait tourner une
+sandbox `-ws` **à côté de la prod, qui reste en place**. Les dépendances déclarées
+ne bougent pas : les appels M2M de l'app testée continuent de résoudre vers les
+instances **prod** des apps cibles (découverte du Hub). Il n'existe pas de mécanisme
+de groupe à « emmener » à l'atelier — si la prod d'une dépendance est down, l'app
+en atelier échouera simplement sur ses appels M2M.
+
+Pour tester une montée de version d'une dépendance, lancer un atelier séparé pour
+cette dépendance.
 
 ## Anti-patterns
 
 | Erreur | Conséquence |
 |---|---|
-| Déclarer une dep sans l'appeler en code | `last_sync_at` reste NULL, suggestion atelier emmène l'app pour rien |
+| Déclarer une dep sans l'appeler en code | `last_sync_at` reste NULL ; la déclaration ne reflète rien de réel |
 | Oublier `report_sync` après un M2M | Pas de visibilité dashboard sur l'activité |
-| Cycle A→B→A dans les YAML | `resolve_group` est protégé (visited set) mais le graphe est sale |
+| Cycle A→B→A dans les YAML | Aucune résolution automatique côté hubctl — le graphe du dashboard devient incohérent |
 | Référencer un slug `-ws` dans `depends.yaml` | Toujours référencer le slug **prod**. Le hub résout les deux. |
 | Wrapper `report_sync` dans un try/except métier | Masque les vraies erreurs. Laisse-le best-effort. |
 
@@ -85,7 +89,6 @@ if result.get("status_code") == 200:
 | Ressource | Emplacement |
 |---|---|
 | Fichier deps | `APPS/X/depends.yaml` |
-| Lecture disque hubctl | `hubctl_cli/dependencies.py::build_graph()` |
 | Endpoint hub push | `POST /api/apps/dependencies` (service account) |
 | Endpoint hub sync | `POST /api/apps/sync-report` (service account) |
 | Endpoint hub graphe | `GET /api/apps/dependencies` (admin) |

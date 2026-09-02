@@ -5,6 +5,20 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.1] — 2 septembre 2026
+
+### 🔧 Skill `app-dependencies` aligné sur le modèle atelier réel
+
+- Retrait des références au modèle atelier fictif (menu « APPS → Atelier »,
+  sélection `[→]`, groupe de deps emmené automatiquement, vérification dans
+  `APP_Workshop/`, trigger « emmener les deps à l'atelier ») — remplacées par le
+  cycle réel `./hubctl atelier X` : sandbox `-ws` à côté de la prod (qui reste en
+  place), appels M2M résolus vers les instances prod, pas de groupe à emmener.
+- Anti-patterns : retrait de `resolve_group` (n'existe pas dans hubctl) ;
+  Quick Reference : retrait de `hubctl_cli/dependencies.py::build_graph()`
+  (fichier inexistant). `report_sync` / `depends.yaml` / endpoints Hub (réels)
+  inchangés.
+
 ## [2.20.0] — 2 septembre 2026
 
 ### 🔐 update-env : fusion automatique du `.env` après montée de template
