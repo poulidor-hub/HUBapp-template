@@ -5,6 +5,16 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.0] — 2 septembre 2026
+
+### 🔐 update-env : fusion automatique du `.env` après montée de template
+
+- **Ajouté** : `scripts/update_env.py` + cible `make update-env` — fusionne les nouvelles clés du `.env.example` dans le `.env` existant **sans jamais modifier les valeurs existantes** ni supprimer les clés propres à l'app (orphelines, ex. `HUB_INSTANCE_ID`). Sauvegarde horodatée automatique (`.env.pre-update-<stamp>`), rapport détaillé (ajoutées / conservées / complétées).
+- **Variables requises du compose** (syntaxe `${VAR:?...}`, ex. `APP_SUBNET`, `FRONTEND_HTTPS_PORT`) vérifiées après fusion : exit 1 avec message explicite si l'une reste vide. Valeurs dérivées recalculées plutôt que reprises de l'exemple : `FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1`, `APP_SUBNET` lu sur le réseau Docker existant de l'app (déploiements sans Hub ni `make` : `python3 scripts/update_env.py` fonctionne seul).
+- **Option `--example CHEMIN`** : pendant une migration, pointer sur le `.env.example` du template (celui de l'app peut encore être ancien).
+- **`.gitignore`** : `.env.pre-*` ignoré (les sauvegardes de `.env` contiennent des secrets — ne jamais les committer).
+- Contexte : incident réel de déploiement (nouveau compose tiré par git + ancien `.env` → `APP_SUBNET` manquant ; mauvais réflexe `cp .env.example .env` qui casse les identifiants DB). Le skill parc `migrate-app-template` (B.0) s'appuie sur cet outil.
+
 ## [2.19.0] — 31 août 2026
 
 ### 🔄 sync-env : propagation des ports + garde d'identité du Hub
