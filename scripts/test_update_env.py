@@ -19,6 +19,8 @@ Couverture :
   5b. Détecteur None + FRONTEND_PORT           → APP_SUBNET sauté, dérivée écrite
   6. Idempotence : 2e exécution = no-op (aucune écriture, aucun backup)
   7. Invariant global : chaque clé apparaît exactement une fois après fusion
+  8a. .env inexistant → refus propre (exit 1, aucune création, aucun backup)
+  8b. Démarrage zéro : cp .env.example .env → update-env complète les dérivées
 """
 
 import importlib.util
@@ -47,8 +49,9 @@ def load_module(tmp_root):
 
 
 def write_case(tmp_root, env, example, compose="services: {}\n"):
-    with open(os.path.join(tmp_root, ".env"), "w") as fh:
-        fh.write(env)
+    if env is not None:
+        with open(os.path.join(tmp_root, ".env"), "w") as fh:
+            fh.write(env)
     with open(os.path.join(tmp_root, ".env.example"), "w") as fh:
         fh.write(example)
     with open(os.path.join(tmp_root, "docker-compose.yml"), "w") as fh:
@@ -213,6 +216,39 @@ def _(tmp):
     assert not dupes, f"clés dupliquées après fusion : {dupes}"
     assert "POSTGRES_PASSWORD=secret" in content, "secret existant écrasé !"
     assert "HUB_INTERNAL_HOST=" in content, "orpheline vide supprimée"
+
+
+@case("8a. .env inexistant → refus propre (exit 1, rien créé, aucun backup)")
+def _(tmp):
+    mod = load_module(tmp)
+    write_case(tmp, env=None,
+               example="API_PORT=9000\nFRONTEND_PORT=4250\n")
+    rc = run_main(mod, tmp)
+    assert rc == 1, f"le script doit refuser sans .env (rc={rc})"
+    assert not os.path.exists(os.path.join(tmp, ".env")), \
+        "un .env a été créé — interdit (fusion jamais régénération)"
+    assert backups(tmp) == [], "backup créé sans .env source"
+
+
+@case("8b. démarrage depuis zéro : cp example → update-env complète les dérivées")
+def _(tmp):
+    mod = load_module(tmp)
+    write_case(tmp, env=None,
+               example="APP_SLUG=mon-app\nFRONTEND_PORT=4250\n"
+                       "FRONTEND_HTTPS_PORT=\nIS_SHARED=false\n")
+    # Première installation — la voie sanctionnée (make sync-env / cp .env.example .env)
+    shutil.copy(os.path.join(tmp, ".env.example"), os.path.join(tmp, ".env"))
+    assert run_main(mod, tmp) == 0
+    content = read(tmp)
+    assert "FRONTEND_HTTPS_PORT=4251" in content, "dérivée non complétée au premier boot"
+    assert "APP_SUBNET=10.99.0.0/24" in content, "APP_SUBNET non ajouté au premier boot"
+    assert occurrences(content, "FRONTEND_HTTPS_PORT") == 1, "duplication au premier boot"
+    # Les valeurs de l'exemple (placeholders INITIALISE) sont conservées telles quelles
+    assert "APP_SLUG=mon-app" in content and "IS_SHARED=false" in content
+    keys = [l.split("=", 1)[0] for l in content.splitlines()
+            if l and not l.startswith("#") and "=" in l]
+    dupes = {k for k in keys if keys.count(k) > 1}
+    assert not dupes, f"clés dupliquées au premier boot : {dupes}"
 
 
 def main():

@@ -5,6 +5,17 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.4] - 3 septembre 2026
+
+### 🧪 Test « démarrage depuis zéro » pour `update_env.py` (10 cas)
+
+- **8a** : `.env` inexistant → le script **refuse proprement** (exit 1, aucun `.env`
+  créé, aucun backup) — verrouille la règle du parc « fusion, jamais régénération »
+  et le mauvais réflexe `cp .env.example .env` en cours de vie.
+- **8b** : flow premier boot sanctionné — `cp .env.example .env` puis `update-env`
+  complète les dérivées (`FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1`, `APP_SUBNET`
+  via le détecteur réseau), conserve les placeholders INITIALISE, zéro duplication.
+- Suite portée à 10 cas, tous verts.
 ## [2.20.3] - 3 septembre 2026
 
 ### 🧪 Test de non-duplication pour `update_env.py`
