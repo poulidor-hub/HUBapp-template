@@ -5,6 +5,20 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.6] - 6 septembre 2026
+
+### 🛠️ Restore : gestion des cycles de FK + resynchronisation des séquences
+
+- **Cycles de FK** (ex. `groupements ↔ groupement_voicemails`, chacune
+  référençant l'autre) : non résolubles par le tri topologique → pendant
+  l'import, `SET session_replication_role = replica` désactive les triggers
+  FK (rôle superuser requis ; repli gracieux sur l'ordre topologique seul si
+  refusé). Remis à `DEFAULT` en `finally` (connexion poolée protégée).
+- **Séquences resynchronisées** après import (`setval(pg_get_serial_sequence…,
+  MAX(id))`) : l'import insère des ids explicites sans avancer les séquences —
+  le prochain INSERT de l'app aurait sinon échoué en duplicate key.
+- 155 tests passants.
+
 ## [2.20.5] - 6 septembre 2026
 
 ### 🛠️ Restore générique : tri topologique des tables + SAVEPOINT par table/ligne

@@ -685,27 +685,55 @@ async def restore_backup(
             ordered_tables = _topological_table_order(restore_tables, fk_deps)
             logger.info(f"📊 Ordre d'import topologique: {ordered_tables}")
 
-            for i, table_name in enumerate(ordered_tables):
-                table_data = data[table_name]
-
-                if not table_data:
-                    tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0}
-                    continue
-
-                savepoint = await db.begin_nested()
+            # Cycles de FK non déferrables (ex. groupements ↔ voicemails) :
+            # l'ordre seul ne suffit pas → désactiver les triggers FK pendant
+            # l'import (rôle superuser requis ; sinon repli sur l'ordre seul).
+            replication_disabled = False
+            if db.get_bind().dialect.name == "postgresql":
                 try:
-                    result = await _import_table_data(db, table_name, table_data, clear_existing_bool)
-                    await savepoint.commit()
-                    tables_restored[table_name] = result
-
-                    total = result["imported"] + result["updated"]
-                    if total > 0:
-                        logger.info(f"  ✓ {table_name}: {result['imported']} importés, "
-                                   f"{result['updated']} mis à jour, {result['skipped']} ignorés")
+                    await db.execute(text("SET session_replication_role = replica"))
+                    replication_disabled = True
                 except Exception as e:
-                    await savepoint.rollback()
-                    errors.append(f"Table {table_name}: {str(e)}")
-                    tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0, "error": str(e)}
+                    logger.warning(f"⚠️ session_replication_role=replica refusé: {e}")
+
+            try:
+                for i, table_name in enumerate(ordered_tables):
+                    table_data = data[table_name]
+
+                    if not table_data:
+                        tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0}
+                        continue
+
+                    savepoint = await db.begin_nested()
+                    try:
+                        result = await _import_table_data(db, table_name, table_data, clear_existing_bool)
+                        await savepoint.commit()
+                        tables_restored[table_name] = result
+
+                        total = result["imported"] + result["updated"]
+                        if total > 0:
+                            logger.info(f"  ✓ {table_name}: {result['imported']} importés, "
+                                       f"{result['updated']} mis à jour, {result['skipped']} ignorés")
+                    except Exception as e:
+                        await savepoint.rollback()
+                        errors.append(f"Table {table_name}: {str(e)}")
+                        tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0, "error": str(e)}
+
+                # Ré-synchroniser les séquences : l'import insère des ids
+                # explicites sans avancer les sequences → le prochain INSERT
+                # de l'app sinon échoue en duplicate key.
+                if db.get_bind().dialect.name == "postgresql":
+                    for table_name in ordered_tables:
+                        try:
+                            await db.execute(text(
+                                f"SELECT setval(pg_get_serial_sequence('\"{table_name}\"', 'id'), "
+                                f"COALESCE((SELECT MAX(id) FROM \"{table_name}\"), 1))"
+                            ))
+                        except Exception:
+                            pass  # table sans colonne serial 'id'
+            finally:
+                if replication_disabled:
+                    await db.execute(text("SET session_replication_role = DEFAULT"))
             
             # 8. Restaurer les fichiers binaires
             file_entries = [f for f in zf.namelist() if f.startswith("files/") and not f.endswith("/")]
