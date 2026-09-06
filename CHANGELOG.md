@@ -5,6 +5,15 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.7] - 6 septembre 2026
+
+### 🛠️ Restore : fix transaction abortée (setval NULL + reset tolérant)
+
+- **Pré-check `pg_get_serial_sequence`** avant `setval` (tables sans colonne
+  serial `id` → NULL → transaction abortée → rollback général).
+- **Reset `session_replication_role` tolérant** dans le `finally`.
+- 155 tests passants.
+
 ## [2.20.6] - 6 septembre 2026
 
 ### 🛠️ Restore : gestion des cycles de FK + resynchronisation des séquences

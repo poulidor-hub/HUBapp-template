@@ -721,19 +721,32 @@ async def restore_backup(
 
                 # Ré-synchroniser les séquences : l'import insère des ids
                 # explicites sans avancer les sequences → le prochain INSERT
-                # de l'app sinon échoue en duplicate key.
+                # de l'app sinon échoue en duplicate key. Pré-check de la
+                # séquence : setval(NULL…) aborterait la transaction.
                 if db.get_bind().dialect.name == "postgresql":
                     for table_name in ordered_tables:
                         try:
+                            seq_res = await db.execute(text(
+                                f"SELECT pg_get_serial_sequence('\"{table_name}\"', 'id')"
+                            ))
+                            seq_name = seq_res.scalar()
+                            if not seq_name:
+                                continue  # table sans colonne serial 'id'
                             await db.execute(text(
-                                f"SELECT setval(pg_get_serial_sequence('\"{table_name}\"', 'id'), "
+                                f"SELECT setval('{seq_name}', "
                                 f"COALESCE((SELECT MAX(id) FROM \"{table_name}\"), 1))"
                             ))
                         except Exception:
                             pass  # table sans colonne serial 'id'
             finally:
                 if replication_disabled:
-                    await db.execute(text("SET session_replication_role = DEFAULT"))
+                    try:
+                        await db.execute(text("SET session_replication_role = DEFAULT"))
+                    except Exception:
+                        logger.warning(
+                            "⚠️ session_replication_role non réinitialisé "
+                            "(transaction abortée) — la connexion poolée sera recyclée."
+                        )
             
             # 8. Restaurer les fichiers binaires
             file_entries = [f for f in zf.namelist() if f.startswith("files/") and not f.endswith("/")]
