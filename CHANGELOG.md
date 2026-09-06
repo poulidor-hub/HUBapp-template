@@ -5,6 +5,20 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.8] - 6 septembre 2026
+
+### 🛠️ Restore : resync séquences robuste (pré-check colonne + savepoint)
+
+- **Correctif du correctif** (validé en conditions réelles sur exemple-app) :
+  la resync des séquences appelait `MAX(id)` sur des tables sans colonne
+  `id` (ex. `schema_migrations`) → erreur → transaction abortée → le
+  `COMMIT` final validait une transaction abortée = **rollback général des
+  données importées** (réponse 200 « succès » mensongère).
+- **Structure corrigée** : reset de `session_replication_role` AVANT le
+  resync (transaction saine), resync isolé par savepoint, pré-check de
+  l'existence de la colonne via `information_schema.columns`.
+- 155 tests passants.
+
 ## [2.20.7] - 6 septembre 2026
 
 ### 🛠️ Restore : fix transaction abortée (setval NULL + reset tolérant)
