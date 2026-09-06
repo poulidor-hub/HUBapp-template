@@ -5,6 +5,24 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.20.5] - 6 septembre 2026
+
+### 🛠️ Restore générique : tri topologique des tables + SAVEPOINT par table/ligne
+
+- **Tri topologique** des tables selon les dépendances FK réelles
+  (`information_schema` sur PostgreSQL, `PRAGMA foreign_key_list` sur SQLite)
+  avant import — corrige l'échec en cascade constaté sur exemple-app
+  (`groupements` référençait `groupement_voicemails`, importée en dernier
+  dans l'ordre alphabétique → ForeignKeyViolationError → « 12 tables,
+  0 importés » renvoyé en 200).
+- **SAVEPOINT par table** (`Session.begin_nested`) : une table en échec est
+  isolée (rollback au savepoint) et n'empoisonne plus la transaction des
+  tables suivantes.
+- **SAVEPOINT par ligne** dans `_import_table_data` : une ligne en échec
+  (FK, NOT NULL…) est comptée en `errors` sans casser les lignes suivantes.
+- **Tests** : `test_backup_restore_order.py` (5 tests — tri topologique pur,
+  cycles, auto-références, isolation endpoint).
+
 ## [2.20.4] - 3 septembre 2026
 
 ### 🧪 Test « démarrage depuis zéro » pour `update_env.py` (10 cas)

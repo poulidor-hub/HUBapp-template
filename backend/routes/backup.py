@@ -193,6 +193,58 @@ async def _export_table_data(db: AsyncSession, table_name: str) -> List[Dict[str
     return data
 
 
+async def _get_fk_dependencies(db: AsyncSession) -> dict:
+    """Dépendances FK entre tables du schéma public : {table: {tables référencées}}.
+    Auto-références exclues (isolées par savepoints à l'import)."""
+    result = await db.execute(text("""
+        SELECT tc.table_name, ccu.table_name AS referenced_table
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+    """))
+    deps: dict = {}
+    for table_name, referenced in result.fetchall():
+        if referenced != table_name:
+            deps.setdefault(table_name, set()).add(referenced)
+    return deps
+
+
+async def _get_fk_dependencies_sqlite(db: AsyncSession) -> dict:
+    """Équivalent SQLite (pas d'information_schema) via PRAGMA foreign_key_list."""
+    deps: dict = {}
+    for t in await _get_all_tables(db):
+        rows = await db.execute(text(f'PRAGMA foreign_key_list("{t}")'))
+        for row in rows.fetchall():
+            referenced = row[2]  # colonne 'table' du résultat PRAGMA
+            if referenced and referenced != t:
+                deps.setdefault(t, set()).add(referenced)
+    return deps
+
+
+def _topological_table_order(table_names: list, fk_deps: dict) -> list:
+    """Ordre d'import respectant les FK (Kahn, tie-break alphabétique).
+
+    Les cycles (non résolubles par l'ordre) sont ajoutés à la fin, isolés
+    par les savepoints de la boucle d'import.
+    """
+    names = set(table_names)
+    remaining = {t: {d for d in fk_deps.get(t, set()) if d in names} for t in table_names}
+    ordered, done = [], set()
+    while remaining:
+        ready = sorted(t for t, ds in remaining.items() if ds <= done)
+        if not ready:
+            ordered.extend(sorted(remaining))
+            break
+        for t in ready:
+            ordered.append(t)
+            done.add(t)
+            del remaining[t]
+    return ordered
+
+
 async def _import_table_data(
     db: AsyncSession, 
     table_name: str, 
@@ -221,57 +273,62 @@ async def _import_table_data(
     if clear_existing:
         await db.execute(text(f'DELETE FROM "{table_name}"'))
     
+    # Savepoint par ligne : une ligne en échec (FK, NOT NULL…) ne
+    # pousse plus la transaction dans un état aborté qui ferait
+    # échouer toutes les lignes suivantes en cascade.
     for row_data in data:
-        try:
-            # Désérialiser les valeurs
-            deserialized = {k: _deserialize_value(v) for k, v in row_data.items()}
-            
-            # Filtrer les colonnes qui existent dans la table
-            filtered_data = {k: v for k, v in deserialized.items() if k in existing_columns and _SAFE_IDENTIFIER_RE.match(k)}
-            
-            if not filtered_data:
-                stats["skipped"] += 1
-                continue
-            
-            # Construire la requête INSERT avec ON CONFLICT (upsert)
-            columns = list(filtered_data.keys())
-            placeholders = [f":{col}" for col in columns]
-            
-            if pk_columns and not clear_existing:
-                # Upsert : INSERT ... ON CONFLICT DO UPDATE
-                pk_condition = " AND ".join([f'"{col}" = :{col}' for col in pk_columns])
-                update_cols = [c for c in columns if c not in pk_columns]
-                
-                if update_cols:
-                    update_set = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in update_cols])
-                    query = f"""
-                        INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
-                        VALUES ({", ".join(placeholders)})
-                        ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
-                        DO UPDATE SET {update_set}
-                    """
-                else:
-                    # Pas de colonnes à mettre à jour, juste ignorer les conflits
-                    query = f"""
-                        INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
-                        VALUES ({", ".join(placeholders)})
-                        ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
-                        DO NOTHING
-                    """
-            else:
-                # Simple INSERT
+        # Désérialiser les valeurs
+        deserialized = {k: _deserialize_value(v) for k, v in row_data.items()}
+
+        # Filtrer les colonnes qui existent dans la table
+        filtered_data = {k: v for k, v in deserialized.items() if k in existing_columns and _SAFE_IDENTIFIER_RE.match(k)}
+
+        if not filtered_data:
+            stats["skipped"] += 1
+            continue
+
+        # Construire la requête INSERT avec ON CONFLICT (upsert)
+        columns = list(filtered_data.keys())
+        placeholders = [f":{col}" for col in columns]
+
+        if pk_columns and not clear_existing:
+            # Upsert : INSERT ... ON CONFLICT DO UPDATE
+            pk_condition = " AND ".join([f'"{col}" = :{col}' for col in pk_columns])
+            update_cols = [c for c in columns if c not in pk_columns]
+
+            if update_cols:
+                update_set = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in update_cols])
                 query = f"""
                     INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
                     VALUES ({", ".join(placeholders)})
+                    ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
+                    DO UPDATE SET {update_set}
                 """
-            
+            else:
+                # Pas de colonnes à mettre à jour, juste ignorer les conflits
+                query = f"""
+                    INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
+                    VALUES ({", ".join(placeholders)})
+                    ON CONFLICT ({", ".join([f'"{c}"' for c in pk_columns])})
+                    DO NOTHING
+                """
+        else:
+            # Simple INSERT
+            query = f"""
+                INSERT INTO "{table_name}" ({", ".join([f'"{c}"' for c in columns])})
+                VALUES ({", ".join(placeholders)})
+            """
+
+        row_sp = await db.begin_nested()
+        try:
             await db.execute(text(query), filtered_data)
+            await row_sp.commit()
             stats["imported"] += 1
-            
         except Exception as e:
+            await row_sp.rollback()
             logger.warning(f"⚠️ Erreur import ligne dans {table_name}: {e}")
             stats["errors"] += 1
-    
+
     return stats
 
 
@@ -612,25 +669,41 @@ async def restore_backup(
                 # pour pouvoir rollback si l'import échoue
                 await db.flush()
             
-            # 7. Restaurer chaque table
-            for table_name, table_data in data.items():
-                if table_name not in existing_tables:
-                    warnings.append(f"Table '{table_name}' du backup n'existe pas dans la base actuelle")
-                    continue
-                
+            # 7. Restaurer chaque table — ordre topologique (dépendances FK)
+            # + SAVEPOINT par table : une table en échec n'empoisonne plus la
+            # transaction des autres (bug exemple-app 06/09/2026 : FK violée
+            # sur la 1ère table alphabétique → « 12 tables, 0 importés »).
+            restore_tables = [t for t in data.keys() if t in existing_tables]
+            for t in data.keys():
+                if t not in existing_tables:
+                    warnings.append(f"Table '{t}' du backup n'existe pas dans la base actuelle")
+
+            if db.get_bind().dialect.name == "sqlite":
+                fk_deps = await _get_fk_dependencies_sqlite(db)
+            else:
+                fk_deps = await _get_fk_dependencies(db)
+            ordered_tables = _topological_table_order(restore_tables, fk_deps)
+            logger.info(f"📊 Ordre d'import topologique: {ordered_tables}")
+
+            for i, table_name in enumerate(ordered_tables):
+                table_data = data[table_name]
+
                 if not table_data:
                     tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0}
                     continue
-                
+
+                savepoint = await db.begin_nested()
                 try:
                     result = await _import_table_data(db, table_name, table_data, clear_existing_bool)
+                    await savepoint.commit()
                     tables_restored[table_name] = result
-                    
+
                     total = result["imported"] + result["updated"]
                     if total > 0:
                         logger.info(f"  ✓ {table_name}: {result['imported']} importés, "
                                    f"{result['updated']} mis à jour, {result['skipped']} ignorés")
                 except Exception as e:
+                    await savepoint.rollback()
                     errors.append(f"Table {table_name}: {str(e)}")
                     tables_restored[table_name] = {"imported": 0, "updated": 0, "skipped": 0, "error": str(e)}
             
