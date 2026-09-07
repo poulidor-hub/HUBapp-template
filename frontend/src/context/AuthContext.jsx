@@ -65,8 +65,11 @@ function getInitialToken() {
 }
 
 // Verrou inter-onglets : un seul onglet de l'app peut rotationner le refresh
-// token à la fois (localStorage partagé). Sans navigator.locks (vieux
-// navigateurs), fallback = exécution directe (comportement historique).
+// token à la fois (localStorage partagé). ATTENTION : navigator.locks n'existe
+// qu'en secure context (HTTPS ou localhost) — sur un accès LAN en HTTP pur,
+// le fallback sans lock s'applique et c'est la grâce serveur (60 s) qui
+// neutralise la course. Sans navigator.locks (vieux navigateurs), fallback =
+// exécution directe (comportement historique).
 const TOKEN_REFRESH_LOCK = 'hub-token-refresh'
 
 // Décoder et valider le token (synchrone)
