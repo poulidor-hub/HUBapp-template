@@ -64,6 +64,14 @@ function getInitialToken() {
   return localStorage.getItem(config.storageKeys.accessToken)
 }
 
+// Verrou inter-onglets : un seul onglet de l'app peut rotationner le refresh
+// token à la fois (localStorage partagé). ATTENTION : navigator.locks n'existe
+// qu'en secure context (HTTPS ou localhost) — sur un accès LAN en HTTP pur,
+// le fallback sans lock s'applique et c'est la grâce serveur (60 s) qui
+// neutralise la course. Sans navigator.locks (vieux navigateurs), fallback =
+// exécution directe (comportement historique).
+const TOKEN_REFRESH_LOCK = 'hub-token-refresh'
+
 // Décoder et valider le token (synchrone)
 function getInitialUser(token) {
   if (!token) return null
@@ -105,6 +113,21 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
+  // Sync inter-onglets : quand un autre onglet de la même app met à jour le
+  // token dans localStorage (rotation sous verrou), adopter la nouvelle
+  // valeur. Sans ça, un onglet garde un JWT expiré « en mémoire » et retente
+  // un refresh avec un refresh token déjà consommé.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === config.storageKeys.accessToken && event.newValue && event.newValue !== token) {
+        console.log('🔁 Token mis à jour par un autre onglet — synchronisation')
+        setToken(event.newValue)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [token])
+
   const login = useCallback(() => {
     const callbackUrl = encodeURIComponent(window.location.origin + window.location.pathname)
     const hubLoginUrl = `${appConfig.hubFrontendUrl}?callback=${callbackUrl}`
@@ -129,47 +152,75 @@ export function AuthProvider({ children }) {
   const refreshingRef = useRef(false)
 
   const refreshAccessToken = useCallback(async () => {
-    // Éviter les rafraîchissements concurrents
-    if (refreshingRef.current) {
-      console.log('⏳ Rafraîchissement déjà en cours...')
-      return false
-    }
-    
-    const refreshToken = localStorage.getItem(config.storageKeys.refreshToken)
-    if (!refreshToken) {
+    const readStoredRefresh = () => localStorage.getItem(config.storageKeys.refreshToken)
+    const initialRefresh = readStoredRefresh()
+    if (!initialRefresh) {
       console.error('Pas de refresh token disponible')
       return false
     }
 
-    refreshingRef.current = true
-    try {
-      const response = await fetch(`${hubApiUrl}/api/auth/token/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken })
-      })
+    const runLocked = (fn) =>
+      navigator.locks?.request
+        ? navigator.locks.request(TOKEN_REFRESH_LOCK, fn)
+        : fn()
 
-      if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem(config.storageKeys.accessToken, data.access_token)
-        setToken(data.access_token)
-        
-        if (data.refresh_token) {
-          localStorage.setItem(config.storageKeys.refreshToken, data.refresh_token)
+    try {
+      return await runLocked(async () => {
+        if (refreshingRef.current) {
+          console.log('⏳ Rafraîchissement déjà en cours...')
+          return false
         }
-        
-        console.log('✅ Token rafraîchi')
-        return true
-      } else {
-        console.error('❌ Échec rafraîchissement token')
-        logout()
-        return false
-      }
+
+        // Sous le lock : un autre onglet a-t-il déjà rotationné pendant
+        // notre attente ? (le refresh token stocké a changé)
+        const storedNow = readStoredRefresh()
+        const storedAccess = localStorage.getItem(config.storageKeys.accessToken)
+        if (storedNow && storedNow !== initialRefresh && storedAccess) {
+          console.log('🔁 Refresh déjà effectué par un autre onglet — adoption du token')
+          setToken(storedAccess)
+          return true
+        }
+
+        refreshingRef.current = true
+        try {
+          const response = await fetch(`${hubApiUrl}/api/auth/token/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: storedNow || initialRefresh })
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            localStorage.setItem(config.storageKeys.accessToken, data.access_token)
+            setToken(data.access_token)
+
+            if (data.refresh_token) {
+              localStorage.setItem(config.storageKeys.refreshToken, data.refresh_token)
+            }
+
+            console.log('✅ Token rafraîchi')
+            return true
+          }
+
+          // 401 : un autre onglet a peut-être réussi entre-temps → re-lecture
+          const retryRefresh = readStoredRefresh()
+          const retryAccess = localStorage.getItem(config.storageKeys.accessToken)
+          if (retryRefresh && retryRefresh !== (storedNow || initialRefresh) && retryAccess) {
+            console.log('🔁 401 mais un autre onglet a refresh — adoption du token')
+            setToken(retryAccess)
+            return true
+          }
+
+          console.error('❌ Échec rafraîchissement token')
+          logout()
+          return false
+        } finally {
+          refreshingRef.current = false
+        }
+      })
     } catch (error) {
       console.error('❌ Erreur rafraîchissement token:', error)
       return false
-    } finally {
-      refreshingRef.current = false
     }
   }, [hubApiUrl, logout])
 
