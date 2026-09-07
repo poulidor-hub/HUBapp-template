@@ -5,6 +5,28 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.21.1] - 7 septembre 2026
+
+### ⚡ Hub legacy : self-healing M2M par regenerate-secret en fallback
+
+- **Contexte** : depuis T2a (2.20.x), `_recover_credentials` ne passait plus
+  que par le ré-enregistrement trusted (`POST /api/apps/register`), qui ne
+  retourne un `client_secret` que sur les Hubs avec rotation M2M au register
+  (≥ ~v3.12). Sur un **Hub legacy** (ex. déploiement exemple, pré-H9), le register
+  répond 200 avec `is_new=false` et des credentials **sans secret** → échec
+  systématique de la recovery, log « Hub sans correctif T1 ? », app déconnectée
+  du Hub après toute perte de credentials (recréation conteneur : `/app/storage`
+  non persisté).
+- **Fallback legacy** (`_recover_credentials_legacy`) : quand le register ne
+  retourne pas de secret, nouvel appel `POST /api/apps/me/regenerate-secret`
+  avec `X-Slug` (+ `X-Client-ID` si credentials en cache) — voie self-service
+  des Hubs antérieurs, autorisée par whitelist IP réseau Docker, sans token M2M.
+  Sur un Hub récent, la voie répond 401 : échec propre, inchangé (la fenêtre
+  H9 → rotation sans T1 reste sans issue côté client).
+- **Tests** : `TestRecoverCredentialsLegacyHub` (2 cas : recovery OK via
+  fallback ; échec 401 → `False`) — cycle TDD, la version sans fallback
+  échouait sur le cas nominal. Suite template : 157 passed.
+
 ## [2.21.0] - 7 septembre 2026
 
 ### ✨ Auth : verrou inter-onglets sur le refresh token + synchronisation d'état
