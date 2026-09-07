@@ -352,8 +352,10 @@ class HubClient:
 
         Chemin de self-healing : ré-enregistrement trusted (POST /api/apps/register).
         Le Hub fait tourner le secret si le SA existe, ou le recrée s'il a
-        disparu (T1). regenerate-secret n'est plus utilisé : il exige un token
-        M2M valide — or le secret est précisément ce qu'on a perdu (H9).
+        disparu (T1). Sur un Hub legacy sans rotation (ex: exemple pré-H9), le
+        register répond 200 sans client_secret : on retombe alors sur la voie
+        self-service legacy /me/regenerate-secret (X-Slug, whitelist réseau
+        Docker) via _recover_credentials_legacy().
         Utilise un lock pour éviter les régénérations concurrentes.
         """
         async with self._resync_lock:
@@ -388,11 +390,11 @@ class HubClient:
                     data = response.json()
                     creds = data.get("credentials", data)
                     if not creds.get("client_secret"):
-                        logger.error(
-                            "❌ Register n'a pas retourné de client_secret "
-                            "(Hub sans correctif T1 ?)"
+                        logger.warning(
+                            "⚠️ Register 200 sans client_secret "
+                            "(Hub legacy sans rotation T1) — fallback regenerate-secret"
                         )
-                        return False
+                        return await self._recover_credentials_legacy()
                     self._credentials = HubCredentials(
                         client_id=creds["client_id"],
                         client_secret=creds["client_secret"],
@@ -428,6 +430,66 @@ class HubClient:
                 return False
             finally:
                 logger.debug("🔓 Lock libéré")
+
+    async def _recover_credentials_legacy(self) -> bool:
+        """
+        Fallback Hub legacy : POST /api/apps/me/regenerate-secret.
+
+        Les Hubs antérieurs à la rotation M2M au register (ex: exemple pré-H9)
+        ne retournent jamais le secret au ré-enregistrement ; leur seule voie
+        de recovery est regenerate-secret avec X-Slug (ou X-Client-ID),
+        autorisé par whitelist IP réseau Docker — sans token M2M.
+        Sur un Hub récent cette voie répond 401 : on échoue proprement
+        (fenêtre H9 → rotation, sans T1, sans issue côté client).
+        """
+        try:
+            client = await self._get_client()
+            headers = {"X-Slug": self.settings.APP_SLUG}
+            if self._credentials and self._credentials.client_id:
+                headers["X-Client-ID"] = self._credentials.client_id
+            logger.info(
+                f"🔄 Appel Hub: POST /api/apps/me/regenerate-secret "
+                f"(fallback legacy, slug: {self.settings.APP_SLUG})"
+            )
+            response = await client.post(
+                f"{self.settings.hub_api_internal_url}/api/apps/me/regenerate-secret",
+                headers=headers,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                creds = data.get("credentials") or data
+                if not creds.get("client_secret"):
+                    logger.error(
+                        "❌ regenerate-secret (legacy) n'a pas retourné de client_secret"
+                    )
+                    return False
+                self._credentials = HubCredentials(
+                    client_id=creds.get("client_id")
+                    or (self._credentials.client_id if self._credentials else ""),
+                    client_secret=creds["client_secret"],
+                )
+                self._last_resync_attempt = datetime.now(timezone.utc)
+                self._resync_count += 1
+                self._save_credentials_to_file()
+                logger.info(
+                    f"✅ Credentials récupérés via regenerate-secret (legacy) pour "
+                    f"'{self.settings.APP_SLUG}' (resync #{self._resync_count})"
+                )
+                return True
+            else:
+                logger.error(
+                    f"❌ regenerate-secret (legacy) impossible: "
+                    f"{response.status_code} - {response.text}"
+                )
+                return False
+        except httpx.RequestError as e:
+            logger.error(
+                f"❌ Erreur regenerate-secret (legacy) via "
+                f"{self.settings.hub_api_internal_url}: "
+                f"{type(e).__name__}: {e!r}"
+            )
+            return False
     
     async def _auto_resync(self) -> bool:
         """

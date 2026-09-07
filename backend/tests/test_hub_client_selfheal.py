@@ -63,3 +63,69 @@ class TestRecoverCredentialsViaRegister:
 
         ok = await hub._recover_credentials()
         assert ok is False
+
+
+class TestRecoverCredentialsLegacyHub:
+    """Hub legacy (ex: exemple pré-H9, sans rotation T1 au register) : register
+    répond 200 avec is_new=False et credentials SANS client_secret.
+    _recover_credentials doit alors retenter via /me/regenerate-secret
+    (X-Slug, voie self-service legacy whitelistée réseau Docker)."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_fallback_regenere_le_secret(self, tmp_path, monkeypatch):
+        hub = HubClient()
+        hub._credentials = None
+
+        register_resp = MagicMock()
+        register_resp.status_code = 200
+        register_resp.json.return_value = {
+            "is_new": False,
+            "credentials": {"client_id": "sa_legacy"},
+        }
+        regen_resp = MagicMock()
+        regen_resp.status_code = 200
+        regen_resp.json.return_value = {
+            "client_id": "sa_legacy",
+            "client_secret": "secret_legacy",
+        }
+        mock_http = MagicMock()
+        mock_http.post = AsyncMock(side_effect=[register_resp, regen_resp])
+        hub._get_client = AsyncMock(return_value=mock_http)
+
+        import hub_client
+        monkeypatch.setattr(hub_client, "CREDENTIALS_FILE", str(tmp_path / ".hub_credentials"))
+
+        ok = await hub._recover_credentials()
+
+        assert ok is True
+        assert mock_http.post.await_count == 2
+        first_call, second_call = mock_http.post.await_args_list[0], mock_http.post.await_args_list[1]
+        assert first_call.args[0].endswith("/api/apps/register")
+        assert second_call.args[0].endswith("/api/apps/me/regenerate-secret")
+        assert second_call.kwargs["headers"]["X-Slug"] == hub.settings.APP_SLUG
+        assert hub._credentials.client_id == "sa_legacy"
+        assert hub._credentials.client_secret == "secret_legacy"
+
+    @pytest.mark.asyncio
+    async def test_legacy_fallback_echec_retourne_false(self, tmp_path, monkeypatch):
+        hub = HubClient()
+        hub._credentials = None
+
+        register_resp = MagicMock()
+        register_resp.status_code = 200
+        register_resp.json.return_value = {
+            "is_new": False,
+            "credentials": {"client_id": "sa_legacy"},
+        }
+        regen_resp = MagicMock()
+        regen_resp.status_code = 401
+        regen_resp.text = "Token M2M requis"
+        mock_http = MagicMock()
+        mock_http.post = AsyncMock(side_effect=[register_resp, regen_resp])
+        hub._get_client = AsyncMock(return_value=mock_http)
+
+        import hub_client
+        monkeypatch.setattr(hub_client, "CREDENTIALS_FILE", str(tmp_path / ".hub_credentials"))
+
+        ok = await hub._recover_credentials()
+        assert ok is False
