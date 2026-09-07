@@ -110,6 +110,21 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
+  // Sync inter-onglets : quand un autre onglet de la même app met à jour le
+  // token dans localStorage (rotation sous verrou), adopter la nouvelle
+  // valeur. Sans ça, un onglet garde un JWT expiré « en mémoire » et retente
+  // un refresh avec un refresh token déjà consommé.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === config.storageKeys.accessToken && event.newValue && event.newValue !== token) {
+        console.log('🔁 Token mis à jour par un autre onglet — synchronisation')
+        setToken(event.newValue)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [token])
+
   const login = useCallback(() => {
     const callbackUrl = encodeURIComponent(window.location.origin + window.location.pathname)
     const hubLoginUrl = `${appConfig.hubFrontendUrl}?callback=${callbackUrl}`
