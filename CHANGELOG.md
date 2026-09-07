@@ -5,6 +5,28 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.21.0] - 7 septembre 2026
+
+### ✨ Auth : verrou inter-onglets sur le refresh token + synchronisation d'état
+
+- **Contexte** : les onglets d'une même app partagent le refresh token
+  (localStorage). Deux onglets rafraîchissaient en même temps (ex. événement
+  SSE `user_permissions_changed` reçu partout à la fois) → le second présentait
+  un token déjà consommé → 401 → `logout()` → **onglet fermé**. Complété côté
+  Hub par la période de grâce 60 s sur la rotation (HUB_base v3.49.0).
+- **Verrou inter-onglets** (`Web Locks API`, nom `hub-token-refresh`) : un seul
+  onglet rotate à la fois ; sous le verrou, re-lecture du localStorage — si un
+  autre onglet a déjà rotationné, le nouveau token est **adopté sans requête**.
+  Fallback sans `navigator.locks` (vieux navigateurs ; note : API limitée aux
+  secure contexts — en LAN HTTP pur, la grâce serveur neutralise la course).
+- **Sur 401** : re-lecture du localStorage avant `logout()` (l'onglet rival a
+  peut-être réussi entre-temps) — la déconnexion devient le dernier recours.
+- **Sync inter-onglets** : écoute de l'événement `storage` sur
+  `hub_access_token` — quand un onglet met à jour le token, les autres
+  adoptent le nouveau sans requête (supprime le « vieux JWT en mémoire »).
+- Signature publique inchangée (`refreshAccessToken() → Promise<boolean>`) ;
+  aucune animation ajoutée, verrou no-op hors contention ; build Vite vert.
+
 ## [2.20.8] - 6 septembre 2026
 
 ### 🛠️ Restore : resync séquences robuste (pré-check colonne + savepoint)
