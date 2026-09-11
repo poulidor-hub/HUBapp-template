@@ -5,6 +5,45 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.21.2] - 11 septembre 2026
+
+### ⚡ Alignement socle HUBsocle 2.23.2 — vague de fixes banc (AN-3/4/5/7)
+
+Portage dans le template (backend monolithique) des correctifs livrés côté
+socle packagé entre v2.21.1 et v2.23.2 (commit `886112d`, campagne de banc du
+socle 2026-09-10). Les apps créées avec ce template naissent désormais avec
+les mêmes garanties que le socle 2.23.2.
+
+- **Corrigé (AN-3)** : `register()` avec credentials en cache pousse désormais
+  l'état is_shared courant au Hub (`PUT /api/apps/me/shared`,
+  `_sync_state_to_hub`/`_push_shared_state_to_hub`, best-effort) — changer
+  `IS_SHARED` dans le `.env` + redémarrage se propage au Hub. ⚠️ Geste ops :
+  le `.env` est lu à la création du conteneur → `docker compose up -d`, pas
+  `docker restart`.
+- **Corrigé** : deadlock flock en cascade ré-entrante (`get_m2m_token` 403 →
+  register dans un register) — flag `_register_in_progress`, chemin ré-entrant
+  court-circuité.
+- **Corrigé (AN-4)** : `/api/admin/backup/list` triée `created_at` desc ;
+  métadonnées relues du `data.json` (`created_by`, `checksum`,
+  `includes_files`, `table_stats`) au lieu des placeholders
+  `unknown`/`""`/`true`.
+- **Corrigé (AN-5)** : `/api/health/detailed` reflète la découverte LIVE des
+  services (fallback `app.state.discovered_services_count` si le Hub est
+  injoignable).
+- **Corrigé (AN-7)** : restore — les erreurs nested par table (lignes
+  rejetées) sont agrégées et surfacées dans le top-level `errors`
+  (`errors_detail` par ligne).
+- **Corrigé (front)** : `formatApiError` (nouveau `hooks/apiError.js`) dans
+  `useApiQuery`/`useApiMutation` — les `detail` FastAPI non-string (422 de
+  validation) s'affichent en message lisible au lieu de `[object Object]`.
+- **Tests** : 8 nouveaux (`tests/test_socle_2232_alignment.py`, adaptés des
+  tests HUBsocle 2.23.2) ; suite template : 165 pass.
+- **Non porté (hors périmètre template v1)** : INITIALISE v2 / générateur
+  d'apps fines et `register_settings_extra` (architecture socle packagé,
+  cf. HUBsocle 2.23.x).
+
+---
+
 ## [2.21.1] - 7 septembre 2026
 
 ### ⚡ Hub legacy : self-healing M2M par regenerate-secret en fallback

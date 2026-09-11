@@ -1,3 +1,4 @@
+import { formatApiError } from './apiError'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
@@ -99,7 +100,7 @@ export function useApiMutation({
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}))
-        throw new Error(errBody.detail || `Erreur ${response.status}`)
+        throw new Error(formatApiError(errBody.detail, `Erreur ${response.status}`))
       }
 
       // Certaines réponses 204 n'ont pas de body
