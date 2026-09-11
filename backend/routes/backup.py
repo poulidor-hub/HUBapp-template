@@ -255,9 +255,9 @@ async def _import_table_data(
     Importe des données dans une table.
     
     Returns:
-        Dict avec 'imported', 'updated', 'skipped', 'errors'
+        Dict avec 'imported', 'updated', 'skipped', 'errors' (+ 'errors_detail')
     """
-    stats = {"imported": 0, "updated": 0, "skipped": 0, "errors": 0}
+    stats = {"imported": 0, "updated": 0, "skipped": 0, "errors": 0, "errors_detail": []}
     
     if not data:
         return stats
@@ -276,7 +276,7 @@ async def _import_table_data(
     # Savepoint par ligne : une ligne en échec (FK, NOT NULL…) ne
     # pousse plus la transaction dans un état aborté qui ferait
     # échouer toutes les lignes suivantes en cascade.
-    for row_data in data:
+    for row_idx, row_data in enumerate(data):
         # Désérialiser les valeurs
         deserialized = {k: _deserialize_value(v) for k, v in row_data.items()}
 
@@ -327,6 +327,8 @@ async def _import_table_data(
         except Exception as e:
             await row_sp.rollback()
             logger.warning(f"⚠️ Erreur import ligne dans {table_name}: {e}")
+            row_ref = row_data.get("id", f"#{row_idx}")
+            stats["errors_detail"].append(f"ligne {row_ref}: {e}")
             stats["errors"] += 1
 
     return stats
@@ -714,6 +716,21 @@ async def restore_backup(
                         if total > 0:
                             logger.info(f"  ✓ {table_name}: {result['imported']} importés, "
                                        f"{result['updated']} mis à jour, {result['skipped']} ignorés")
+
+                        # Agréger les erreurs nested (lignes rejetées) dans le
+                        # top-level errors : elles ne doivent pas rester
+                        # silenciées dans tables_restored (bug banc AN-7 :
+                        # outbox errors:2 invisible dans la réponse).
+                        row_errors = result.get("errors", 0)
+                        if row_errors:
+                            summary = (f"Table {table_name}: {row_errors} ligne(s) en échec "
+                                       f"(le reste est restauré)")
+                            errors.append(summary)
+                            logger.warning(f"⚠️ Restore: {summary}")
+                            for detail in result.get("errors_detail", []):
+                                entry = f"Table {table_name} — {detail}"
+                                errors.append(entry)
+                                logger.warning(f"⚠️ Restore: {entry}")
                     except Exception as e:
                         await savepoint.rollback()
                         errors.append(f"Table {table_name}: {str(e)}")
@@ -1040,32 +1057,69 @@ async def list_local_backups(
     user: TokenPayload = Depends(require_role("admin"))
 ):
     """
-    Liste les backups stockés localement.
-    
+    Liste les backups stockés localement, triés par created_at (desc).
+
+    Les métadonnées (created_by, checksum, includes_files, …) sont relues
+    dans le data.json de chaque ZIP pour rester cohérentes avec celles
+    retournées par la création du backup (fix AN-4, banc 2026-09-10).
+
     Note: Les backups sont normalement envoyés au Hub et supprimés localement.
     Cette liste montre les backups en attente ou conservés temporairement.
     """
     backups = []
     files = await storage_manager.list_files(owner="_system", category="backups")
-    
+
     for file in files:
         if file["filename"].startswith("backup_") and file["filename"].endswith(".zip"):
             backup_id = file["filename"].replace("backup_", "").replace(".zip", "")
+
+            # Métadonnées par défaut (= comportement dégradé si ZIP illisible)
+            created_at = file.get("modified_at", "")
+            created_by = "unknown"
+            includes_files = False
+            total_files = 0
+            table_stats: Dict[str, int] = {}
+            checksum = ""
+
+            content = await storage_manager.read_file(file["relative_path"])
+            if content:
+                checksum = _compute_checksum(content)
+                try:
+                    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+                        names = zf.namelist()
+                        file_entries = [
+                            n for n in names if n.startswith("files/") and not n.endswith("/")
+                        ]
+                        includes_files = len(file_entries) > 0
+                        total_files = len(file_entries)
+                        if "data.json" in names:
+                            metadata = json.loads(
+                                zf.read("data.json").decode("utf-8")
+                            ).get("metadata", {})
+                            created_by = metadata.get("created_by", created_by)
+                            created_at = metadata.get("created_at") or created_at
+                            table_stats = metadata.get("table_stats", {}) or {}
+                except Exception as e:
+                    logger.warning(f"⚠️ Métadonnées illisibles pour {file['filename']}: {e}")
+
             backups.append(BackupMetadata(
                 backup_id=backup_id,
                 app_slug=settings.APP_SLUG,
                 app_version=APP_VERSION,
-                created_at=file.get("modified_at", ""),
-                created_by="unknown",
-                total_items=0,
-                total_preferences=0,
-                total_files=0,
+                created_at=created_at,
+                created_by=created_by,
+                total_items=table_stats.get("items", 0),
+                total_preferences=table_stats.get("user_preferences", 0),
+                total_files=total_files,
                 total_size_bytes=file["size"],
                 total_size_human=_human_readable_size(file["size"]),
-                includes_files=True,
-                checksum=""
+                includes_files=includes_files,
+                checksum=checksum
             ))
-    
+
+    # Plus récent d'abord (ISO 8601 : l'ordre lexicographique = l'ordre chronologique)
+    backups.sort(key=lambda b: b.created_at or "", reverse=True)
+
     return backups
 
 

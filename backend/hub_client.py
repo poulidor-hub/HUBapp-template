@@ -121,6 +121,11 @@ class HubClient:
         # Cache des services découverts
         self._discovered_services: Dict[str, DiscoveredService] = {}
         self._discovered_services_fetched_at: Optional[datetime] = None
+        # Ré-entrance : register() est appelé en cascade via
+        # get_m2m_token (403 → réenregistrement) pendant que le chemin
+        # sync post-register tient déjà le lock fichier. Sans ce flag,
+        # le register interne attend un flock posé par lui-même → deadlock.
+        self._register_in_progress = False
 
     def _load_depends_yaml(self) -> list:
         """Lit depends.yaml (backend/ puis racine) s'il existe. Retourne [] sinon.
@@ -215,6 +220,42 @@ class HubClient:
             except Exception as e:
                 logger.warning(f"⚠️ Envoi dépendances au hub échoué: {e}")
 
+    async def _push_shared_state_to_hub(self) -> None:
+        """Pousse l'état is_shared courant au hub (PUT /api/apps/me/shared).
+
+        Le payload d'un premier enregistrement porte déjà is_shared, mais le
+        chemin « credentials en cache » court-circuite ce payload : sans cet
+        appel, changer IS_SHARED dans le .env puis redémarrer ne propage
+        jamais le flag au Hub (AN-3, banc 2026-09-10 ; le Hub le met à jour
+        via /me/shared). Best-effort : un échec ne remet pas en cause le
+        succès du register.
+
+        ⚠️ Geste ops : le .env est lu par le compose À LA CRÉATION du
+        conteneur — après changement d'IS_SHARED, faire `docker compose up -d`
+        (pas `docker restart`).
+        """
+        try:
+            result = await self.call_hub_endpoint(
+                "/api/apps/me/shared",
+                method="PUT",
+                params={"is_shared": self.settings.IS_SHARED},
+            )
+            if result and "error" not in result:
+                logger.info(f"🔗 État is_shared={self.settings.IS_SHARED} poussé au hub")
+            else:
+                logger.warning(f"⚠️ Poussée is_shared au hub échouée: {result}")
+        except Exception as e:
+            logger.warning(f"⚠️ Poussée is_shared au hub échouée: {e}")
+
+    async def _sync_state_to_hub(self) -> None:
+        """Synchronise l'état déclaré de l'app au hub après un register réussi.
+
+        Appelé sur CHAQUE succès de register() (credentials en cache ou non) :
+        dépendances (depends.yaml) + état is_shared courant.
+        """
+        await self._push_deps_to_hub()
+        await self._push_shared_state_to_hub()
+
     async def register(self) -> bool:
         """
         Auto-enregistrement auprès du Hub.
@@ -224,16 +265,29 @@ class HubClient:
         ne s'enregistrent simultanément.
 
         Après succès (nouvel enregistrement ou cache), envoie toujours
-        le graphe de dépendances (depends.yaml) au hub.
+        l'état déclaré de l'app : le graphe de dépendances (depends.yaml)
+        et le flag is_shared courant.
+
+        Ré-entrance : un appel imbriqué (get_m2m_token → 403 → register)
+        pendant un register en cours saute le lock fichier — le waiter
+        bloquerait sinon sur un flock posé par lui-même (deadlock).
         """
+        # Appel ré-entrant (cascade 403 → réenregistrement) : pas de lock,
+        # pas de sync d'état (le register externe la fera).
+        if self._register_in_progress:
+            if self._load_credentials_from_file():
+                return True
+            return await self._do_register()
+
         # Essayer de charger les credentials depuis le fichier partagé
         # (un autre worker a peut-être déjà fait l'enregistrement)
         if self._load_credentials_from_file():
-            await self._push_deps_to_hub()
+            await self._sync_state_to_hub()
             return True
         
         # Utiliser un lock fichier pour éviter les enregistrements concurrents
         lock_file = None
+        self._register_in_progress = True
         try:
             if HAS_FCNTL:
                 lock_file = open(REGISTER_LOCK_FILE, 'w')
@@ -246,27 +300,28 @@ class HubClient:
                     await asyncio.sleep(2)  # Attendre un peu
                     # Réessayer de charger les credentials
                     if self._load_credentials_from_file():
-                        await self._push_deps_to_hub()
+                        await self._sync_state_to_hub()
                         return True
                     # Sinon, attendre le lock
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                     # Revérifier si les credentials sont disponibles
                     if self._load_credentials_from_file():
-                        await self._push_deps_to_hub()
+                        await self._sync_state_to_hub()
                         return True
                 
                 # On a le lock, vérifier une dernière fois si les credentials existent
                 if self._load_credentials_from_file():
-                    await self._push_deps_to_hub()
+                    await self._sync_state_to_hub()
                     return True
             
             # Faire l'enregistrement
             reg_ok = await self._do_register()
             if reg_ok:
-                await self._push_deps_to_hub()
+                await self._sync_state_to_hub()
             return reg_ok
             
         finally:
+            self._register_in_progress = False
             if lock_file:
                 try:
                     if HAS_FCNTL:

@@ -296,10 +296,21 @@ async def health_check_detailed():
         except Exception:
             pass
     
-    # Services découverts
+    # Services découverts — lecture LIVE (comme /api/m2m/discover) tant que
+    # l'app est enregistrée. Valeur figée au démarrage (app.state) utilisée
+    # uniquement en fallback si l'appel live échoue (Hub injoignable). (AN-5)
     discovered_services = []
-    if settings.IS_SHARED:
-        discovered_services = await hub_client.list_discovered_services()
+    discovered_count = 0
+    if hub_client.is_registered:
+        try:
+            discovered_services = await hub_client.list_discovered_services()
+            discovered_count = len(discovered_services)
+        except Exception as e:
+            discovered_count = getattr(app.state, "discovered_services_count", 0)
+            logger.warning(
+                f"⚠️ Découverte live impossible pour health/detailed, "
+                f"fallback state démarrage ({discovered_count}): {e}"
+            )
     services_cache_age = None
     if hub_client._discovered_services_fetched_at:
         services_cache_age = (now - hub_client._discovered_services_fetched_at).total_seconds()
@@ -326,7 +337,7 @@ async def health_check_detailed():
             "api_url": settings.hub_api_url,
         },
         "services": {
-            "discovered_count": len(discovered_services),
+            "discovered_count": discovered_count,
             "cache_age_seconds": services_cache_age,
             "services": [
                 {"slug": s.slug, "status": s.status, "is_healthy": s.is_healthy}

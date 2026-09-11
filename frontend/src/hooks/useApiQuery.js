@@ -1,3 +1,4 @@
+import { formatApiError } from './apiError'
 import { useQuery } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
@@ -55,7 +56,7 @@ export function useApiQuery({ queryKey, endpoint, params, auth = false, ...query
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
-        throw new Error(body.detail || `Erreur ${response.status}`)
+        throw new Error(formatApiError(body.detail, `Erreur ${response.status}`))
       }
 
       return response.json()
