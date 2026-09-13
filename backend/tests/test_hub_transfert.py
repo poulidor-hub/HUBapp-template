@@ -189,6 +189,29 @@ class TestWaitTransfer:
             result = await hub_transfert.wait_transfer("t-1", timeout=10, poll=0)
         assert result["status"] == "delivered"
 
+    async def test_wait_real_statuses_success(self, enabled):
+        statuses = [{"status": "queued"}, {"status": "sending"}, {"status": "sent"}]
+        calls = {"n": 0}
+
+        async def fake_status(transfer_id):
+            s = statuses[min(calls["n"], len(statuses) - 1)]
+            calls["n"] += 1
+            return s
+
+        with patch.object(hub_transfert, "transfer_status", fake_status), \
+             patch.object(hub_transfert.asyncio, "sleep", AsyncMock()):
+            result = await hub_transfert.wait_transfer("t-2", timeout=10, poll=0)
+        assert result["status"] == "sent"
+
+    async def test_wait_real_status_dead_raises(self, enabled):
+        async def fake_status(transfer_id):
+            return {"status": "dead"}
+
+        with patch.object(hub_transfert, "transfer_status", fake_status), \
+             patch.object(hub_transfert.asyncio, "sleep", AsyncMock()):
+            with pytest.raises(hub_transfert.HubTransfertError, match="échec"):
+                await hub_transfert.wait_transfer("t-3", timeout=10, poll=0)
+
     async def test_wait_timeout(self, enabled):
         async def fake_status(transfer_id):
             return {"status": "pending"}
