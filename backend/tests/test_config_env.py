@@ -34,3 +34,21 @@ class TestEmptyHubPorts:
         settings = Settings()
         assert settings.HUB_API_PORT == 9000
         assert settings.HUB_FRONTEND_PORT == 8080
+
+
+class TestHubTransfertSettings:
+    """Flags opt-in du module hub_transfert (pattern VPN : désactivé par défaut)."""
+
+    def test_hub_transfert_disabled_by_default(self):
+        from config import Settings
+        s = Settings(_env_file=None)
+        assert s.HUB_TRANSFERT_ENABLED is False
+        assert s.HUB_TRANSFERT_SLUG == "exemple-app"
+
+    def test_hub_transfert_env_override(self, monkeypatch):
+        from config import Settings
+        monkeypatch.setenv("HUB_TRANSFERT_ENABLED", "true")
+        monkeypatch.setenv("HUB_TRANSFERT_SLUG", "mon-transfert")
+        s = Settings(_env_file=None)
+        assert s.HUB_TRANSFERT_ENABLED is True
+        assert s.HUB_TRANSFERT_SLUG == "mon-transfert"

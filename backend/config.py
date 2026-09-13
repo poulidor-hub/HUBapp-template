@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     # M2M (Machine-to-Machine)
     IS_SHARED: bool = False
     
+    # Hub Transfert (module opt-in — cf. docs/superpowers/specs/2026-09-13-hub-transfert-migration-design.md)
+    HUB_TRANSFERT_ENABLED: bool = False
+    HUB_TRANSFERT_SLUG: str = "exemple-app"
+    
     # Storage / Uploads
     UPLOADS_DIR: str = "/app/uploads"
     
