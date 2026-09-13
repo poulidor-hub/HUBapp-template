@@ -87,6 +87,49 @@ async def _request(method: str, url: str, *, token: str, timeout: float,
     return response
 
 
+async def _push_simple(api_url: str, token: str, flux_id: str, path: Path,
+                       filename: str, timeout: float) -> dict:
+    url = f"{api_url}/api/dispatch/m2m/flux/{flux_id}/push"
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    with open(path, "rb") as fh:
+        files = {"file": (filename, fh, mime)}
+        client = await hub_client._get_client()
+        response = await client.post(url, headers=_headers(token), files=files,
+                                     timeout=timeout)
+        if response.status_code == 401 and await hub_client._auto_resync():
+            token = await hub_client.get_m2m_token()
+            fh.seek(0)
+            response = await client.post(url, headers=_headers(token), files=files,
+                                         timeout=timeout)
+    if response.status_code >= 400:
+        raise HubTransfertError(response.status_code, response.text[:300])
+    return response.json()
+
+
+async def _upload_chunked(api_url: str, token: str, path: Path,
+                          filename: str, timeout: float) -> dict:
+    raise NotImplementedError("chunked upload — Task 4")
+
+
+async def upload_file(flux_id: str, file_path, *, filename: Optional[str] = None,
+                      chunk_threshold: int = 50 * 1024 * 1024,
+                      timeout: float = DEFAULT_TIMEOUT) -> dict:
+    """Pousse un fichier dans un flux dispatch.
+
+    En-dessous de `chunk_threshold` : push multipart simple.
+    Au-dessus : upload sessionné chunké (voir `_upload_chunked`, Task 4).
+    """
+    _require_enabled()
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(str(path))
+    api_url, token = await _resolve()
+    filename = filename or path.name
+    if path.stat().st_size > chunk_threshold:
+        return await _upload_chunked(api_url, token, path, filename, timeout)
+    return await _push_simple(api_url, token, flux_id, path, filename, timeout)
+
+
 async def list_flux() -> list[dict]:
     """Mes flux dispatch (X-App-Slug)."""
     _require_enabled()
