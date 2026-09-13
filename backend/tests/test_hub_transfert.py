@@ -99,3 +99,58 @@ class TestUploadFile:
     async def test_missing_file_raises(self, enabled, tmp_path):
         with pytest.raises(FileNotFoundError):
             await hub_transfert.upload_file("flux-1", tmp_path / "absent.pdf")
+
+
+class TestUploadChunked:
+    async def test_large_file_uses_sessions(self, enabled, tmp_path):
+        big = tmp_path / "gros.pdf"
+        chunk = b"x" * 1024
+        big.write_bytes(chunk * 4)  # 4 KiB — seuil abaissé pour le test
+
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            if request.method == "POST" and request.url.path.endswith("/upload-sessions"):
+                return httpx.Response(201, json={
+                    "id": "sess-1", "chunk_size": 1024, "status": "uploading",
+                    "files": [{"id": 7, "total_chunks": 4, "filename": "gros.pdf"}]})
+            if request.method == "PUT" and "/chunks/" in request.url.path:
+                return httpx.Response(200, json={
+                    "session_id": "sess-1", "file_id": 7, "chunk_index": 0,
+                    "size": 1024, "hash": "h", "received_chunks": 1,
+                    "missing_chunks": [], "file_complete": False})
+            if request.method == "POST" and request.url.path.endswith("/complete"):
+                return httpx.Response(200, json={"id": 42, "status": "pending",
+                                                 "filename": "gros.pdf"})
+            return httpx.Response(404)
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)):
+            result = await hub_transfert.upload_file("flux-1", big,
+                                                     chunk_threshold=2048)
+        assert result["id"] == 42
+        # 1 create + 4 chunks + 1 complete
+        assert sum(1 for m, _ in calls if m == "PUT") == 4
+        assert any(p.endswith("/complete") for _, p in calls)
+
+    async def test_chunk_failure_raises(self, enabled, tmp_path):
+        big = tmp_path / "gros.pdf"
+        big.write_bytes(b"x" * 4096)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/upload-sessions"):
+                return httpx.Response(201, json={
+                    "id": "sess-1", "chunk_size": 1024, "files": [{"id": 7, "total_chunks": 4}]})
+            return httpx.Response(500, text="boom")
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)):
+            with pytest.raises(HubTransfertError):
+                await hub_transfert.upload_file("flux-1", big, chunk_threshold=2048)

@@ -106,9 +106,53 @@ async def _push_simple(api_url: str, token: str, flux_id: str, path: Path,
     return response.json()
 
 
+CHUNK_SIZE = 5 * 1024 * 1024  # 5 MiB par chunk
+
+
 async def _upload_chunked(api_url: str, token: str, path: Path,
                           filename: str, timeout: float) -> dict:
-    raise NotImplementedError("chunked upload — Task 4")
+    """Upload sessionné pour les gros fichiers (design §2 : seuil 50 Mo)."""
+    total = path.stat().st_size
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    client = await hub_client._get_client()
+
+    create = await _request(
+        "POST", f"{api_url}/api/transfers/upload-sessions", token=token,
+        timeout=timeout,
+        json={"title": filename, "total_size": total, "chunk_size": CHUNK_SIZE,
+              "files": [{"path": filename, "size": total, "mime_type": mime}]})
+    session = create.json()
+    session_id = session["id"]
+    file_id = session["files"][0]["id"]
+    chunk_size = session.get("chunk_size") or CHUNK_SIZE
+
+    try:
+        with open(path, "rb") as fh:
+            index = 0
+            while True:
+                chunk = fh.read(chunk_size)
+                if not chunk:
+                    break
+                url = (f"{api_url}/api/transfers/upload-sessions/"
+                       f"{session_id}/files/{file_id}/chunks/{index}")
+                resp = await client.put(url, headers=_headers(token),
+                                        content=chunk, timeout=timeout)
+                if resp.status_code >= 400:
+                    raise HubTransfertError(resp.status_code, resp.text[:300])
+                index += 1
+        complete = await _request(
+            "POST", f"{api_url}/api/transfers/upload-sessions/{session_id}/complete",
+            token=token, timeout=timeout)
+        return complete.json()
+    except Exception:
+        # session orpheline → nettoyage best-effort
+        try:
+            await _request("DELETE",
+                           f"{api_url}/api/transfers/upload-sessions/{session_id}",
+                           token=token, timeout=timeout)
+        except Exception:
+            logger.warning("nettoyage session %s échoué", session_id)
+        raise
 
 
 async def upload_file(flux_id: str, file_path, *, filename: Optional[str] = None,
