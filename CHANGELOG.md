@@ -5,6 +5,19 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.22.0] - 13 septembre 2026
+
+### ✨ hub_transfert opt-in + M2M binaire
+
+- **Module `hub_transfert` (opt-in)** : client du service partagé `exemple-app` —
+  `upload_file` (push flux + upload chunké au-dessus de 50 Mo), `download_file`
+  (streaming), `list_flux`, `transfer_status`, `wait_transfer`. Désactivé par
+  défaut (`HUB_TRANSFERT_ENABLED=false`), erreurs `HubTransfertError`/`HubTransfertDisabledError`.
+- **`call_discovered_service` : support binaire** — nouveaux paramètres keyword-only
+  `timeout` (défaut 30 s, inchangé) et `response_format` (`json`|`bytes`|`stream`,
+  défaut `json` = comportement antérieur). Outbox désactivée en modes binaires (JSON-only).
+- Tests : `tests/test_hub_transfert.py`, `tests/test_hub_client_binary.py`.
+
 ## [2.21.1] - 7 septembre 2026
 
 ### ⚡ Hub legacy : self-healing M2M par regenerate-secret en fallback
