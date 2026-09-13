@@ -181,3 +181,55 @@ async def list_flux() -> list[dict]:
     response = await _request("GET", f"{api_url}/api/dispatch/m2m/flux",
                               token=token, timeout=DEFAULT_TIMEOUT)
     return response.json()
+
+
+TERMINAL_STATUSES = {"sent", "dead", "delivered", "failed", "error", "cancelled"}
+_SUCCESS_STATUSES = {"sent", "delivered"}
+
+
+async def transfer_status(transfer_id: str) -> dict:
+    """Statut d'un transfer dispatch (X-App-Slug)."""
+    _require_enabled()
+    api_url, token = await _resolve()
+    response = await _request(
+        "GET", f"{api_url}/api/dispatch/m2m/transfers/{transfer_id}",
+        token=token, timeout=DEFAULT_TIMEOUT)
+    return response.json()
+
+
+async def download_file(transfer_id: str, dest_path, *,
+                        timeout: float = DEFAULT_TIMEOUT) -> Path:
+    """Télécharge un transfer en streaming vers dest_path."""
+    _require_enabled()
+    api_url, token = await _resolve()
+    url = f"{api_url}/api/transfers/{transfer_id}/download"
+    dest = Path(dest_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    client = await hub_client._get_client()
+    async with client.stream("GET", url, headers=_headers(token),
+                             timeout=timeout) as response:
+        if response.status_code >= 400:
+            body = (await response.aread())[:300]
+            raise HubTransfertError(response.status_code,
+                                    body.decode(errors="replace"))
+        with open(dest, "wb") as out:
+            async for chunk in response.aiter_bytes(1024 * 1024):
+                out.write(chunk)
+    return dest
+
+
+async def wait_transfer(transfer_id: str, *, timeout: float = 60.0,
+                        poll: float = 2.0) -> dict:
+    """Poll le statut jusqu'à un état terminal ou timeout."""
+    _require_enabled()
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        status = await transfer_status(transfer_id)
+        state = status.get("status", "")
+        if state in TERMINAL_STATUSES:
+            if state not in _SUCCESS_STATUSES:
+                raise HubTransfertError(0, f"transfer {transfer_id} en échec: {state}")
+            return status
+        if asyncio.get_event_loop().time() >= deadline:
+            raise HubTransfertError(0, f"timeout — transfer {transfer_id} non terminal (poll {poll}s)")
+        await asyncio.sleep(poll)

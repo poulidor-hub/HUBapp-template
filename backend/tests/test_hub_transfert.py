@@ -154,3 +154,46 @@ class TestUploadChunked:
                           AsyncMock(return_value=fake_client)):
             with pytest.raises(HubTransfertError):
                 await hub_transfert.upload_file("flux-1", big, chunk_threshold=2048)
+
+
+class TestDownload:
+    async def test_download_streams_to_file(self, enabled, tmp_path):
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path.endswith("/transfers/t-9/download")
+            return httpx.Response(200, content=b"PDFDATA")
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        dest = tmp_path / "out.pdf"
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)):
+            result = await hub_transfert.download_file("t-9", dest)
+        assert result == dest
+        assert dest.read_bytes() == b"PDFDATA"
+
+
+class TestWaitTransfer:
+    async def test_wait_until_delivered(self, enabled):
+        statuses = [{"status": "pending"}, {"status": "dispatching"},
+                    {"status": "delivered"}]
+        calls = {"n": 0}
+
+        async def fake_status(transfer_id):
+            s = statuses[min(calls["n"], len(statuses) - 1)]
+            calls["n"] += 1
+            return s
+
+        with patch.object(hub_transfert, "transfer_status", fake_status), \
+             patch.object(hub_transfert.asyncio, "sleep", AsyncMock()):
+            result = await hub_transfert.wait_transfer("t-1", timeout=10, poll=0)
+        assert result["status"] == "delivered"
+
+    async def test_wait_timeout(self, enabled):
+        async def fake_status(transfer_id):
+            return {"status": "pending"}
+
+        with patch.object(hub_transfert, "transfer_status", fake_status), \
+             patch.object(hub_transfert.asyncio, "sleep", AsyncMock()):
+            with pytest.raises(HubTransfertError, match="timeout"):
+                await hub_transfert.wait_transfer("t-1", timeout=0.2, poll=0)
