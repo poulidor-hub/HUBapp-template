@@ -816,8 +816,11 @@ class HubClient:
             _retry_on_discover: Re-découvrir si service non trouvé (défaut: True)
             timeout: Timeout httpx en secondes (défaut: 30.0)
             response_format: Format de retour — "json" (défaut, retour dict),
-                "bytes" (retour bytes bruts) ou "stream" (retour httpx.Response,
-                à fermer par l'appelant). La garantie outbox (enqueue 5xx /
+                "bytes" (retour bytes bruts) ou "stream" (retour l'objet
+                httpx.Response avec corps déjà chargé en mémoire par le
+                transport — pour les très gros fichiers, utiliser
+                hub_transfert.download_file qui streame réellement ; à fermer
+                par l'appelant). La garantie outbox (enqueue 5xx /
                 RequestError) est active UNIQUEMENT en mode "json" ; en mode
                 "bytes"/"stream" une erreur renvoie None sans outbox.
             **kwargs: Arguments supplémentaires pour httpx (json, data, params, etc.)
@@ -846,9 +849,12 @@ class HubClient:
                 json={"product_id": 123, "quantity": 2}
             )
         """
+        if response_format not in ("json", "bytes", "stream"):
+            raise ValueError(
+                f"response_format invalide: {response_format!r} (attendu: json|bytes|stream)")
         # Récupérer le service découvert
         service = await self.get_service_by_slug(service_slug)
-        
+
         if not service:
             if _retry_on_discover:
                 logger.warning(f"⚠️ Service '{service_slug}' non trouvé, rafraîchissement du cache...")

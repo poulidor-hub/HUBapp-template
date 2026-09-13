@@ -44,6 +44,10 @@ class TestBinaryModes:
                 "peer", "/api/file", response_format="bytes")
         assert result == b"%PDF-1.4"
 
+    async def test_invalid_response_format_raises(self):
+        with pytest.raises(ValueError, match="response_format"):
+            await hub_client.call_discovered_service("peer", "/api/x", response_format="byts")
+
     async def test_timeout_passed_to_request(self):
         seen = {}
 

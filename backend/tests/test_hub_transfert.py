@@ -220,3 +220,63 @@ class TestWaitTransfer:
              patch.object(hub_transfert.asyncio, "sleep", AsyncMock()):
             with pytest.raises(HubTransfertError, match="timeout"):
                 await hub_transfert.wait_transfer("t-1", timeout=0.2, poll=0)
+
+
+class TestAuthRetry:
+    async def test_401_resync_then_retry(self, enabled, tmp_path):
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4 x")
+        responses = [httpx.Response(401, request=httpx.Request("POST", "http://hft/x")),
+                     httpx.Response(201, json={"transfer_id": "t-40", "status": "queued"})]
+        idx = {"i": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            r = responses[idx["i"]]
+            idx["i"] += 1
+            return r
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)), \
+             patch.object(hub_transfert.hub_client, "_auto_resync",
+                          AsyncMock(return_value=True)), \
+             patch.object(hub_transfert.hub_client, "get_m2m_token",
+                          AsyncMock(return_value="tok2")):
+            result = await hub_transfert.upload_file("flux-1", pdf)
+        assert result == {"transfer_id": "t-40", "status": "queued"}
+
+    async def test_4xx_no_retry_raises(self, enabled, tmp_path):
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4 x")
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(404, text="Flux inconnu",
+                                  request=httpx.Request("POST", "http://hft/x"))
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)):
+            with pytest.raises(hub_transfert.HubTransfertError) as exc:
+                await hub_transfert.upload_file("flux-inconnu", pdf)
+        assert exc.value.status == 404
+        assert calls["n"] == 1  # 404 ≠ 401 : pas de re-jeu
+
+    async def test_download_error_raises(self, enabled, tmp_path):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, text="boom",
+                                  request=httpx.Request("GET", "http://hft/x"))
+
+        fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch.object(hub_transfert, "_resolve",
+                          AsyncMock(return_value=("http://hft", "tok"))), \
+             patch.object(hub_transfert.hub_client, "_get_client",
+                          AsyncMock(return_value=fake_client)):
+            with pytest.raises(hub_transfert.HubTransfertError) as exc:
+                await hub_transfert.download_file("t-x", tmp_path / "out.pdf")
+        assert exc.value.status == 500

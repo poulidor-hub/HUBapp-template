@@ -14,8 +14,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   (streaming), `list_flux`, `transfer_status`, `wait_transfer`. Désactivé par
   défaut (`HUB_TRANSFERT_ENABLED=false`), erreurs `HubTransfertError`/`HubTransfertDisabledError`.
 - **`call_discovered_service` : support binaire** — nouveaux paramètres keyword-only
-  `timeout` (défaut 30 s, inchangé) et `response_format` (`json`|`bytes`|`stream`,
-  défaut `json` = comportement antérieur). Outbox désactivée en modes binaires (JSON-only).
+  `timeout` (défaut 30 s, inchangé) et `response_format` (`json`|`bytes`|`stream` —
+  le mode `stream` retourne la Response httpx avec corps chargé en mémoire ;
+  pour les très gros fichiers, utiliser `hub_transfert.download_file` qui streame
+  réellement — défaut `json` = comportement antérieur). Outbox désactivée en modes
+  binaires (JSON-only).
 - Tests : `tests/test_hub_transfert.py`, `tests/test_hub_client_binary.py`.
 
 ## [2.21.1] - 7 septembre 2026
