@@ -852,8 +852,11 @@ class HubClient:
         method: str = "GET",
         _retry_on_401: bool = True,
         _retry_on_discover: bool = True,
+        *,
+        timeout: float = 30.0,
+        response_format: str = "json",
         **kwargs
-    ) -> Optional[dict]:
+    ):
         """
         Appelle un service découvert dynamiquement via M2M.
         
@@ -866,10 +869,24 @@ class HubClient:
             method: Méthode HTTP (GET, POST, PUT, DELETE, etc.)
             _retry_on_401: Réessayer automatiquement si 401 (défaut: True)
             _retry_on_discover: Re-découvrir si service non trouvé (défaut: True)
+            timeout: Timeout httpx en secondes (défaut: 30.0)
+            response_format: Format de retour — "json" (défaut, retour dict),
+                "bytes" (retour bytes bruts) ou "stream" (retour l'objet
+                httpx.Response avec corps déjà chargé en mémoire par le
+                transport — pour les très gros fichiers, utiliser
+                hub_transfert.download_file qui streame réellement ; à fermer
+                par l'appelant). La garantie outbox (enqueue 5xx /
+                RequestError) est active UNIQUEMENT en mode "json" ; en mode
+                "bytes"/"stream" une erreur renvoie None sans outbox.
             **kwargs: Arguments supplémentaires pour httpx (json, data, params, etc.)
         
         Returns:
-            Réponse JSON ou None si erreur
+            dict (json), bytes (binaire) ou httpx.Response (stream) ; None si erreur
+        
+        Warning:
+            En mode "stream", la réponse ne pouvant pas être re-jouée de façon
+            fiable après resync, privilégier `_retry_on_401=False` si le flux
+            est volumineux (sinon le flux est relu depuis le début au retry).
         
         Example:
             # Appeler GET /api/items sur le service "inventaire"
@@ -887,9 +904,12 @@ class HubClient:
                 json={"product_id": 123, "quantity": 2}
             )
         """
+        if response_format not in ("json", "bytes", "stream"):
+            raise ValueError(
+                f"response_format invalide: {response_format!r} (attendu: json|bytes|stream)")
         # Récupérer le service découvert
         service = await self.get_service_by_slug(service_slug)
-        
+
         if not service:
             if _retry_on_discover:
                 logger.warning(f"⚠️ Service '{service_slug}' non trouvé, rafraîchissement du cache...")
@@ -923,12 +943,16 @@ class HubClient:
                 method,
                 url,
                 headers=headers,
-                timeout=30.0,
+                timeout=timeout,
                 **kwargs
             )
             
             if response.status_code == 200:
                 logger.debug(f"✅ Réponse OK de {service_slug}")
+                if response_format == "bytes":
+                    return response.content
+                if response_format == "stream":
+                    return response
                 return response.json()
             
             elif response.status_code == 401 and _retry_on_401:
@@ -940,6 +964,8 @@ class HubClient:
                         service_slug, endpoint, method,
                         _retry_on_401=False,
                         _retry_on_discover=False,
+                        timeout=timeout,
+                        response_format=response_format,
                         **kwargs
                     )
                 logger.error(f"❌ Resync échoué, abandon de l'appel")
@@ -952,11 +978,16 @@ class HubClient:
                     service_slug, endpoint, method,
                     _retry_on_401=_retry_on_401,
                     _retry_on_discover=False,
+                    timeout=timeout,
+                    response_format=response_format,
                     **kwargs
                 )
             else:
                 logger.error(f"❌ Erreur appel service {service_slug}: {response.status_code} - {response.text[:200]}")
                 if response.status_code >= 500:
+                    if response_format != "json":
+                        logger.error(f"❌ Erreur binaire service {service_slug}: {response.status_code} — pas d'outbox (JSON-only)")
+                        return None
                     try:
                         msg_id = await outbox_service.enqueue(
                             target_url=url,
@@ -973,6 +1004,9 @@ class HubClient:
                     
         except httpx.RequestError as e:
             logger.error(f"❌ Erreur appel service {service_slug}: {e}")
+            if response_format != "json":
+                logger.error(f"❌ Erreur binaire service {service_slug}: requête échouée — pas d'outbox (JSON-only)")
+                return None
             try:
                 msg_id = await outbox_service.enqueue(
                     target_url=url,
