@@ -1,3 +1,21 @@
+## [2.23.3] - 14 septembre 2026
+
+### ⚡ lint-classes — comparaisons, utilitaires négatifs et fichiers .bak
+
+- **Comparaisons dans `className={…}`** : les chaînes utilisées dans
+  `===` / `!==` / comparaisons ne sont plus extraites comme classes
+  (ex. `feedback.type === "success"` → `.success` fantôme imaginaire,
+  constaté sur exemple-app).
+- **Heuristique TW étendue** : utilitaires négatifs (`-mb-px`,
+  `-translate-x-full`…), préfixes `table-` / `translate-` — comptés « non
+  vérifiables » pour les apps avec Tailwind propre (faux positifs constatés
+  sur exemple-app).
+- **Fichiers de sauvegarde** (`*.bak`, `*.orig`, `*.rej`) exclus du scan.
+- Campagne « vague 1 » du parc : exemple-app, exemple-app,
+  exemple-app_v3, exemple-app — **0 classe fantôme** après traitement.
+
+---
+
 ## [2.23.2] - 14 septembre 2026
 
 ### ⚡ lint-classes — utilitaires Tailwind « nus » + campagne parc (12 apps branches)
