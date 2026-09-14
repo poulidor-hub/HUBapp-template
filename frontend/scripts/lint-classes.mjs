@@ -72,7 +72,9 @@ if (existsSync(pkgPath)) {
 const twPrefixes =
   'bg-|text-|border-|rounded-|shadow-|animate-|backdrop-|tracking-|leading-|font-|whitespace-|overflow-|opacity-|transition-|duration-|ease-|delay-|z-|top-|bottom-|left-|right-|inset-|w-|h-|min-w-|max-w-|min-h-|max-h-|p-|px-|py-|pt-|pb-|pl-|pr-|m-|mx-|my-|mt-|mb-|ml-|mr-|gap-|space-|grid-|col-|row-|flex-|items-|justify-|self-|place-|order-|ring-|outline-|divide-|underline-|decoration-|list-|object-|aspect-|columns-|break-|float-|clear-|isolate-|align-|uppercase|lowercase|capitalize|truncate|italic|not-italic|underline|line-through|no-underline|antialiased|sr-only|pointer-events-|select-|cursor-|appearance-|resize-|fill-|stroke-|accent-|caret-|scroll-|snap-|touch-|will-change-|content-|after:|before:|hover:|focus:|active:|visited:|disabled:|group-|peer-|dark:|first:|last:|odd:|even:|sm:|md:|lg:|xl:|2xl:|max-|min-|probe-'
 const looksLikeTw = (cls) =>
-  new RegExp(`^(${twPrefixes})`).test(cls) || /^\S*\d/.test(cls)
+  new RegExp(`^(${twPrefixes})`).test(cls) || /^\S*\d/.test(cls) ||
+  // utilitaires Tailwind « nus » (sans préfixe ni valeur numérique)
+  /^(block|inline-block|inline|flex|inline-flex|grid|hidden|table|contents|flow-root|border|rounded|shadow|fixed|absolute|relative|sticky|static|visible|invisible|isolate|italic|underline|line-through|no-underline|truncate|uppercase|lowercase|capitalize|normal-case|antialiased|resize|ring|outline|filter|container)$/.test(cls)
 
 // ---------------------------------------------------------------------------
 // 1. Classes connues = seed HUBCSS buildé + CSS applicatif (src/**/*.css)

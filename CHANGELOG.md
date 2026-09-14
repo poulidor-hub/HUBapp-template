@@ -1,3 +1,21 @@
+## [2.23.2] - 14 septembre 2026
+
+### ⚡ lint-classes — utilitaires Tailwind « nus » + campagne parc (12 apps branches)
+
+- Heuristique `looksLikeTw` étendue : les utilitaires Tailwind sans préfixe ni
+  valeur (`border`, `rounded`, `fixed`, `hidden`, `sticky`, `inline-flex`…)
+  sont désormais comptés « non vérifiables » pour les apps avec Tailwind
+  propre (compilés par leur propre installeur) au lieu d'être des erreurs.
+- Script durci pour le traitement en masse du parc : idempotent (reprise
+  après interruption), tolère exit 1 du lint (recensement), parsing
+  d'expressions `className={…}` à accolades équilibrées.
+- Campagne réelle : 12 apps sur branches de travail corrigées (retrait reset
+  `*` + lint embarqué) — exemple-app, exemple-app, exemple-V2, exemple-app,
+  exemple-app, exemple-app, exemple-app, exemple-app, exemple-app, exemple-app,
+  exemple-app, exemple-app.
+
+---
+
 # Changelog - HUBapp Template
 
 Historique des modifications du template d'application Hub.
