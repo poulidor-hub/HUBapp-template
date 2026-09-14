@@ -143,6 +143,9 @@ test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
 lint-classes: ## Détecter les classes fantômes (JSX vs build HUBCSS — voir HUBCSS/docs/CASCADE.md)
 	cd frontend && npm run lint:classes
 
+verify-ui: ## Smoke UI par styles calculés (Playwright) — make verify-ui APP=../MON_APP/frontend
+	cd frontend && node scripts/verify-ui.mjs $(APP)
+
 test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python3 -m pytest --cov=. --cov-report=html -v
 
