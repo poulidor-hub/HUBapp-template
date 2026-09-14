@@ -1,3 +1,17 @@
+## [2.23.5] - 14 septembre 2026
+
+### ⚡ lint-classes — icônes PrimeIcons + utilitaires v4 (vague 5 du parc)
+
+- **Tolérance icônes** : `pi` / `pi-*` (PrimeIcons, CSS importé depuis
+  node_modules — invisible du scan seed/src) reconnus comme `bi-*`.
+- Utilitaire nu `transition` ajouté ; préfixe `drop-shadow-` ajouté
+  (Tailwind v4 propre des apps).
+- Campagne réelle : exemple-app (46 classes `pi*`, `prose-*` allowlisté —
+  @tailwindcss/typography non installé) et exemple-app (46 `pi*`, 17 hooks
+  allowlistés, shell `.app` défini) — **0 classe fantôme**.
+
+---
+
 ## [2.23.4] - 14 septembre 2026
 
 ### ⚡ lint-classes — heuristique TW élargie (vague 3 du parc)
