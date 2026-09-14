@@ -13,11 +13,13 @@
   --border: var(--hub-color-border);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* PAS de reset universel `*` ici : il serait non-layered et écraserait — par
+   cascade — les paddings/margins des composants HUBCSS définis dans
+   @layer components (hub-table, hub-button, hub-badge, hub-stat-card…).
+   Une règle hors-layer bat toujours une règle dans un @layer, quelle que soit
+   sa spécificité. Le @layer base de global.css fait déjà ce reset, et la doc
+   HUBCSS/docs/CASCADE.md décrit le contrat complet (voir aussi l'app exports,
+   cas réel v0.1.2). */
 
 /* Titre du header (remplace les utilitaires Tailwind retirés) */
 .app-title {

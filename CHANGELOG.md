@@ -5,6 +5,33 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.22.1] - 14 septembre 2026
+
+### ⚡ Fix UI socle — suppression du reset universel `*` de app.css
+
+Le template livrait `frontend/src/styles/app.css` avec un reset universel
+`* { box-sizing: border-box; margin: 0; padding: 0 }` **hors layer**. Or une
+règle non-layered bat toujours une règle déclarée dans un `@layer`, quelle que
+soit sa spécificité : ce reset écrasait donc silencieusement les paddings et
+margins de **tous** les composants HUBCSS (`hub-table`, `hub-button`,
+`hub-badge`, `hub-stat-card`, `hub-alert`…) définis dans `@layer components`
+du `global.css`. Symptômes en production (cas réel : app exports v0.1.2) :
+tableaux écrasés sans padding de cellule, boutons et badges déformés, cartes
+stat collées — invisibles à la relecture de code, visibles uniquement dans les
+computed styles.
+
+- **Retrait du reset** : le `@layer base` de `global.css` effectue déjà ce
+  reset, correctement ordonnancé (layered). Commentaire explicatif laissé à sa
+  place, avec renvoi vers `HUBCSS/docs/CASCADE.md`.
+- **Doc** : HUBCSS 0.2.3 publie `docs/CASCADE.md` (contrat cascade/layers :
+  interdit des resets universels, liste exacte des utilitaires du build,
+  patterns sûrs d'extension des `hub-*`).
+- Les apps existantes créées depuis ce template portent leur propre copie de
+  `app.css` : appliquer le même retrait à la demande (impayé, exports déjà
+  corrigées ou immunisées).
+
+---
+
 ## [2.22.0] - 13 septembre 2026
 
 ### ✨ hub_transfert opt-in + M2M binaire
