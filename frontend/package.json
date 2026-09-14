@@ -1,12 +1,13 @@
 {
   "name": "hubapp-frontend",
-  "version": "2.22.1",
+  "version": "2.23.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint:classes": "node scripts/lint-classes.mjs"
   },
   "dependencies": {
     "@tanstack/react-form": "^1.33.2",

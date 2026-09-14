@@ -5,6 +5,39 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.23.0] - 14 septembre 2026
+
+### ✨ Lint anti-classes-fantômes (`make lint-classes`)
+
+Nouveau garde-fou statique qui détecte, **avant le runtime**, les classes
+utilisées dans le JSX/HTML mais absentes du build — le mode de défaillance qui
+a cassé l'UI de l'app exports (utilitaires Tailwind utilisés après retrait de
+Tailwind du build : `mb-2`, `mb-3`… jamais détectés ni par Vite ni par pytest).
+
+- **`frontend/scripts/lint-classes.mjs`** (zéro dépendance, Node seul) :
+  - extrait les classes de `className` (chaînes statiques, ternaires, template
+    literals hors interpolations) et des attributs `class` du `index.html` ;
+  - les compare au seed HUBCSS buildé (`public/design-system/current/global.css`,
+    251 classes : composants `hub-*` + utilitaires curatés) et au CSS
+    applicatif (`src/**/*.css`) ;
+  - **avertit** sur les resets universels `* { … }` hors `@layer` (le piège
+    cascade documenté dans `HUBCSS/docs/CASCADE.md`) ;
+  - allowlist optionnelle `frontend/scripts/lint-classes.allowlist.json`
+    (classes exactes ou regex `/…/`), préfixe `bi-` (bootstrap-icons) toléré ;
+  - exit 1 si classe fantôme, 2 si setup invalide (seed manquant → lancez
+    `make refresh-design-seed`).
+- **Câblage** : script npm `lint:classes`, cible `make lint-classes`,
+  intégrée au skill app `verify-feature` (étape frontend) et à sa checklist.
+- **Fix détecté par le lint lui-même** : la classe shell `.app` (wrapper de
+  `RootLayout`) était utilisée sans définition CSS — règle ajoutée dans
+  `app.css` (`min-height: 100vh` + colonne flex, recette `hub-shell`).
+- Validé sur : le template (✅ 0 fantôme), l'app exports avant/après fixes
+  (l'ancien commit 867b5bb échoue avec `mb-2`/`mb-3` + warning reset — le
+  drame Tailwind aurait été attrapé immédiatement), et un cas synthétique
+  (allowlist, HTML, dynamique).
+
+---
+
 ## [2.22.1] - 14 septembre 2026
 
 ### ⚡ Fix UI socle — suppression du reset universel `*` de app.css

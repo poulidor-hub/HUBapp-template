@@ -140,6 +140,9 @@ logs-db: ## Voir les logs de PostgreSQL
 test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
 	cd backend && python3 -m pytest -v
 
+lint-classes: ## Détecter les classes fantômes (JSX vs build HUBCSS — voir HUBCSS/docs/CASCADE.md)
+	cd frontend && npm run lint:classes
+
 test-cov: ## Lancer les tests avec couverture (hôte)
 	cd backend && python3 -m pytest --cov=. --cov-report=html -v
 

@@ -15,7 +15,7 @@ Use this skill **immediately after implementing a change** to confirm the app st
 | Backend Python route/handler/schema | `make restart-api` | yes | `make test-docker` | yes | yes | no |
 | New backend dependency or Dockerfile change | `make build && make up` | yes | `make test-docker` | yes | yes | no |
 | SQL migration | `make restart-api` | **critical** | `make test-docker` | yes | yes | no |
-| Frontend JSX/hook/style | no (Vite HMR via `make dev`) or `make build && make up` if image-baked | only on rebuild | no | smoke check in browser | no | `cd frontend && npm run build` |
+| Frontend JSX/hook/style | no (Vite HMR via `make dev`) or `make build && make up` if image-baked | only on rebuild | no | smoke check in browser | no | `cd frontend && npm run build` + `make lint-classes` |
 | `.env`, ports, `VERSION` | `make sync-env && make up` | yes | optional | `make health` | yes | rebuild required |
 | Pure refactor / docs | no | no | `make test` (host) suffit | no | no | no |
 
@@ -131,6 +131,7 @@ After any change under [frontend/src](../../../frontend/src):
 
 ```bash
 cd frontend && npm run build
+npm run lint:classes   # ou make lint-classes — zéro classe fantôme tolérée
 ```
 
 The built bundle does **not** read runtime env vars — every `VITE_*` change requires `make build && make up` to bake new values into the image.
@@ -145,6 +146,6 @@ A feature is verified only when:
 2. `make test-docker` is green (no skipped tests added without justification).
 3. The new/changed endpoint returns the expected response via `curl` or Swagger.
 4. `docker compose logs --tail=80 api` is clean after the test request.
-5. (If frontend touched) `npm run build` succeeds and the affected screen renders.
+5. (If frontend touched) `npm run build` + `npm run lint:classes` succeed and the affected screen renders.
 
 If any check fails, fix before reporting completion. Do not document "works on my machine" — the cycle above *is* the local proof.

@@ -21,6 +21,14 @@
    HUBCSS/docs/CASCADE.md décrit le contrat complet (voir aussi l'app exports,
    cas réel v0.1.2). */
 
+/* Shell applicatif (wrapper de RootLayout) — recette hub-shell :
+   colonne flex pleine hauteur, header + main s'empilent sans surprise */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Titre du header (remplace les utilitaires Tailwind retirés) */
 .app-title {
   display: inline-flex;
