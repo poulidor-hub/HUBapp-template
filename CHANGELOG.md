@@ -1,3 +1,16 @@
+## [2.23.4] - 14 septembre 2026
+
+### ⚡ lint-classes — heuristique TW élargie (vague 3 du parc)
+
+- Préfixes ajoutés : `file:`, `from-`, `via-`, `to-` (dégradés et variantes
+  de formulaire Tailwind).
+- Utilitaires nus ajoutés : `group`, `peer`, `transform`, `box-border`,
+  `box-content`.
+- Faux positifs éliminés en réel sur exemple-app (`.group`), exemple-app
+  (6 classes) et exemple-app (`file:*`) — apps avec Tailwind propre.
+
+---
+
 ## [2.23.3] - 14 septembre 2026
 
 ### ⚡ lint-classes — comparaisons, utilitaires négatifs et fichiers .bak

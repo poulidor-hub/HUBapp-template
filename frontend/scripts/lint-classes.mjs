@@ -70,13 +70,13 @@ if (existsSync(pkgPath)) {
   } catch { /* package.json illisible : tant pis */ }
 }
 const twPrefixes =
-  'bg-|text-|border-|rounded-|shadow-|animate-|backdrop-|tracking-|leading-|font-|whitespace-|overflow-|opacity-|transition-|duration-|ease-|delay-|z-|top-|bottom-|left-|right-|inset-|w-|h-|min-w-|max-w-|min-h-|max-h-|p-|px-|py-|pt-|pb-|pl-|pr-|m-|mx-|my-|mt-|mb-|ml-|mr-|gap-|space-|grid-|col-|row-|flex-|items-|justify-|self-|place-|order-|ring-|outline-|divide-|underline-|decoration-|list-|object-|aspect-|columns-|break-|float-|clear-|isolate-|align-|table-|translate-|scale-|rotate-|uppercase|lowercase|capitalize|truncate|italic|not-italic|underline|line-through|no-underline|antialiased|sr-only|pointer-events-|select-|cursor-|appearance-|resize-|fill-|stroke-|accent-|caret-|scroll-|snap-|touch-|will-change-|content-|after:|before:|hover:|focus:|active:|visited:|disabled:|group-|peer-|dark:|first:|last:|odd:|even:|sm:|md:|lg:|xl:|2xl:|max-|min-|probe-'
+  'bg-|text-|border-|rounded-|shadow-|animate-|backdrop-|tracking-|leading-|font-|whitespace-|overflow-|opacity-|transition-|duration-|ease-|delay-|z-|top-|bottom-|left-|right-|inset-|w-|h-|min-w-|max-w-|min-h-|max-h-|p-|px-|py-|pt-|pb-|pl-|pr-|m-|mx-|my-|mt-|mb-|ml-|mr-|gap-|space-|grid-|col-|row-|flex-|items-|justify-|self-|place-|order-|ring-|outline-|divide-|underline-|decoration-|list-|object-|aspect-|columns-|break-|float-|clear-|isolate-|align-|table-|translate-|scale-|rotate-|from-|via-|to-|file:|uppercase|lowercase|capitalize|truncate|italic|not-italic|underline|line-through|no-underline|antialiased|sr-only|pointer-events-|select-|cursor-|appearance-|resize-|fill-|stroke-|accent-|caret-|scroll-|snap-|touch-|will-change-|content-|after:|before:|hover:|focus:|active:|visited:|disabled:|group-|peer-|dark:|first:|last:|odd:|even:|sm:|md:|lg:|xl:|2xl:|max-|min-|probe-'
 const looksLikeTw = (cls) => {
   if (new RegExp(`^(${twPrefixes})`).test(cls)) return true
   const bare = cls.startsWith('-') ? cls.slice(1) : cls // utilitaires négatifs (-mb-px…)
   return new RegExp(`^(${twPrefixes})`).test(bare) || /^\S*\d/.test(bare) ||
     // utilitaires Tailwind « nus » (sans préfixe ni valeur numérique)
-    /^(block|inline-block|inline|flex|inline-flex|grid|hidden|table|contents|flow-root|border|rounded|shadow|fixed|absolute|relative|sticky|static|visible|invisible|isolate|italic|underline|line-through|no-underline|truncate|uppercase|lowercase|capitalize|normal-case|antialiased|resize|ring|outline|filter|container)$/.test(bare)
+    /^(block|inline-block|inline|flex|inline-flex|grid|hidden|table|contents|flow-root|border|rounded|shadow|fixed|absolute|relative|sticky|static|visible|invisible|isolate|italic|underline|line-through|no-underline|truncate|uppercase|lowercase|capitalize|normal-case|antialiased|resize|ring|outline|filter|container|group|peer|transform|box-border|box-content)$/.test(bare)
 }
 
 // ---------------------------------------------------------------------------
