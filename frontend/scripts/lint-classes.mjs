@@ -57,6 +57,24 @@ const isAllowed = (cls) =>
   allowRegex.some((re) => re.test(cls))
 
 // ---------------------------------------------------------------------------
+// App avec son propre Tailwind : ses utilitaires TW (compilés depuis sa
+// config, introuvables statiquement) sont signalés à part, pas en fantômes.
+// ---------------------------------------------------------------------------
+let twOwn = false
+const pkgPath = join(root, 'package.json')
+if (existsSync(pkgPath)) {
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+    twOwn = Object.keys(deps).some((d) => d.includes('tailwind'))
+  } catch { /* package.json illisible : tant pis */ }
+}
+const twPrefixes =
+  'bg-|text-|border-|rounded-|shadow-|animate-|backdrop-|tracking-|leading-|font-|whitespace-|overflow-|opacity-|transition-|duration-|ease-|delay-|z-|top-|bottom-|left-|right-|inset-|w-|h-|min-w-|max-w-|min-h-|max-h-|p-|px-|py-|pt-|pb-|pl-|pr-|m-|mx-|my-|mt-|mb-|ml-|mr-|gap-|space-|grid-|col-|row-|flex-|items-|justify-|self-|place-|order-|ring-|outline-|divide-|underline-|decoration-|list-|object-|aspect-|columns-|break-|float-|clear-|isolate-|align-|uppercase|lowercase|capitalize|truncate|italic|not-italic|underline|line-through|no-underline|antialiased|sr-only|pointer-events-|select-|cursor-|appearance-|resize-|fill-|stroke-|accent-|caret-|scroll-|snap-|touch-|will-change-|content-|after:|before:|hover:|focus:|active:|visited:|disabled:|group-|peer-|dark:|first:|last:|odd:|even:|sm:|md:|lg:|xl:|2xl:|max-|min-|probe-'
+const looksLikeTw = (cls) =>
+  new RegExp(`^(${twPrefixes})`).test(cls) || /^\S*\d/.test(cls)
+
+// ---------------------------------------------------------------------------
 // 1. Classes connues = seed HUBCSS buildé + CSS applicatif (src/**/*.css)
 // ---------------------------------------------------------------------------
 const seedPath = join(root, 'public', 'design-system', 'current', 'global.css')
@@ -124,11 +142,10 @@ const used = new Map() // classe -> [{ file, line }]
 let dynamicCount = 0
 
 const directAttrRe = /className\s*=\s*"([^"]*)"|className\s*=\s*'([^']*)'/g
-const bracedAttrRe = /className\s*=\s*\{([^}]*)\}/g
-const quotedInExprRe = /"([^"]*)"|'([^']*)'|`([^`]*)`/g
-const interpolationRe = /\$\{[^}]*\}/g
+const bracedAttrRe = /className\s*=\s*\{/g
 const htmlClassRe = /\bclass\s*=\s*"([^"]*)"/g
 const garbageRe = /[<>{}`$;=&|!()[\]]/ // résidus d'expression → jeton non vérifiable
+const trailingDashRe = /-$/ // fragment tronqué (préfixe de classe dynamique)
 
 function record(cls, file, line) {
   if (!used.has(cls)) used.set(cls, [])
@@ -137,14 +154,71 @@ function record(cls, file, line) {
 
 function recordTokens(text, file, line) {
   for (const token of text.split(/\s+/)) {
-    if (!token || garbageRe.test(token)) continue
+    if (!token || garbageRe.test(token) || trailingDashRe.test(token)) continue
     record(token, file, line)
   }
 }
 
+// Extrait l'expression className={...} avec accolades équilibrées
+// (l'interpolation ${...} contient des '}' qui casserait [^}]*)
+function matchBracedExpr(text, startIndex) {
+  let depth = 1
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return text.slice(startIndex, i)
+    }
+  }
+  return text.slice(startIndex) // non équilibré : on prend tout
+}
+
+// Parties statiques d'une expression className : chaînes '...' / "..." hors
+// interpolations, et parties hors ${...} des template literals.
+function staticClassStrings(expr) {
+  const parts = []
+  let i = 0
+  while (i < expr.length) {
+    const ch = expr[i]
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch
+      let j = i + 1
+      let literal = ''
+      while (j < expr.length && expr[j] !== quote) {
+        if (expr[j] === '\\') { // échappement
+          literal += expr[j + 1] ?? ''
+          j += 2
+          continue
+        }
+        if (quote === '`' && expr[j] === '$' && expr[j + 1] === '{') {
+          // interpolation : sauter jusqu'à l'accolade fermante équilibrée
+          let d = 1
+          j += 2
+          const start = j
+          while (j < expr.length && d > 0) {
+            if (expr[j] === '{') d++
+            else if (expr[j] === '}') d--
+            if (d > 0) j++
+          }
+          dynamicCount++
+          j++ // consommer '}'
+          continue
+        }
+        literal += expr[j]
+        j++
+      }
+      parts.push(literal)
+      i = j + 1
+      continue
+    }
+    i++
+  }
+  return parts
+}
+
 function scanSource(path, isHtml) {
   const text = readFileSync(path, 'utf8')
-  const lines = text.split('\n')
 
   const lineOf = (index) => text.slice(0, index).split('\n').length
 
@@ -153,30 +227,18 @@ function scanSource(path, isHtml) {
     recordTokens(value, path, lineOf(m.index))
   }
   for (const m of text.matchAll(bracedAttrRe)) {
-    const expr = m[1]
+    const expr = matchBracedExpr(text, m.index + m[0].length)
     const line = lineOf(m.index)
-    // template literals : retirer les interpolations (invérifiables)
-    const literalParts = []
-    for (const q of expr.matchAll(quotedInExprRe)) {
-      const value = q[1] ?? q[2] ?? q[3]
-      if (q[3] !== undefined) {
-        const staticParts = value.replace(interpolationRe, ' ')
-        if (staticParts.trim()) literalParts.push(staticParts)
-        else dynamicCount++
-      } else {
-        literalParts.push(value)
-      }
-    }
-    // expression sans aucune chaîne littérale → dynamique pure
-    if (!literalParts.length && expr.trim() && !/["'`]/.test(expr)) dynamicCount++
-    for (const part of literalParts) recordTokens(part, path, line)
+    const parts = staticClassStrings(expr)
+    // expression sans aucune partie statique → dynamique pure
+    if (!parts.length && expr.trim() && !/["'`]/.test(expr.trim()[0] ?? '')) dynamicCount++
+    for (const part of parts) recordTokens(part, path, line)
   }
   if (isHtml) {
     for (const m of text.matchAll(htmlClassRe)) {
       recordTokens(m[1], path, lineOf(m.index))
     }
   }
-  void lines // (réserve : rapports par ligne plus fins si besoin)
 }
 
 function walk(dir, files = []) {
@@ -212,9 +274,9 @@ const rel = (p) => {
   const r = relative(process.cwd(), p)
   return r.startsWith('..') ? p : r // ne pas afficher des '../../../..' illisibles
 }
-const ghosts = [...used.keys()]
-  .filter((cls) => !known.has(cls) && !isAllowed(cls))
-  .sort()
+const unknown = [...used.keys()].filter((cls) => !known.has(cls) && !isAllowed(cls))
+const ghosts = unknown.filter((cls) => !(twOwn && looksLikeTw(cls))).sort()
+const twUnverified = unknown.length - ghosts.length
 
 console.log('lint-classes — classes JSX vs build HUBCSS')
 console.log(
@@ -223,6 +285,12 @@ console.log(
     `${used.size} classes utilisées` +
     (dynamicCount ? ` · ${dynamicCount} expressions dynamiques ignorées` : '')
 )
+if (twOwn && twUnverified) {
+  console.log(
+    `  ℹ️  App avec Tailwind propre : ${twUnverified} classe(s) TW non ` +
+      `vérifiables statiquement (ignorées — compilées par ${'`'}tailwindcss${'`'}).`
+  )
+}
 
 if (resetWarnings.length) {
   console.log('\n⚠️  Resets universels hors @layer (écrasent les composants hub-* —')

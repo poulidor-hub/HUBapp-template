@@ -5,6 +5,26 @@ Historique des modifications du template d'application Hub.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [2.23.1] - 14 septembre 2026
+
+### ⚡ Fix lint-classes — interpolations JSX et apps avec Tailwind propre
+
+- **Faux positif corrigé** : les chaînes situées À L'INTÉRIEUR des
+  interpolations `${…}` d'un `className` étaient extraites comme classes
+  (ex. `statut-${statut || 'decede'}` → `.decede` fantôme imaginaire, constaté
+  sur l'app exemple-app). Le parser extrait maintenant l'expression avec accolades
+  équilibrées et ignore tout contenu des interpolations (comptées comme
+  dynamiques) ; les fragments tronqués finissant par `-` sont écartés.
+- **Apps avec Tailwind propre** (détection de `tailwindcss` dans
+  `package.json`) : les classes du dialecte Tailwind non retrouvées dans le
+  seed/app.css ne sont plus des erreurs — elles sont comptées comme « non
+  vérifiables statiquement » (ℹ️), car compilées par le Tailwind de l'app.
+- Validé : faux positif exemple-app disparu, détections réelles inchangées
+  (exports 867b5bb : `mb-2`/`mb-3` toujours attrapées ; exemple-app :
+  9 classes template manquantes confirmées).
+
+---
+
 ## [2.23.0] - 14 septembre 2026
 
 ### ✨ Lint anti-classes-fantômes (`make lint-classes`)
