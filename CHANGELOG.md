@@ -1,3 +1,22 @@
+## [2.23.7] - 14 septembre 2026
+
+### ✨ HTTPS activé par défaut + fix premier démarrage distant
+
+- **HTTPS par défaut** : `.env.example` passe à `HTTPS_ENABLED=true` — les nouvelles
+  installations démarrent en HTTPS : `make up` génère automatiquement les certificats
+  auto-signés (`scripts/generate-ssl.sh`, couvre localhost + IP locale) puis charge
+  `docker-compose.https.yml` (port HTTPS = FRONTEND_PORT + 1). Les apps existantes ne
+  sont pas affectées : la fusion `update_env.py` préserve les valeurs déjà en place.
+- **fix `update_env.py` — premier boot serveur distant bloquant** : le script sortait
+  en erreur (`exit 1`) dès qu'une variable requise par le compose (`${APP_SUBNET:?}`)
+  restait vide, alors qu'au premier démarrage aucun réseau Docker n'existe encore et
+  que `allocate_ports.py` (appelé juste après dans `make sync-env`) obtient le subnet
+  auprès du Hub (pool `APP_SUBNET_POOL`) — il n'était donc jamais atteint. Ces clés
+  (`API_PORT`, `FRONTEND_PORT`, `FRONTEND_HTTPS_PORT`, `APP_SUBNET`) ne sont plus
+  fatales dans `update_env.py` : note d'info affichée, allocation déléguée à l'étape
+  suivante ; un Hub injoignable reste bloquant via `allocate_ports.py` lui-même.
+- **Test** : `scripts/test_update_env.py` — cas 9 (compose exigeant `APP_SUBNET` +
+  détecteur réseau `None` → `exit 0`, note d'info, aucune écriture erronée).
 ## [2.23.6] - 14 septembre 2026
 
 ### ✨ Smoke UI par styles calculés (`verify-ui`, item 4)

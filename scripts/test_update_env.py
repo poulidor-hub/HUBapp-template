@@ -21,6 +21,10 @@ Couverture :
   7. Invariant global : chaque clé apparaît exactement une fois après fusion
   8a. .env inexistant → refus propre (exit 1, aucune création, aucun backup)
   8b. Démarrage zéro : cp .env.example .env → update-env complète les dérivées
+  9. Premier boot serveur distant : compose exige APP_SUBNET (${APP_SUBNET:?}),
+     réseau Docker inexistant (détecteur None) → NON bloquant (exit 0) :
+     allocate_ports.py, appelé juste après dans make sync-env, alloue le
+     subnet via le Hub. Une note d'info est affichée, pas une erreur fatale.
 """
 
 import importlib.util
@@ -249,6 +253,28 @@ def _(tmp):
             if l and not l.startswith("#") and "=" in l]
     dupes = {k for k in keys if keys.count(k) > 1}
     assert not dupes, f"clés dupliquées au premier boot : {dupes}"
+
+
+@case("9. premier boot distant : compose exige APP_SUBNET, détecteur None → non bloquant")
+def _(tmp):
+    mod = load_module(tmp)
+    mod.detect_app_subnet = lambda slug, repo: None
+    # Compose réel : APP_SUBNET est requis via la syntaxe ${APP_SUBNET:?...}
+    write_case(tmp,
+               env="APP_SLUG=exemple-app\nFRONTEND_PORT=4240\nAPP_SUBNET=\n",
+               example="APP_SLUG=exemple-app\nFRONTEND_PORT=4240\nAPP_SUBNET=\n",
+               compose="services:\n  frontend:\n    networks:\n      app-network:\n"
+                       "        ipam:\n          config:\n"
+                       "            - subnet: ${APP_SUBNET:?APP_SUBNET manquant}\n")
+    rc = run_main(mod, tmp)
+    assert rc == 0, \
+        f"premier boot distant bloqué (rc={rc}) — allocate_ports.py n'est jamais atteint"
+    content = read(tmp)
+    # APP_SUBNET reste vide (le Hub l'allouera via make sync-env) mais la
+    # fusion ne doit ni échouer ni écrire de valeur bidon.
+    assert "APP_SUBNET=\n" in content, "APP_SUBNET modifié malgré un détecteur None"
+    assert occurrences(content, "APP_SUBNET") == 1, "duplication APP_SUBNET"
+    assert "FRONTEND_HTTPS_PORT=4241" in content, "dérivée HTTPS perdue au passage"
 
 
 def main():

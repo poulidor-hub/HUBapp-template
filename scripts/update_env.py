@@ -11,7 +11,12 @@ FUSIONNE, il ne se régénère jamais.
 Comportement :
   - Sauvegarde horodatée avant toute modification : .env.pre-update-<stamp>
   - Vérifie les variables requises par docker-compose.yml (syntaxe ${VAR:?...})
-    et sort en erreur avec un message explicite si l'une reste absente/vide
+    et sort en erreur avec un message explicite si l'une reste absente/vide —
+    SAUF les clés auto-allouées par le Hub (API_PORT, FRONTEND_PORT,
+    FRONTEND_HTTPS_PORT, APP_SUBNET) : au premier démarrage sur un serveur
+    distant, aucun réseau Docker n'existe encore et `allocate_ports.py`
+    (appelé juste après dans `make sync-env`) les obtient auprès du Hub.
+    Bloquer ici empêcherait l'allocation d'avoir lieu — bug premier boot.
   - Cas connus auto-remplis (uniquement si vides/absents) :
       FRONTEND_HTTPS_PORT = FRONTEND_PORT + 1
       APP_SUBNET          = subnet réel du réseau Docker de l'app (si détectable)
@@ -40,6 +45,14 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ENV_LINE = re.compile(r'^([A-Z_][A-Z0-9_]*)=(.*)$')
 REQUIRED_VAR = re.compile(r'\$\{([A-Z_][A-Z0-9_]*):\?')
+
+# Clés exigées par le compose mais allouées automatiquement par le Hub via
+# ACTIONS/PYTHON/allocate_ports.py (appelé juste après update_env.py dans
+# `make sync-env`). Les trouver vides n'est PAS une erreur ici : au premier
+# démarrage sur un serveur distant, aucun réseau Docker n'existe encore, et
+# bloquer empêcherait l'allocation d'avoir lieu. Si le Hub est injoignable,
+# allocate_ports.py échoue lui-même avec un message clair → make s'arrête.
+HUB_ALLOCATED = {'API_PORT', 'FRONTEND_PORT', 'FRONTEND_HTTPS_PORT', 'APP_SUBNET'}
 
 
 def read_env(path):
@@ -150,9 +163,17 @@ def main():
                 warnings.append(f'APP_SUBNET auto-rempli depuis le réseau Docker existant : {subnet}')
 
     # --- Variables requises par le compose encore absentes/vides
+    hub_pending = [
+        key for key in sorted(required)
+        if not env.get(key, '').strip()
+        and key in HUB_ALLOCATED
+        and key not in {k for k, _ in filled}
+    ]
     missing_required = [
         key for key in sorted(required)
-        if not env.get(key, '').strip() and key not in {k for k, _ in filled}
+        if not env.get(key, '').strip()
+        and key not in {k for k, _ in filled}
+        and key not in HUB_ALLOCATED
     ]
 
     orphans = sorted(set(env) - set(example))
@@ -173,6 +194,9 @@ def main():
         print(f'   {", ".join(orphans)}')
     for warning in warnings:
         print(f'ℹ️  {warning}')
+    for key in hub_pending:
+        print(f'ℹ️  {key} vide — sera alloué automatiquement par le Hub '
+              f'lors de `make sync-env` (allocate_ports.py).')
     if missing_required:
         print('\n❌ Variables requises par docker-compose.yml toujours vides :')
         for key in missing_required:
