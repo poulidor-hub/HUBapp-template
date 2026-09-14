@@ -1,3 +1,25 @@
+## [2.23.6] - 14 septembre 2026
+
+### ✨ Smoke UI par styles calculés (`verify-ui`, item 4)
+
+- **`frontend/scripts/verify-ui.mjs`** : monte dans un vrai Chromium une
+  fixture chargant les CSS réellement buildés de l'app (seed HUBCSS + bundle
+  `dist/assets`, dans l'ordre d'`index.html`), puis asserte les styles
+  calculés de sentinelles à deux viewports (375px / 1280px). C'est la preuve
+  runtime que ni un reset hors-layer, ni une classe morte, ni un mapping de
+  token n'a cassé le rendu — la classe de bugs invisible à la relecture de
+  code (cas exports v0.1.2).
+- Config par app : `scripts/verify-ui.config.json` (sentinelles déclaratives :
+  sélecteur + propriété + attendu). Usage : `make verify-ui APP=../MON_APP/frontend`.
+- Dépendance : `playwright` (devDependency du template) + `npx playwright
+  install chromium`. Exit 1 sur échec, 2 sur setup invalide.
+- Déployé en réel sur exemple-app (8 sentinelles : sentinelle anti-reset
+  `hub-table`, portage thème via `var(--bg-primary)`, `alert-error`,
+  `help-text`, utilitaires, `divide-y`, `stat-card`) et exemple-app (6
+  sentinelles : anti-reset, `prose`/`prose-sm` du plugin typography,
+  Tailwind propre `.p-4`, PrimeIcons bundlé) — **vert mobile + desktop**.
+
+---
 ## [2.23.5] - 14 septembre 2026
 
 ### ⚡ lint-classes — icônes PrimeIcons + utilitaires v4 (vague 5 du parc)
