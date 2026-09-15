@@ -1,3 +1,13 @@
+## [2.24.0] - 15 septembre 2026
+
+### ⚡ Tests parallélisés (pytest-xdist) + cible make test-seq
+
+- **Ajouté** : dépendance `pytest-xdist>=3.6,<4.0` (backend/requirements.txt, installée dans l'image api via wheel build).
+- **Ajouté** : `make test` parallèle par défaut (`-n auto`, variable `XDIST_WORKERS`) + nouvelle cible `make test-seq` (séquentiel, debug flaky). `test-cov`, `test-docker`, `test-docker-cov` passent aussi en parallèle.
+- Perf : suite template 193 tests, comptes identiques seq/par vérifiés (5.2s — suite courte, gain wall-clock modeste mais mécanique xdist validée hôte et conteneur).
+- Skill migrate-app-template (méta) : note propagation « test parallèle par défaut v2.24.0+ » pour les apps migrées.
+- Note : la garde `ensure-api-fresh` reconstruit l'image api quand requirements.txt change — `make test-docker` parallèle sans étape manuelle.
+
 ## [2.23.7] - 14 septembre 2026
 
 ### ✨ HTTPS activé par défaut + fix premier démarrage distant
