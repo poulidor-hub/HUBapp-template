@@ -137,7 +137,12 @@ logs-db: ## Voir les logs de PostgreSQL
 
 # === TESTS ===
 
-test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide)
+XDIST_WORKERS ?= auto
+
+test: ## Lancer les tests pytest sur l'hôte (SQLite en mémoire, rapide, parallèle)
+	cd backend && python3 -m pytest -n $(XDIST_WORKERS) -v
+
+test-seq: ## Tests pytest séquentiels (debug flaky / ordre-dépendant)
 	cd backend && python3 -m pytest -v
 
 lint-classes: ## Détecter les classes fantômes (JSX vs build HUBCSS — voir HUBCSS/docs/CASCADE.md)
@@ -147,7 +152,7 @@ verify-ui: ## Smoke UI par styles calculés (Playwright) — make verify-ui APP=
 	cd frontend && node scripts/verify-ui.mjs $(APP)
 
 test-cov: ## Lancer les tests avec couverture (hôte)
-	cd backend && python3 -m pytest --cov=. --cov-report=html -v
+	cd backend && python3 -m pytest -n $(XDIST_WORKERS) --cov=. --cov-report=html -v
 
 ensure-api-fresh: ## (interne) Rebuilder l'image api si les sources sont plus récentes
 	@case "$(MAKEFLAGS)" in *n*) echo "[dry-run] ensure-api-fresh sauté"; exit 0;; esac; \
@@ -157,10 +162,10 @@ ensure-api-fresh: ## (interne) Rebuilder l'image api si les sources sont plus r�
 	elif [ $$rc -ne 0 ]; then exit $$rc; fi
 
 test-docker: ensure-api-fresh ## Lancer pytest dans le conteneur api (env Docker, image runtime)
-	$(COMPOSE) exec api python -m pytest -v
+	$(COMPOSE) exec api python -m pytest -n $(XDIST_WORKERS) -v
 
 test-docker-cov: ensure-api-fresh ## Pytest + couverture dans le conteneur api
-	$(COMPOSE) exec api python -m pytest --cov=. --cov-report=term-missing -v
+	$(COMPOSE) exec api python -m pytest -n $(XDIST_WORKERS) --cov=. --cov-report=term-missing -v
 
 # === SANTÉ ===
 
