@@ -10,6 +10,11 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import AsyncMock, patch
 
+from config import get_settings
+
+# Slug réel de l'app (même source que les mocks du conftest)
+APP_SLUG = get_settings().APP_SLUG
+
 
 class TestM2MAuthentication:
     """Tests de l'authentification M2M."""
@@ -97,8 +102,8 @@ class TestCrossServiceCommunication:
         """Vérifie la structure du payload d'un token M2M."""
         assert mock_m2m_token.token_type == "m2m"
         assert mock_m2m_token.sub.startswith("sa_")  # Service Account
-        assert "mon-app" in mock_m2m_token.apps
-        assert mock_m2m_token.apps["mon-app"] == "service"
+        assert APP_SLUG in mock_m2m_token.apps
+        assert mock_m2m_token.apps[APP_SLUG] == "service"
     
     @pytest.mark.asyncio
     async def test_m2m_client_has_credentials(self, mock_hub_client_with_m2m):

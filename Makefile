@@ -19,7 +19,7 @@ endif
 
 .PHONY: help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
         restart restart-api restart-frontend logs logs-api logs-db \
-        ensure-api-fresh test test-cov test-docker test-docker-cov \
+        ensure-api-fresh test test-seq test-cov test-docker test-docker-cov \
         health health-detailed version \
         db-shell clean clean-all init ai-index bump-patch bump-minor bump-major \
         refresh-design-seed sync-hub-tooling sync-hub-tooling-check
