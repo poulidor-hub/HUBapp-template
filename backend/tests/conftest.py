@@ -25,6 +25,11 @@ os.environ["ENABLE_DEMO_ENDPOINTS"] = "true"
 from database import Base, get_db
 from config import get_settings
 
+# Slug réel de l'app (settings, surchargeable par env) — les mocks de tokens
+# doivent porter CE slug, sinon hub_auth ne résout aucun rôle quand l'app
+# instanciée a un slug ≠ "mon-app" (38 tests cassent en conteneur).
+APP_SLUG = get_settings().APP_SLUG
+
 
 # ============================================================
 # FIXTURES DE BASE
@@ -111,7 +116,7 @@ def create_mock_token(
     
     return TokenPayload(
         sub=username,
-        apps={"mon-app": app_role} if app_role else {},
+        apps={APP_SLUG: app_role} if app_role else {},
         token_type=token_type,
         exp=9999999999,
         iat=1000000000,
@@ -209,7 +214,7 @@ def mock_m2m_token():
     
     return TokenPayload(
         sub="sa_test_service_account",
-        apps={"mon-app": "service"},  # Rôle "service" pour les service accounts
+        apps={APP_SLUG: "service"},  # Rôle "service" pour les service accounts
         token_type="m2m",
         exp=9999999999,
         iat=1000000000,
