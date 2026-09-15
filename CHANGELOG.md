@@ -1,3 +1,16 @@
+## [2.24.1] - 15 septembre 2026
+
+### 🐛 Tests tolérants au slug de l'app instanciée
+
+- **Corrigé** : les mocks de tokens du conftest hardcodaient le slug `"mon-app"` — sur une
+  app instanciée avec un autre slug (`settings.APP_SLUG`), `hub_auth` ne résolvait aucun
+  rôle → **38 tests en échec** dans `make test-docker`. Les mocks (`create_mock_token`,
+  `mock_m2m_token`) et les asserts `test_m2m` utilisent désormais `get_settings().APP_SLUG`.
+- Makefile : `test-seq` ajouté à `.PHONY`.
+- Validé : 193 passed (hôte slug défaut) ; hôte + conteneur rebuildé avec
+  `APP_SLUG=ma-vraie-app` (38 failed → 193 passed). Trouvé par la validation VM du
+  chantier outillage (hérité par les apps à leur prochaine migration template).
+
 ## [2.24.0] - 15 septembre 2026
 
 ### ⚡ Tests parallélisés (pytest-xdist) + cible make test-seq
