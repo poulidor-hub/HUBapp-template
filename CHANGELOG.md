@@ -1,3 +1,14 @@
+## [2.24.2] - 17 septembre 2026
+
+### 📖 Documentation — README enrichi
+
+- **Ajouté** : bannière + badge de version, section « 🗺️ Place dans le parc » (Mermaid :
+  fork INITIALISE, JWT/M2M vers le Hub, design system HUBCSS, migration socle) et
+  section « 🛠️ Commandes make » (référence des ~37 cibles du Makefile, dont `test-seq`,
+  `verify-ui`, `sync-hub-tooling`).
+- **Sync version** : `bump_version.py patch` a rattrapé les fichiers dérivés restés en
+  2.23.7 (`frontend/package.json`, `.env.example`, `docs/API.md` → 2.24.2).
+
 ## [2.24.1] - 15 septembre 2026
 
 ### 🐛 Tests tolérants au slug de l'app instanciée
