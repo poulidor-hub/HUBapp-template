@@ -1,6 +1,24 @@
 # HUBapp_TEMPLATE
 
+![version](https://img.shields.io/badge/version-2.24.1-blue)
+
 Template d'application avec authentification Hub pour le développement rapide d'applications connectées.
+
+## 🗺️ Place dans le parc
+
+```mermaid
+flowchart LR
+    TPL["HUBapp_TEMPLATE_base"] -->|"INITIALISE<br/>(fork)"| APP["Application"]
+    APP -->|"JWT · JWKS · M2M"| HUB["Hub (HUB_base)"]
+    HUB -.->|"bundle runtime<br/>design system"| APP
+    SOCLE["HUBsocle"] -.->|"migration<br/>app fine (INITIALISE v2)"| APP
+```
+
+Chaque application du parc naît de ce template (fork via `INITIALISE.*`), s'enregistre
+auprès du [Hub](https://github.com/POULIDOR-Audit-Developpement/HUB_base) et consomme le
+design system [HUBCSS](https://github.com/POULIDOR-Audit-Developpement/HUBCSS) servi par
+le Hub. Les nouvelles apps pourront naître « fines » sur le socle versionné
+[HUBsocle](https://github.com/POULIDOR-Audit-Developpement/HUBsocle) (INITIALISE v2).
 
 ## 📋 Canevas de cahier des charges
 
@@ -161,6 +179,26 @@ synchronisation via `scripts/bump_version.py`, puis `git commit`. Options utiles
 - **Frontend** : http://localhost:4250
 - **API Docs** : http://localhost:9045/api/docs
 - **Health** : http://localhost:9045/api/health
+
+## 🛠️ Commandes make
+
+Référence rapide (détail : `make help`) :
+
+| Cible | Rôle |
+|---|---|
+| `make up` / `make dev` / `make build` | Stack prod / dev avec reload / rebuild images |
+| `make down`, `make restart` | Arrêter, redémarrer |
+| `make logs`, `make logs-api`, `make logs-db` | Suivre les logs |
+| `make test` | Suite pytest **parallèle** (xdist) · `test-seq` : séquentiel (debug flaky) |
+| `make test-cov`, `make test-docker` | Couverture · tests sur stack compose isolée |
+| `make health`, `make health-detailed` | Health check de l'app |
+| `make version`, `make bump-patch/minor/major` | Version (cf. 🏷️ Gestion des versions) |
+| `make sync-env`, `make sync-hub-host` | Sync ports/.env · redécouverte `HUB_HOST` |
+| `make sync-hub-tooling`, `sync-hub-tooling-check` | Sync serveur MCP (`hub-mcp/`) + vérif diff |
+| `make ssl` | Certificats HTTPS locaux |
+| `make db-shell` | psql dans le conteneur DB |
+| `make verify-ui`, `make lint-classes` | Contrôles UI / classes HUBCSS |
+| `make ai-index` | Index de contexte pour l'agent IA |
 
 ## Changement d'IP du serveur (Hub + apps sur le même serveur)
 
