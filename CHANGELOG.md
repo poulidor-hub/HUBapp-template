@@ -1,3 +1,13 @@
+## [2.26.0] - 19 septembre 2026
+
+### 🔒 Added / Changed — HTTPS par défaut (HTTPS_ENABLED=true)
+
+- HTTPS activé PAR DÉFAUT (`HTTPS_ENABLED=true`) : docker-compose (api + frontend),
+  docker-entrypoint.sh, Settings (`backend/config.py`). Une app qui veut du HTTP
+  déclare explicitement `HTTPS_ENABLED=false` dans son `.env`.
+- docs/HTTPS.md mis à jour (défaut + note opt-out).
+- Spec : docs/superpowers/specs/2026-09-19-https-par-defaut-flotte-design.md (méta).
+
 ## [2.25.0] - 19 septembre 2026
 
 ### ⚡ Fix — backups volumineux : ZIP en streaming sur disque (fin de l'OOM > 150 Mo)
