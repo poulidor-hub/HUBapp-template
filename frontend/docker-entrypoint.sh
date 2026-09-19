@@ -3,7 +3,7 @@
 # Entrypoint Nginx - Démarrage HTTP ou HTTPS
 # =============================================================================
 # HTTPS_ENABLED=true  → active HTTPS (auto-génère les certificats si absents)
-# HTTPS_ENABLED=false → HTTP uniquement (défaut)
+# HTTPS_ENABLED=false → HTTP uniquement (opt-out explicite)
 # Port HTTPS = FRONTEND_PORT + 1
 # =============================================================================
 
@@ -12,7 +12,7 @@ set -e
 FRONTEND_PORT="${FRONTEND_PORT:-4250}"
 HTTPS_EXTERNAL_PORT=$((FRONTEND_PORT + 1))
 FRONTEND_HTTPS_PORT="${FRONTEND_HTTPS_PORT:-$HTTPS_EXTERNAL_PORT}"
-HTTPS_ENABLED="${HTTPS_ENABLED:-false}"
+HTTPS_ENABLED="${HTTPS_ENABLED:-true}"
 
 if [ "$FRONTEND_HTTPS_PORT" != "$HTTPS_EXTERNAL_PORT" ]; then
     echo "❌ Configuration invalide: FRONTEND_HTTPS_PORT=$FRONTEND_HTTPS_PORT, attendu=$HTTPS_EXTERNAL_PORT (FRONTEND_PORT + 1)"

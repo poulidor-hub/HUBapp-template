@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     FRONTEND_PORT: int = 4250
     
     # HTTPS
-    HTTPS_ENABLED: bool = False
+    HTTPS_ENABLED: bool = True
     FRONTEND_HTTPS_PORT: Optional[int] = None
     
     # Hub - Auto-détecté si non spécifié
