@@ -1,3 +1,34 @@
+## [2.25.0] - 19 septembre 2026
+
+### ⚡ Fix — backups volumineux : ZIP en streaming sur disque (fin de l'OOM > 150 Mo)
+
+- **Incident** : la création de backup assemblait le ZIP entièrement en RAM
+  (`BytesIO` + `getvalue()` + lecture entière de chaque fichier), soit ~3× la
+  taille des données, dans un conteneur limité à 512M → **OOM kernel dès
+  ~150 Mo de données** (uvicorn tué, hub : « Server disconnected without
+  sending a response », backup failed, rien à télécharger). Reproduit et
+  confirmé le 19/09 sur le banc exemple-app exemple-lab (kernel : « Memory cgroup
+  out of memory: Killed process (uvicorn) anon-rss:521016kB »).
+- **Corrigé** : `create_backup` écrit le ZIP directement sur disque
+  (`zipfile.ZipFile(path)` + `zf.write()` streaming, exécuté hors boucle via
+  `asyncio.to_thread`) ; checksum en streaming (chunks 1 Mo) ;
+  `download_backup` passe en `FileResponse` (streaming disque) au lieu de
+  `read_file` + `BytesIO`. RAM proportionnelle au plus gros chunk, plus à la
+  taille totale des données.
+- **Ajouté** : `StorageManager.resolve_path()` (chemin sûr sans lecture,
+  anti-traversée) et `StorageManager.import_file()` (copie + hash par chunks
+  de 1 Mo).
+- **Déploiement** : `mem_limit` de l'api 512M → **1G** (le JSON des tables
+  reste en RAM) ; nginx `client_max_body_size` 50M → **1G** (imports de gros
+  backups). Affects les apps à leur prochaine migration/sync template.
+- **Tests** : nouvelle classe `TestBackupStreaming` (tracemalloc, fichier
+  incompressible de 24 Mo) — échouait sur l'ancienne implémentation
+  (pic 81,5 Mo vs seuil 12,6 Mo). Suite : 195 passed. Vérifié en conteneur
+  limité à 1G : 300 Mo de données → ZIP 314 Mo, pic RAM python 0,3 Mo.
+- Note migration : `mock_storage_manager` délègue désormais à un vrai
+  StorageManager (contrat `resolve_path`/`import_file`) — les apps qui
+  mockent le storage devront adapter leurs fixtures.
+
 ## [2.24.2] - 17 septembre 2026
 
 ### 📖 Documentation — README enrichi
