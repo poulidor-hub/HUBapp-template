@@ -19,6 +19,9 @@ sys.path.insert(0, '.')
 from models import Item, UserPreference, UploadedFile
 from schemas import BackupEstimate, BackupMetadata, RestoreResponse
 
+# Taille des gros fichiers de test (incompressibles) pour les tests streaming
+BIG_FILE_SIZE = 24 * 1024 * 1024  # 24 Mo
+
 
 # ============================================================
 # FIXTURES SPÉCIFIQUES AU BACKUP
@@ -34,11 +37,21 @@ def temp_uploads_dir(tmp_path):
 
 @pytest.fixture
 def mock_storage_manager(temp_uploads_dir):
-    """Mock du storage manager avec un répertoire temporaire."""
+    """Storage manager mocké mais adossé à un VRAI StorageManager (tmp dir).
+
+    Délègue les opérations fichier au vrai manager (contrat streaming :
+    resolve_path / import_file) tout en gardant les assertions mock.
+    """
+    from storage import StorageManager
+    real = StorageManager(base_path=str(temp_uploads_dir))
     with patch('routes.backup.storage_manager') as mock:
-        mock.base_path = temp_uploads_dir
-        
-        # Mock des méthodes
+        mock.base_path = real.base_path
+        mock.resolve_path = real.resolve_path
+        mock.import_file = AsyncMock(side_effect=real.import_file)
+        mock.read_file = AsyncMock(side_effect=real.read_file)
+        mock.save_bytes = AsyncMock(side_effect=real.save_bytes)
+        mock.delete_file = AsyncMock(side_effect=real.delete_file)
+        mock.list_files = AsyncMock(side_effect=real.list_files)
         mock.get_storage_stats = AsyncMock(return_value={
             "total_files": 2,
             "total_size": 1024,
@@ -47,24 +60,7 @@ def mock_storage_manager(temp_uploads_dir):
             "by_mime_type": {"application/pdf": 512, "image/png": 512},
             "by_owner": {"testuser": 1024}
         })
-        
-        mock.read_file = AsyncMock(return_value=b"test file content")
-        mock.save_bytes = AsyncMock(return_value={
-            "filename": "backup_test.zip",
-            "relative_path": "_system/backups/backup_test.zip",
-            "size": 1024
-        })
-        mock.delete_file = AsyncMock(return_value=True)
-        mock.list_files = AsyncMock(return_value=[
-            {
-                "filename": "backup_test-id.zip",
-                "relative_path": "_system/backups/backup_test-id.zip",
-                "size": 2048,
-                "mime_type": "application/zip",
-                "modified_at": "2026-01-05T10:00:00"
-            }
-        ])
-        
+
         yield mock
 
 
@@ -382,33 +378,178 @@ class TestBackupDownload:
     @pytest.mark.asyncio
     async def test_download_not_found(self, admin_client, mock_storage_manager):
         """Téléchargement d'un backup inexistant."""
-        mock_storage_manager.read_file.return_value = None
-        
+        mock_storage_manager.resolve_path = lambda _path: None
+
         response = await admin_client.get(
             "/api/admin/backup/download",
             params={"backup_id": "nonexistent"}
         )
-        
+
         assert response.status_code == 404
-    
+
     @pytest.mark.asyncio
     async def test_download_success(self, admin_client, mock_storage_manager):
         """Téléchargement réussi."""
-        # Créer un faux ZIP
+        # Créer un vrai ZIP dans le storage (contrat streaming : FileResponse)
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zf:
             zf.writestr("data.json", '{"test": true}')
-        zip_content = zip_buffer.getvalue()
-        
-        mock_storage_manager.read_file.return_value = zip_content
-        
+        zip_path = mock_storage_manager.base_path / "_system" / "backups" / "backup_test-id.zip"
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        zip_path.write_bytes(zip_buffer.getvalue())
+
         response = await admin_client.get(
             "/api/admin/backup/download",
             params={"backup_id": "test-id"}
         )
-        
+
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/zip"
+
+
+class TestBackupStreaming:
+    """
+    Backups volumineux : le ZIP doit être écrit sur disque en streaming.
+
+    Contexte incident 2026-09-19 : l'assemblage du ZIP en RAM (BytesIO +
+    getvalue + read_file par fichier) consomme ~3× la taille des données,
+    ce qui a tué l'API par OOM (limite 512M) dès ~150 Mo de données
+    (kernel: "Memory cgroup out of memory: Killed process (uvicorn)").
+    Conséquence : backup impossible au-delà de ~150 Mo (rien à télécharger).
+
+    Contrat : le pic de RAM pendant création/téléchargement reste borné
+    (proportionnel au plus gros chunk, pas à la taille totale des données).
+    """
+
+    @pytest.fixture
+    def real_storage_manager(self, temp_uploads_dir):
+        """VRAI StorageManager sur disque (pas de mock) — pour mesurer la RAM réelle."""
+        from storage import StorageManager
+        manager = StorageManager(base_path=str(temp_uploads_dir))
+        with patch('routes.backup.storage_manager', manager):
+            yield manager
+
+    @pytest.mark.asyncio
+    async def test_create_backup_streams_files_to_disk(
+        self, admin_client, db_session, real_storage_manager
+    ):
+        """Création : ZIP écrit sur disque en streaming, intégrité préservée."""
+        import hashlib
+        import tracemalloc
+
+        # Un fichier incompressible de 24 Mo, enregistré en base comme le fait l'app
+        content = os.urandom(BIG_FILE_SIZE)
+        rel_path = "testuser/documents/big.bin"
+        abs_path = real_storage_manager.base_path / rel_path
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        abs_path.write_bytes(content)
+        expected_hash = hashlib.sha256(content).hexdigest()
+
+        db_session.add(UploadedFile(
+            filename="big.bin",
+            original_filename="big.bin",
+            relative_path=rel_path,
+            size=len(content),
+            mime_type="application/octet-stream",
+            hash=expected_hash,
+            category="documents",
+            owner="testuser",
+        ))
+        await db_session.commit()
+
+        tracemalloc.start()
+        response = await admin_client.post("/api/admin/backup")
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["metadata"]["total_files"] == 1
+
+        # Intégrité : le ZIP stocké contient le fichier, octet pour octet
+        backup_id = data["metadata"]["backup_id"]
+        zip_path = (real_storage_manager.base_path / "_system" / "backups"
+                    / f"backup_{backup_id}.zip")
+        assert zip_path.exists()
+        with zipfile.ZipFile(zip_path) as zf:
+            assert f"files/{rel_path}" in zf.namelist()
+            assert hashlib.sha256(zf.read(f"files/{rel_path}")).hexdigest() == expected_hash
+
+        # Le checksum du ZIP (calculé en streaming) correspond au fichier écrit
+        import hashlib as _h
+        digest = _h.sha256()
+        with open(zip_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8 * 1024 * 1024), b""):
+                digest.update(chunk)
+        assert data["metadata"]["checksum"] == digest.hexdigest()
+
+        # CŒUR DU TEST : pic RAM borné (l'ancienne implémentation dépasse 2× le fichier)
+        limit = BIG_FILE_SIZE // 2
+        assert peak < limit, (
+            f"Pic RAM {peak / 1e6:.1f} Mo >= seuil {limit / 1e6:.1f} Mo "
+            f"pour un fichier de {BIG_FILE_SIZE / 1e6:.0f} Mo — "
+            f"le backup est encore assemblé en RAM"
+        )
+
+    @pytest.mark.asyncio
+    async def test_download_backup_streams_from_disk(
+        self, admin_client, real_storage_manager
+    ):
+        """Téléchargement : le ZIP est streamé depuis le disque (pas de read_file entier)."""
+        import tracemalloc
+
+        from hub_auth import TokenPayload
+        from routes.backup import download_backup
+
+        zip_path = (real_storage_manager.base_path / "_system" / "backups"
+                    / "backup_stream-test.zip")
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("data.json", json.dumps({"test": True}))
+            zf.writestr("files/big.bin", os.urandom(BIG_FILE_SIZE))
+        expected_size = zip_path.stat().st_size
+
+        user = TokenPayload(
+            sub="admin-test", apps={}, token_type="user",
+            exp=9999999999, iat=1000000000, jti="test-streaming"
+        )
+        response = await download_backup(backup_id="stream-test", user=user)
+        assert response.status_code == 200
+
+        # Envoyer la réponse via le protocole ASGI en consommant les chunks
+        # au fur et à mesure (sans buffer client) pour mesurer la RAM serveur.
+        tracemalloc.start()
+        received = 0
+        start_headers = {}
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            nonlocal received
+            if message["type"] == "http.response.start":
+                for raw_key, raw_value in message.get("headers", []):
+                    start_headers[raw_key.decode().lower()] = raw_value.decode()
+            elif message["type"] == "http.response.body":
+                received += len(message.get("body", b""))
+
+        await response(
+            {"type": "http", "asgi": {"version": "3.0"}, "method": "GET",
+             "path": "/api/admin/backup/download", "headers": []},
+            receive, send,
+        )
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        assert start_headers.get("content-length") == str(expected_size)
+        assert received == expected_size
+
+        limit = BIG_FILE_SIZE // 2
+        assert peak < limit, (
+            f"Pic RAM {peak / 1e6:.1f} Mo >= seuil {limit / 1e6:.1f} Mo — "
+            f"le téléchargement charge encore le ZIP entier en mémoire"
+        )
 
 
 class TestBackupList:
@@ -443,11 +584,17 @@ class TestBackupDelete:
     @pytest.mark.asyncio
     async def test_delete_success(self, admin_client, mock_storage_manager):
         """Suppression réussie."""
+        zip_path = (mock_storage_manager.base_path / "_system" / "backups"
+                    / "backup_test-id.zip")
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        zip_path.write_bytes(b"PK\x05\x00")
+
         response = await admin_client.delete("/api/admin/backup/test-id")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "supprimé" in data["message"].lower() or "deleted" in data["message"].lower()
+        assert not zip_path.exists()
     
     @pytest.mark.asyncio
     async def test_delete_not_found(self, admin_client, mock_storage_manager):

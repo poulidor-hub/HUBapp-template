@@ -105,7 +105,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          # 1G : les backups volumineux créent le ZIP sur disque (streaming),
+          # mais l'API reste le service le plus gourmand (JSON des tables en RAM)
+          memory: 1G
     logging:
       driver: "json-file"
       options:

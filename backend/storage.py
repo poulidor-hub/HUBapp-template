@@ -161,28 +161,93 @@ class StorageManager:
     async def read_file(self, relative_path: str) -> Optional[bytes]:
         """
         Lit un fichier depuis son chemin relatif.
-        
+
         Args:
             relative_path: Chemin relatif depuis UPLOADS_DIR
-        
+
         Returns:
             Contenu binaire ou None si non trouvé
         """
+        file_path = self.resolve_path(relative_path)
+        if file_path is None:
+            return None
+
+        async with aiofiles.open(file_path, "rb") as f:
+            return await f.read()
+
+    def resolve_path(self, relative_path: str) -> Optional[Path]:
+        """
+        Résout un chemin relatif en chemin absolu, sans lire le fichier.
+
+        Mêmes vérifications de sécurité que read_file (anti-traversée).
+        Permet le streaming fichier → destination sans charger en RAM.
+
+        Args:
+            relative_path: Chemin relatif depuis UPLOADS_DIR
+
+        Returns:
+            Path absolu, ou None si hors du storage / introuvable
+        """
         file_path = (self.base_path / relative_path).resolve()
-        
-        # Vérifier que le chemin est bien dans base_path (sécurité) AVANT de vérifier l'existence
+
+        # Vérifier que le chemin est bien dans base_path (sécurité)
         try:
             file_path.relative_to(self.base_path.resolve())
         except ValueError:
             logger.error(f"🚨 Tentative d'accès hors du storage: {relative_path}")
             return None
-        
+
         if not file_path.exists():
             logger.warning(f"⚠️ Fichier non trouvé: {relative_path}")
             return None
-        
-        async with aiofiles.open(file_path, "rb") as f:
-            return await f.read()
+
+        return file_path
+
+    async def import_file(
+        self,
+        src_path: str | Path,
+        filename: str,
+        owner: str,
+        category: str = "general"
+    ) -> dict:
+        """
+        Importe un fichier existant sur disque vers le storage, par chunks.
+
+        Streaming : la RAM n'est jamais proportionnelle à la taille du fichier
+        (copie + hash en blocs de 8 Mo). Conçu pour les gros backups.
+
+        Args:
+            src_path: Chemin du fichier source sur disque
+            filename: Nom de fichier de destination
+            owner: Propriétaire
+            category: Catégorie/dossier de classement
+
+        Returns:
+            dict avec les métadonnées (comme save_bytes)
+        """
+        src_path = Path(src_path)
+        file_path = self._get_file_path(owner, filename, category)
+
+        file_hash = hashlib.sha256()
+        size = 0
+        async with aiofiles.open(src_path, "rb") as src, \
+                aiofiles.open(file_path, "wb") as dst:
+            while chunk := await src.read(1024 * 1024):
+                await dst.write(chunk)
+                file_hash.update(chunk)
+                size += len(chunk)
+
+        relative_path = str(file_path.relative_to(self.base_path))
+
+        return {
+            "filename": filename,
+            "relative_path": relative_path,
+            "size": size,
+            "hash": file_hash.hexdigest(),
+            "mime_type": self.get_mime_type(filename),
+            "category": category,
+            "owner": owner
+        }
     
     async def delete_file(self, relative_path: str) -> bool:
         """
