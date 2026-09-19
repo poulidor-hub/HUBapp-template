@@ -20,11 +20,15 @@ import zipfile
 import io
 import uuid
 import hashlib
+import asyncio
+import os
+import tempfile
 from datetime import datetime, date, timezone
+from pathlib import Path
 from typing import Any, Dict, List
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, inspect
 import logging
@@ -67,6 +71,54 @@ from utils import human_readable_duration as _human_readable_duration
 def _compute_checksum(data: bytes) -> str:
     """Calcule le checksum SHA-256 des données."""
     return hashlib.sha256(data).hexdigest()
+
+
+def _compute_checksum_file(path: str | Path) -> str:
+    """Calcule le checksum SHA-256 d'un fichier, en streaming (RAM bornée)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _build_backup_zip_sync(
+    zip_path: str | Path,
+    backup_data: dict,
+    file_relative_paths: List[str],
+    resolve_source: Any,
+) -> int:
+    """
+    Écrit le ZIP de backup directement sur disque, en streaming.
+
+    RAM bornée : chaque fichier est copié depuis le disque par le compresseur
+    (chunks), jamais chargé intégralement en mémoire. Conçu pour être exécuté
+    dans un thread (asyncio.to_thread) afin de ne pas bloquer la boucle.
+
+    Args:
+        zip_path: Chemin du ZIP à écrire
+        backup_data: Données exportées (métadonnées + tables)
+        file_relative_paths: Chemins relatifs des fichiers à inclure
+        resolve_source: Callable relative_path -> Path|None (storageManager.resolve_path)
+
+    Returns:
+        Nombre de fichiers ajoutés au ZIP
+    """
+    files_added = 0
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        # JSON principal (dump des tables — volumétrie bornée par la base)
+        data_json = json.dumps(backup_data, indent=2, ensure_ascii=False)
+        zf.writestr("data.json", data_json)
+
+        # Fichiers binaires : streamés depuis le disque vers l'archive
+        for relative_path in file_relative_paths:
+            source = resolve_source(relative_path)
+            if source is None:
+                logger.warning(f"⚠️ Impossible de lire {relative_path}")
+                continue
+            zf.write(str(source), arcname=f"files/{relative_path}")
+            files_added += 1
+    return files_added
 
 
 def _serialize_value(value: Any) -> Any:
@@ -480,41 +532,47 @@ async def create_backup(
             "data": data_export
         }
         
-        # 4. Créer le fichier ZIP en mémoire
-        zip_buffer = io.BytesIO()
-        files_added = 0
-        
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Ajouter le JSON principal
-            data_json = json.dumps(backup_data, indent=2, ensure_ascii=False)
-            zf.writestr("data.json", data_json)
-            
-            # Ajouter les fichiers binaires (si la table uploaded_files existe)
-            if "uploaded_files" in data_export:
-                for file_meta in data_export["uploaded_files"]:
-                    relative_path = file_meta.get("relative_path")
-                    if relative_path:
-                        try:
-                            content = await storage_manager.read_file(relative_path)
-                            if content:
-                                zf.writestr(f"files/{relative_path}", content)
-                                files_added += 1
-                        except Exception as e:
-                            logger.warning(f"⚠️ Impossible de lire {relative_path}: {e}")
-        
-        zip_buffer.seek(0)
-        zip_data = zip_buffer.getvalue()
-        total_size = len(zip_data)
-        checksum = _compute_checksum(zip_data)
-        
-        # 5. Stocker le backup temporairement
+        # 4. Créer le fichier ZIP sur disque (streaming — RAM bornée au plus
+        #    gros chunk, pas à la taille totale des données ; incident OOM 512M)
         backup_filename = f"backup_{backup_id}.zip"
-        await storage_manager.save_bytes(
-            data=zip_data,
-            filename=backup_filename,
-            owner="_system",
-            category="backups"
+        tmp_fd, tmp_zip_path = tempfile.mkstemp(
+            prefix=f"backup_{backup_id}_", suffix=".zip",
+            dir=str(storage_manager.base_path)
         )
+        os.close(tmp_fd)
+
+        try:
+            file_relative_paths = []
+            if "uploaded_files" in data_export:
+                file_relative_paths = [
+                    meta.get("relative_path")
+                    for meta in data_export["uploaded_files"]
+                    if meta.get("relative_path")
+                ]
+
+            files_added = await asyncio.to_thread(
+                _build_backup_zip_sync,
+                tmp_zip_path,
+                backup_data,
+                file_relative_paths,
+                storage_manager.resolve_path,
+            )
+
+            total_size = os.path.getsize(tmp_zip_path)
+            checksum = _compute_checksum_file(tmp_zip_path)
+
+            # 5. Stocker le backup (copie par chunks — pas de chargement RAM)
+            await storage_manager.import_file(
+                src_path=tmp_zip_path,
+                filename=backup_filename,
+                owner="_system",
+                category="backups"
+            )
+        finally:
+            try:
+                os.remove(tmp_zip_path)
+            except OSError:
+                logger.warning(f"⚠️ Fichier temporaire non supprimé: {tmp_zip_path}")
         
         # Log détaillé
         total_rows = sum(table_stats.values())
@@ -568,19 +626,19 @@ async def download_backup(
     """
     backup_filename = f"backup_{backup_id}.zip"
     backup_path = f"_system/backups/{backup_filename}"
-    
-    content = await storage_manager.read_file(backup_path)
-    if not content:
+
+    zip_abs_path = storage_manager.resolve_path(backup_path)
+    if zip_abs_path is None:
         raise HTTPException(status_code=404, detail="Backup non trouvé")
-    
+
     logger.info(f"📥 Téléchargement backup {backup_id} par {user.sub}")
-    
-    return StreamingResponse(
-        io.BytesIO(content),
+
+    # Streaming depuis le disque : la RAM ne charge jamais le ZIP entier
+    return FileResponse(
+        path=str(zip_abs_path),
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{settings.APP_SLUG}_backup_{backup_id}.zip"',
-            "Content-Length": str(len(content))
         }
     )
 
