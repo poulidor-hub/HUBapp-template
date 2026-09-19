@@ -52,3 +52,14 @@ class TestHubTransfertSettings:
         s = Settings(_env_file=None)
         assert s.HUB_TRANSFERT_ENABLED is True
         assert s.HUB_TRANSFERT_SLUG == "mon-transfert"
+
+
+class TestHttpsParDefaut:
+    """Spec 2026-09-19 : HTTPS activé par défaut (défaut sécurisé)."""
+
+    def test_https_enabled_default_true_sans_env(self, monkeypatch):
+        """HTTPS_ENABLED absent de l'environnement → défaut True (spec 2026-09-19)."""
+        monkeypatch.delenv("HTTPS_ENABLED", raising=False)
+        from config import Settings
+        s = Settings(_env_file=None)
+        assert s.HTTPS_ENABLED is True

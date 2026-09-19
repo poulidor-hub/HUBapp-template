@@ -10,7 +10,8 @@ Certaines fonctionnalités du navigateur nécessitent un **contexte sécurisé**
 - Géolocalisation
 - Notifications Push
 
-> Par défaut, HTTPS est **désactivé**. L'application fonctionne en HTTP simple.
+> Depuis 2.26.0, HTTPS est **activé par défaut**. Une app qui veut du HTTP simple
+> doit déclarer `HTTPS_ENABLED=false` dans son `.env`.
 
 ## Architecture
 
@@ -197,7 +198,10 @@ proxy_read_timeout 86400s;
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `HTTPS_ENABLED` | Activer HTTPS | `false` |
+| `HTTPS_ENABLED` | Activer HTTPS | `true` |
 | `FRONTEND_PORT` | Port HTTP du frontend | — |
 | `HUB_HOST` | IP du serveur Hub | — |
 | `HUB_API_PORT` | Port API du Hub | `8000` |
+
+> Depuis 2.26.0, HTTPS est activé par défaut. Une app qui veut du HTTP doit déclarer
+> explicitement `HTTPS_ENABLED=false` dans son `.env`.
