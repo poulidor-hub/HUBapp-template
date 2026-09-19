@@ -102,7 +102,7 @@ up: sync-env ## Démarrer les services en arrière-plan (production)
 	https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
 	echo "🚀 Démarrage: HTTP=$$frontend_port, HTTPS=$$frontend_https_port, HTTPS_ENABLED=$$https_enabled"
 	@https_enabled=$$(grep -E '^HTTPS_ENABLED=' .env | tail -n 1 | cut -d '=' -f2); \
-	if [ "$$https_enabled" = "true" ]; then \
+	if [ "$$https_enabled" != "false" ]; then \
 		bash scripts/generate-ssl.sh; \
 		$(COMPOSE) -f docker-compose.https.yml up -d; \
 	else \
