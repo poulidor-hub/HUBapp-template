@@ -65,7 +65,10 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -extensions v3_req 2>/dev/null
 
 chmod 644 "$SSL_DIR/server.crt"
-chmod 600 "$SSL_DIR/server.key"
+# Clé lisible par l'uid nginx du conteneur (USER nginx, mount :ro) — l'entrypoint
+# interne ne peut PAS générer le cert dans un volume read-only. Hôte mono-user
+# parc : 644 assumé (cert intranet auto-signé, remplacé par la CA du HUB via cert_sync).
+chmod 644 "$SSL_DIR/server.key"
 
 echo "✅ Certificats générés: $SSL_DIR/server.{crt,key}"
 echo "   Couvre: localhost, $HOST_IP"
