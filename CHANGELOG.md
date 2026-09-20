@@ -1,3 +1,11 @@
+## [2.26.1] - 20 septembre 2026
+
+### ⚡ Doc HUB_MCP.md — retrait des 2 outils bootstrap supprimés du MCP
+
+- **hub-mcp 0.4.2** a retiré `hub_auth_create_bootstrap_token` et
+  `hub_auth_list_bootstrap_tokens` (fonctionnalité jamais implémentée côté HUB).
+- Catalogue doc : **63 outils** (65 → 63, Auth 7 → 5).
+
 ## [2.26.0] - 19 septembre 2026
 
 ### 🔒 Added / Changed — HTTPS par défaut (HTTPS_ENABLED=true)
