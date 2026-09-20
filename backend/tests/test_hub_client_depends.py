@@ -115,7 +115,19 @@ async def test_register_sends_deps_even_with_cached_credentials(monkeypatch, tmp
     with patch("hub_client.DEPENDS_BACKEND_FILE", f), patch(
         "hub_client.DEPENDS_ROOT_FILE", Path("/nonexistent/depends.yaml")
     ):
-        monkeypatch.setattr(client, "_load_credentials_from_file", lambda: True)
+        # Credentials en cache avec la version COURANTE → chemin « sync simple »
+        # (un fichier dont la version diffère déclenche désormais un register complet).
+        import hub_client as hc
+
+        def _fake_load_credentials():
+            client._credentials = hc.HubCredentials(
+                client_id="cid",
+                client_secret="sec",
+                version=hc.APP_VERSION,
+            )
+            return True
+
+        monkeypatch.setattr(client, "_load_credentials_from_file", _fake_load_credentials)
 
         calls = []
         async def fake_call(endpoint, method="GET", **kwargs):

@@ -34,12 +34,14 @@ from hub_client import HubClient, HubCredentials
 # ============================================================
 
 def _write_cached_credentials(monkeypatch, tmp_path, client_id="sa_cached", secret="secret_cached"):
-    """Prépare un fichier de credentials → register() prend le chemin « cache »."""
+    """Prépare un fichier de credentials avec la version COURANTE
+    → register() prend le chemin « cache » (sync simple). Un fichier dont la
+    version diffère (ou legacy 2 lignes) déclenche désormais un register complet."""
     monkeypatch.setattr(
         hub_client_module, "CREDENTIALS_FILE", str(tmp_path / ".hub_credentials")
     )
     with open(hub_client_module.CREDENTIALS_FILE, "w") as f:
-        f.write(f"{client_id}\n{secret}")
+        f.write(f"{client_id}\n{secret}\n{hub_client_module.APP_VERSION}")
 
 
 def _mock_http(ok_request: bool = True):
