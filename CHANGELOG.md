@@ -1,3 +1,27 @@
+## [2.26.2] - 20 septembre 2026
+
+### ⚡ Fix hub_client — la version est poussée au hub même avec credentials existants
+
+- Cause racine : `register()` court-circuitait quand `.hub_credentials`
+  existait déjà (load + `_sync_state_to_hub` + return) — la version n'était
+  envoyée que dans `_do_register()` (première installation). Conséquence :
+  après chaque mise à jour d'app, la carte du hub continuait d'afficher
+  l'ancienne version enregistrée en base.
+- Fix : `.hub_credentials` gagne une 3ᵉ ligne = version de l'app au dernier
+  enregistrement effectif (écriture rétrocompatible). `register()` compare
+  cette version à `APP_VERSION` : si elle diffère (ou fichier legacy 2 lignes,
+  version inconnue) → register complet (`_do_register()`), qui met à jour la
+  version côté hub ; sinon, comportement inchangé (sync d'état simple).
+- La rotation du secret M2M induite par un ré-enregistrement ne survient donc
+  qu'au changement de version — c'est-à-dire précisément lors d'un déploiement.
+- Les 4 constructions `HubCredentials` (register, recover, resync legacy,
+  regenerate-secret) marquent désormais `version=APP_VERSION` pour éviter
+  toute boucle de ré-enregistrement.
+- Tests : +4 (`test_hub_client_register_version.py`) ; 2 tests alignés sur le
+  nouveau contrat (fichier de fixture avec version courante). 200 verts.
+
+---
+
 ## [2.26.1] - 20 septembre 2026
 
 ### ⚡ Doc HUB_MCP.md — retrait des 2 outils bootstrap supprimés du MCP
