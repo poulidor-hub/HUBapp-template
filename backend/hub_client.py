@@ -91,6 +91,9 @@ class HubCredentials:
     """Credentials M2M. Sauvegardés dans un fichier local (mode 0600) pour partage entre workers."""
     client_id: str
     client_secret: str
+    # Version de l'app au moment du dernier enregistrement effectif. Absente
+    # dans les fichiers legacy (2 lignes) — traite comme « différente ».
+    version: Optional[str] = None
     access_token: Optional[str] = None
     token_expires_at: Optional[datetime] = None
 
@@ -170,9 +173,11 @@ class HubClient:
         if self._credentials:
             try:
                 # Écrire avec permissions restrictives (lecture/écriture propriétaire uniquement)
+                # 3e ligne = version de l'app au moment de l'enregistrement :
+                # permet à register() de détecter une montée de version.
                 fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, 'w') as f:
-                    f.write(f"{self._credentials.client_id}\n{self._credentials.client_secret}")
+                    f.write(f"{self._credentials.client_id}\n{self._credentials.client_secret}\n{self._credentials.version or ''}")
                 logger.debug(f"💾 Credentials sauvegardés dans {CREDENTIALS_FILE} (mode 0600)")
             except Exception as e:
                 logger.warning(f"⚠️ Impossible de sauvegarder les credentials: {e}")
@@ -186,7 +191,10 @@ class HubClient:
                     if len(lines) >= 2:
                         self._credentials = HubCredentials(
                             client_id=lines[0],
-                            client_secret=lines[1]
+                            client_secret=lines[1],
+                            # Fichier legacy (2 lignes) : version inconnue → None,
+                            # ce qui déclenchera un ré-enregistrement complet.
+                            version=(lines[2] or None) if len(lines) >= 3 else None,
                         )
                         logger.info(f"📂 Credentials chargés depuis {CREDENTIALS_FILE}")
                         return True
@@ -282,6 +290,18 @@ class HubClient:
         # Essayer de charger les credentials depuis le fichier partagé
         # (un autre worker a peut-être déjà fait l'enregistrement)
         if self._load_credentials_from_file():
+            # Bug socle corrigé : des credentials présents ne signifient pas
+            # « version à jour déclarée au hub ». Si la version de l'app a
+            # changé depuis le dernier enregistrement effectif (montée de
+            # version déployée), refaire un register complet pour que la
+            # carte du hub reflète la version réellement déployée.
+            if (self._credentials.version or None) != (APP_VERSION or None):
+                logger.info(
+                    f"🔁 Version changée depuis le dernier enregistrement "
+                    f"({self._credentials.version or 'inconnue'} → {APP_VERSION}) : "
+                    f"ré-enregistrement complet (rotation M2M)"
+                )
+                return await self._do_register()
             await self._sync_state_to_hub()
             return True
         
@@ -379,7 +399,8 @@ class HubClient:
                 
                 self._credentials = HubCredentials(
                     client_id=creds["client_id"],
-                    client_secret=creds["client_secret"]
+                    client_secret=creds["client_secret"],
+                    version=APP_VERSION,
                 )
                 # Sauvegarder pour les autres workers
                 self._save_credentials_to_file()
@@ -453,6 +474,7 @@ class HubClient:
                     self._credentials = HubCredentials(
                         client_id=creds["client_id"],
                         client_secret=creds["client_secret"],
+                        version=APP_VERSION,
                     )
                     self._last_resync_attempt = datetime.now(timezone.utc)
                     self._resync_count += 1
@@ -523,6 +545,7 @@ class HubClient:
                     client_id=creds.get("client_id")
                     or (self._credentials.client_id if self._credentials else ""),
                     client_secret=creds["client_secret"],
+                    version=APP_VERSION,
                 )
                 self._last_resync_attempt = datetime.now(timezone.utc)
                 self._resync_count += 1
