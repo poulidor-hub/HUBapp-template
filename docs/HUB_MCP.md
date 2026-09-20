@@ -1,8 +1,8 @@
-# Catalogue des outils MCP du Hub (~65 outils)
+# Catalogue des outils MCP du Hub (63 outils)
 
 > Source de vérité : dépôt `hub-mcp` (plugin `hub.ts` / `hub_mcp/tools.py`). Ce document est un miroir de référence pour navigation rapide ; en cas de doute, la liste réelle est celle exposée par le serveur MCP actif. La copie `hub_mcp/` d'une app est un artefact de sync (`make sync-hub-tooling`) — toute modification des outils va dans le dépôt `hub-mcp`, pas dans la copie de l'app.
 
-Le serveur MCP `hub` expose **~65 outils** (`hub_*`) pour piloter et observer le Hub depuis l'agent opencode. Déclaré dans `opencode.json`, il délègue 100% des appels à un client Hub via `call_hub_endpoint(path, method, json)`. Chaque outil mappe vers un endpoint Hub réel — pas besoin de construire des `curl` ou `fetch` manuels.
+Le serveur MCP `hub` expose **63 outils** (`hub_*`) pour piloter et observer le Hub depuis l'agent opencode. Déclaré dans `opencode.json`, il délègue 100% des appels à un client Hub via `call_hub_endpoint(path, method, json)`. Chaque outil mappe vers un endpoint Hub réel — pas besoin de construire des `curl` ou `fetch` manuels.
 
 > Légende : 🔓 = public/SA-accessible en mode app · 🔒 = réservé aux utilisateurs (403 en mode app → mode standalone requis). ⚠️ = opération destructive (rétrogradée en `ask` par le plugin de sécurité, voir le skill `hub-mcp-usage`).
 
@@ -92,8 +92,6 @@ Le serveur MCP `hub` expose **~65 outils** (`hub_*`) pour piloter et observer le
 | `hub_auth_get_m2m_token` | Obtenir un token M2M (client_credentials) | 🔓 |
 | `hub_auth_get_jwks` | Récupérer les clés JWKS | 🔓 |
 | `hub_auth_token_introspect` | Introspecter un token (admin ou SA) | 🔒 |
-| `hub_auth_create_bootstrap_token` | Créer un token bootstrap (admin initial) | 🔒 |
-| `hub_auth_list_bootstrap_tokens` | Lister les tokens bootstrap | 🔒 |
 
 ## Documentation
 
