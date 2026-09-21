@@ -175,9 +175,12 @@ def main(argv: list[str] | None = None) -> int:
 
         stored_instance = (env.get("HUB_INSTANCE_ID") or "").strip()
         if stored_instance and instance and stored_instance != instance:
-            print(f"❌ ATTENTION: le hub contacté ({current or '?'}) n'est PAS celui du dernier "
-                  f"sync (instance mémorisée {stored_instance} ≠ instance détectée {instance}). "
-                  f"Vérifiez HUB_HOST et HUB_API_PORT — aucune écriture effectuée.")
+            print(f"❌ Le Hub contacté ({current or '?'}) n'est PAS celui du dernier sync "
+                  f"(mémorisé {stored_instance} ≠ détecté {instance}) — aucune écriture effectuée.")
+            print("   • Mauvaise cible ? Vérifiez HUB_HOST et HUB_API_PORT dans le .env.")
+            print("   • Changement de Hub VOLONTAIRE ? Corrigez HUB_HOST puis supprimez la ligne "
+                  "HUB_INSTANCE_ID du .env, et relancez `make sync-env` "
+                  "(la nouvelle instance sera mémorisée).")
             return 1
 
         # Ports annoncés vs configurés
