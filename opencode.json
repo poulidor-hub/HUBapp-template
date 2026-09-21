@@ -11,7 +11,7 @@
     "hub": {
       "type": "local",
       "command": ["python3", "-m", "hub_mcp.server"],
-      "enabled": true
+      "enabled": false
     }
   }
 }
