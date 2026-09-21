@@ -1,3 +1,19 @@
+## [2.26.3] - 21 septembre 2026
+
+### ⚡ sync-hub-host — le garde-fou d'instance documente la bascule volontaire
+
+- **Amélioré** : message du garde-fou `HUB_INSTANCE_ID` (`sync_hub_host.py`) —
+  distingue désormais explicitement l'instance **mémorisée** (ancien Hub) de
+  l'instance **détectée** (Hub contacté), et documente la procédure de bascule
+  volontaire : corriger `HUB_HOST`, supprimer la ligne `HUB_INSTANCE_ID` du
+  `.env`, relancer `make sync-env` (nouvelle instance mémorisée).
+  Contexte : retour d'expérience exemple-app — un opérateur restait bloqué sans
+  piste lors d'un changement de Hub légitime (fresh install distante).
+- **Comportement inchangé** : exit 1, aucune écriture, même déclencheur.
+- Tests : garde-fou 30/30 (assertions renforcées sur le message).
+
+---
+
 ## [2.26.2] - 20 septembre 2026
 
 ### ⚡ Fix hub_client — la version est poussée au hub même avec credentials existants

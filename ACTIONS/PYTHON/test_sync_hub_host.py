@@ -300,6 +300,11 @@ def test_sync_fails_loudly_on_instance_mismatch(tmp_path, monkeypatch, capsys):
     assert env.read_text() == before  # AUCUNE écriture
     out = capsys.readouterr().out
     assert "a" * 32 in out and "b" * 32 in out
+    # Le message doit distinguer ancien/nouveau ET documenter la procédure
+    # de bascule volontaire (sinon l'opérateur reste bloqué sans piste).
+    assert "mémorisé" in out.lower() or "memorise" in out.lower()
+    assert "HUB_INSTANCE_ID" in out
+    assert "sync-env" in out
 
 
 def test_sync_warns_on_legacy_hub_without_ports(tmp_path, monkeypatch, capsys):
