@@ -1,3 +1,16 @@
+## [2.26.4] - 22 septembre 2026
+
+### ⚡ Contexte opencode allégé — MCP hub off par défaut, commandes /hub-on /hub-off
+
+- **Changement** : le serveur MCP `hub` (~66 outils) est **désactivé par défaut**
+  dans `opencode.json` — allègement du contexte système (~15-20K tokens/tour,
+  time-to-first-token plus rapide), aligné sur le méta-repo POULIDOR 0.66.0.
+- **Ajouté** : commandes opencode `/hub-on` et `/hub-off` (`.opencode/command/`)
+  pour basculer le MCP à la demande (redémarrage opencode requis) ; fichiers
+  identiques au méta-repo (parité de maintenance).
+- **Comportement inchangé côté app** : aucune modification backend/frontend ;
+  en attendant une activation, les opérations Hub passent par `hubctl`/bash.
+
 ## [2.26.3] - 21 septembre 2026
 
 ### ⚡ sync-hub-host — le garde-fou d'instance documente la bascule volontaire
