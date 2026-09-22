@@ -1,3 +1,111 @@
+## [2.27.0] - 22 septembre 2026
+
+### ⚡ Audit complet du socle — P0 bloquants, P1 sécurité/fiabilité, P2 cohérence, P3 hygiène
+
+Release issue d'un audit bout-en-bout du template (backend, frontend, infra,
+scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
+(test rouge prouvé avant correction).
+
+**P0 — bloquants**
+
+- **Fix** : `make dev` inopérant — l'overlay dev concaténait les listes
+  `ports` au lieu de les remplacer → double bind du port hôte
+  (`port is already allocated`). `ports: !override` dans
+  `docker-compose.dev.yml` ; en dev, vite (3000) sert le frontend sur le
+  même port hôte que nginx (80) en prod.
+- **Fix** : les 3 endpoints `/api/hub/data/*` (tables/columns/values)
+  renvoyaient 500 systématiquement — `async with get_db()` sur un async
+  generator (`TypeError` avant toute logique), zéro test de couverture.
+  Injection FastAPI `Depends(get_db)` + `conn.run_sync()` (API async
+  correcte) ; `LookupError` au lieu d'une `HTTPException` traversant
+  `run_sync`. +9 tests (`tests/test_hub_data.py`).
+- **Fix** : `MessageBanner` et `MessageArchive` (messagerie Hub SSE) n'étaient
+  montés nulle part — le state `activeMessages`/`unreadMessages` d'AuthContext
+  n'avait aucun point de rendu. Câblés dans `RootLayout`
+  (`frontend/src/routes/root.jsx`).
+
+**P1 — sécurité & fiabilité (TDD)**
+
+- **Sécurité** : path traversal du storage — `_sanitize_path` laissait
+  survivre les segments `..` (écriture hors `UPLOADS_DIR` via owner/category
+  d'un ZIP de restore) et `delete_file` n'avait aucun confinement. Sanitize
+  neutralisant les points consécutifs, confinement canonique dans
+  `_get_file_path` (ValueError), vérification identique à `resolve_path` dans
+  `delete_file` ; le restore liste les entrées rejetées sans casser.
+  +10 tests (`tests/test_storage_security.py`).
+- **Fiabilité** : outbox — un message `in_progress` interrompu par un
+  crash/restart était perdu silencieusement (jamais repris). `next_retry_at`
+  sert d'horodatage de claim (heartbeat 10 min) : l'`in_progress` dont le
+  claim est expiré est repris. `FOR UPDATE SKIP LOCKED` sur le SELECT de
+  fetch (2 workers ne prennent plus jamais le même message). Log de purge
+  remis avant le `return` (code mort). +5 tests
+  (`tests/test_outbox_recovery.py`) ; fixture `outbox_svc` déplacée dans
+  conftest.
+- **Sécurité** : `require_role` fail-open — `ROLE_MAPPING.get(min_role, 0)`
+  rendait le niveau 0 pour une typo (`require_role("admmin")`) → tout
+  utilisateur authentifié passait. Désormais `ValueError` à la déclaration
+  (crash au boot, typo visible immédiatement). Tests paramétrés sur les 5
+  rôles valides.
+- **Fiabilité** : migrations SQL — une migration à moitié appliquée
+  (statement en échec avalé par savepoint) était quand même marquée
+  « appliquée » → jamais re-jouée, sans trace d'erreur fatale. Désormais
+  marquée appliquée UNIQUEMENT si tous les statements passent ; sinon log
+  ERROR + re-tentative au boot suivant. Split SQL conscient des chaînes
+  quotées (`VALUES ('a;b')` ne casse plus). `schema_migrations.applied_at` :
+  `DEFAULT CURRENT_TIMESTAMP` (PostgreSQL ET SQLite).
+  `apply_migrations(migrations_dir=, engine=)` injectable pour les tests.
+  +5 tests (`tests/test_migrations.py`).
+
+**P2 — cohérence vitrine**
+
+- **Fix** : handlers MSW contredisaient le backend (GET /api/items renvoyait
+  un array brut `[{id,name,status}]` vs `PaginatedResponse` avec
+  `{title,description,is_public}`) — le mock est le contrat d'apprentissage
+  du template. Store en mémoire + CRUD items complet + `/api/test-data` +
+  validation 422 minimale reflétant les schémas Pydantic.
+- **Fix** : `FormDemo` postait vers `/api/items` avec un payload garanti 422
+  contre le backend réel → poste désormais vers `/api/test-data` (vrai
+  endpoint de démo, `ENABLE_DEMO_ENDPOINTS`).
+- **Changement** : route et lien de démonstration `/demo/form` DEV-only —
+  404 en production, module tree-shaken du bundle (479 kB vs 548 kB).
+- **Docs** : comptage MCP aligné sur le code réel — **77 outils** (le doc
+  annonçait 63, le skill ~65, les commandes ~66) ; catalogue complété
+  (15 outils manquants dont `hub_pki_*`, `hub_design_*`,
+  `hub_backup_export_env`…). `hub.ts` : `hub_app_regenerate_secret`
+  rétrogradé « ask » — le garde-fou annoncé par le skill était inexistant.
+  API.md : suppression de l'endpoint fantôme `POST /api/m2m/test-call`.
+  README : exemple M2M corrigé (`call_discovered_service`).
+- **Docs** : skills `badge-search-system` et `bulk-operations` — les
+  « sources canoniques » citaient la structure `app/` d'une autre app du
+  parc ; réalignées sur les fichiers réels du socle (`backend/routes/`,
+  `backend/schemas.py`, `frontend/src/components/DataTable.jsx`, hooks).
+
+**P3 — hygiène**
+
+- **Changement** : Pydantic v2 natif — les 6 `class Config` (dépréciées,
+  retirées en v3) migrées vers `model_config = SettingsConfigDict/ConfigDict`.
+  Plus aucun DeprecationWarning au boot.
+- **Docs** : références obsolètes corrigées (hub-m2m-communication : refs par
+  nom de fonction au lieu de numéros de lignes ; verify-feature : liens
+  AGENTS.md/instructions réparés ; frontend.instructions.md : `App.jsx` →
+  `main.jsx`, `index.css` → `app.css` ; hub-notifications : montage
+  RootLayout documenté ; frontend-crud-page : commande inexistante
+  reformulée).
+- **Ajouté** : ESLint flat config + plugin react-hooks (`npm run lint`) —
+  rules-of-hooks en erreur, exhaustive-deps en warning ; 18 imports React
+  inutiles supprimés, deps de hooks corrigées (AuthContext : le token sans
+  `exp` ne laissait plus d'état semi-auth ; ConfigContext/M2MTests :
+  callbacks stabilisés). 0 problème.
+
+**Tests — bug latent de fixtures corrigé**
+
+- **Fix** : `tests/conftest.py` exécutait `create_all` avant tout import de
+  `models` → `Base.metadata` vide → aucune table créée pour le premier test
+  DB-écrivain de chaque worker xdist (`test_create_item_success` échouait en
+  solo). `import models` ajouté — la suite n'est plus ordre-dépendante.
+
+---
+
 ## [2.26.4] - 22 septembre 2026
 
 ### ⚡ Contexte opencode allégé — MCP hub off par défaut, commandes /hub-on /hub-off
