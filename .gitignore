@@ -112,3 +112,6 @@ backups/
 
 # Worktrees agents (cf. .opencode/skills/agent-isolation-git)
 .worktrees/
+
+# Cache runtime JWKS (écrit par hub_auth — jamais versionné)
+backend/storage/
