@@ -12,18 +12,31 @@ export default function FormDemo() {
       plan: 'standard',
     },
     onSubmit: async ({ value }) => {
-      const res = await fetch('/api/items', {
+      // Cible /api/test-data (endpoint de démonstration du backend, activé
+      // via ENABLE_DEMO_ENDPOINTS en dev) — contrat TestDataCreate :
+      // {name, value?, category}. Voir backend/routes/test_data.py.
+      const payload = {
+        name: value.name,
+        value: [
+          value.email && `email: ${value.email}`,
+          value.siret && `SIRET: ${value.siret}`,
+        ]
+          .filter(Boolean)
+          .join(' — ') || null,
+        category: value.plan,
+      }
+      const res = await fetch('/api/test-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(value),
+        body: JSON.stringify(payload),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
       console.log('[FormDemo] Submit result:', data)
       // Retour inline (pas d'alert()) — style .test-result du template
       setSubmitResult({
         ok: res.ok,
         message: res.ok
-          ? `Client créé (mock) : ${JSON.stringify(data)}`
+          ? `Donnée de test créée (id ${data?.id}) : ${JSON.stringify(data)}`
           : `Erreur (${res.status}) : ${data?.detail || 'requête refusée'}`,
       })
     },

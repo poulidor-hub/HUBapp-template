@@ -14,11 +14,15 @@ const indexRoute = createRoute({
   component: HomePage,
 })
 
-const demoFormRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/demo/form',
-  component: DemoFormRoute,
-})
+// Route de démonstration : DEV uniquement. En production, la route n'est
+// pas déclarée → /demo/form retombe sur le splat 404 (pas de démo exposée).
+const demoFormRoute = import.meta.env.DEV
+  ? createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/demo/form',
+      component: DemoFormRoute,
+    })
+  : null
 
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -26,10 +30,8 @@ const notFoundRoute = createRoute({
   component: NotFoundPage,
 })
 
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  demoFormRoute,
-  notFoundRoute,
-])
+const routeTree = rootRoute.addChildren(
+  [indexRoute, demoFormRoute, notFoundRoute].filter(Boolean)
+)
 
 export const router = createRouter({ routeTree })
