@@ -30,7 +30,7 @@ make dev                  # First boot of the session (rebuild + foreground logs
 make sync-env && make up  # .env / VERSION / port change
 ```
 
-Never skip `make sync-env` after editing `.env` — `FRONTEND_HTTPS_PORT` and `APP_VERSION` are derived there (see [AGENTS.md](../../../AGENTS.md)).
+Never skip `make sync-env` after editing `.env` — `FRONTEND_HTTPS_PORT` and `APP_VERSION` are derived there (see the `sync-env` target in the [Makefile](../../../Makefile) and `scripts/update_env.py`).
 
 ## Step B — Read the boot logs
 
@@ -51,7 +51,7 @@ Common failure signatures and what they mean:
 |--------------|--------------|-----|
 | `bind: address already in use` | Port collision on host | Change `API_PORT`/`FRONTEND_PORT` in `.env`, then `make sync-env && make up` |
 | `psycopg.OperationalError` / `could not connect to server` | Postgres not ready or wrong creds | Check `make logs-db`; confirm `POSTGRES_*` env vars |
-| `relation "..." does not exist` | Migration didn't run / order issue | Inspect `backend/migrations/`, see [.github/instructions/migrations-sql.instructions.md](../../instructions/migrations-sql.instructions.md) |
+| `relation "..." does not exist` | Migration didn't run / order issue | Inspect `backend/migrations/`, see [.github/instructions/migrations-sql.instructions.md](../../../.github/instructions/migrations-sql.instructions.md) |
 | `ImportError` / `ModuleNotFoundError` | Forgot dep in `backend/requirements.txt` or missed `make build` | Add dep, then `make build && make up` |
 | Pydantic `ValidationError` at startup | Schema/model mismatch | Reconcile [backend/models.py](../../../backend/models.py) and [backend/schemas.py](../../../backend/schemas.py) |
 | `RuntimeError: Hub auth ...` | Missing `HUB_*` env or unreachable Hub | Check `.env`, see [backend/hub_auth.py](../../../backend/hub_auth.py) |

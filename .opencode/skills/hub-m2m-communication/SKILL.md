@@ -8,7 +8,7 @@ argument-hint: 'What M2M operation is needed (discover services, call a shared a
 
 Communication Machine-to-Machine entre applications sur le Hub POULIDOR. Couvre la découverte de services, l'appel inter-app via `hub_client`, la garantie de livraison (outbox), et l'exposition d'endpoints protégés pour les Service Accounts.
 
-Le client canonique est le singleton `hub_client` (`backend/hub_client.py`, 1043 lignes), présent dans chaque app générée. Il gère les credentials, les tokens M2M, et le discovery.
+Le client canonique est le singleton `hub_client` (`backend/hub_client.py`), présent dans chaque app générée. Il gère les credentials, les tokens M2M, et le discovery.
 
 ## Checklist
 
@@ -23,7 +23,7 @@ Le client canonique est le singleton `hub_client` (`backend/hub_client.py`, 1043
 
 ### Hub Client
 
-Le singleton `hub_client` est instancié au lifespan de l'app (`backend/main.py:108-195`). Il s'auto-enregistre automatiquement auprès du Hub :
+Le singleton `hub_client` est instancié au lifespan de l'app (fonction `lifespan()` dans `backend/main.py`). Il s'auto-enregistre automatiquement auprès du Hub :
 
 ```python
 # backend/main.py (lifespan)
@@ -33,17 +33,17 @@ await hub_client.register()  # Appelé au démarrage
 
 **Credentials** : à l'enregistrement, le Hub crée un Service Account (`client_id` + `client_secret`). Ces credentials sont stockés **en mémoire** + dans un fichier partagé entre workers `/app/storage/.hub_credentials` (mode 0600). **Ils ne sont JAMAIS dans le `.env`** — c'est le mécanisme d'auto-enregistrement v2.0.
 
-L'instance `hub_client` expose les méthodes principales :
+L'instance `hub_client` expose les méthodes principales (toutes définies dans la classe `HubClient` de `backend/hub_client.py` — se référer au nom de fonction, les numéros de lignes dérivent à chaque commit) :
 
-| Méthode | Rôle | Réf. |
-|---------|------|------|
-| `register()` | Auto-enregistrement (lock fichier inter-workers) | `hub_client.py:171-219` |
-| `get_m2m_token()` | OAuth2 `client_credentials` + cache + refresh auto sur 401/403 | `hub_client.py:360-466` |
-| `discover_services(force_refresh)` | GET `/api/apps/discover`, cache 60s | `hub_client.py:539-618` |
-| `get_service_by_slug(slug)` | Recherche un service découvert | `hub_client.py:620-632` |
-| `call_discovered_service(slug, endpoint, method, **kw)` | Appel M2M avec header `X-Slug` | `hub_client.py:634-774` |
-| `call_discovered_service_with_guarantee(...)` | Via outbox (livraison garantie) | `hub_client.py:966-1007` |
-| `send_user_message(...)` | Notification app→user (voir skill `hub-notifications`) | `hub_client.py:789-845` |
+| Méthode | Rôle |
+|---------|------|
+| `register()` | Auto-enregistrement (lock fichier inter-workers) |
+| `get_m2m_token()` | OAuth2 `client_credentials` + cache + refresh auto sur 401/403 |
+| `discover_services(force_refresh)` | GET `/api/apps/discover`, cache 60s |
+| `get_service_by_slug(slug)` | Recherche un service découvert |
+| `call_discovered_service(slug, endpoint, method, **kw)` | Appel M2M avec header `X-Slug` |
+| `call_discovered_service_with_guarantee(...)` | Via outbox (livraison garantie) |
+| `send_user_message(...)` | Notification app→user (voir skill `hub-notifications`) |
 
 ### Hub Auth
 
@@ -57,7 +57,7 @@ Les rôles sont définis dans `backend/hub_auth.py` :
 | service | 3 | `require_service_account()` |
 | admin | 4 | `require_role("admin")` |
 
-`TokenPayload.is_service_account()` (`hub_auth.py:90`) détecte les tokens M2M (type `service_account`, rôle `service`).
+`TokenPayload.is_service_account()` (classe `TokenPayload` dans `backend/hub_auth.py`) détecte les tokens M2M (type `service_account`, rôle `service`).
 
 ## Phase B — Découvrir les services partagés
 
@@ -130,7 +130,7 @@ response = await hub_client.call_discovered_service(
 
 ### Exemple réel — exemple-app-16_API_v3
 
-Appel au service de géocoding Nominatim (`APPS/exemple-app-16_API_v3/backend/routes/secteurs.py:4290-4326`) :
+Appel au service de géocoding Nominatim (exemple réel : `APPS/exemple-app-16_API_v3/backend/routes/secteurs.py`) :
 
 ```python
 services = await hub_client.discover_services()
@@ -178,7 +178,7 @@ async def m2m_sync(
     return {"status": "ok", "caller": sa_slug}
 ```
 
-`require_service_account()` (`hub_auth.py:736-749`) vérifie `TokenPayload.is_service_account()` et lève **403** si le token ne vient pas d'un SA.
+`require_service_account()` (dans `backend/hub_auth.py`) vérifie `TokenPayload.is_service_account()` et lève **403** si le token ne vient pas d'un SA.
 
 **Ne jamais exposer un endpoint M2M sans `require_service_account()`** — tout utilisateur humain connecté pourrait l'appeler.
 
@@ -214,9 +214,9 @@ L'export ne contient **aucun secret**. L'IA n'attaque jamais la prod.
 
 | Réf | Chemin |
 |-----|--------|
-| hub_client | `backend/hub_client.py` (1043 lignes) |
+| hub_client | `backend/hub_client.py` |
 | hub_auth | `backend/hub_auth.py` |
-| outbox | `backend/outbox.py` + plan `docs/superpowers/plans/2026-06-27-api-recovery-system.md` |
-| Intégration Hub (section M2M) | `../../HUB_base/INTEGRATION.md:1545-1820` |
-| Exemple réel M2M | `../../APPS/exemple-app-16_API_v3/backend/routes/secteurs.py:4290-4326` |
-| Services partagés | `../../HUB_base/INTEGRATION.md:1631-1820` |
+| outbox | `backend/outbox.py` (worker de retry avec backoff exponentiel) |
+| Intégration Hub (section M2M) | `../../HUB_base/INTEGRATION.md` (dépôt HUB_base du parc) |
+| Exemple réel M2M | `../../APPS/exemple-app-16_API_v3/backend/routes/secteurs.py` (dépôt APPS du parc) |
+| Services partagés | `../../HUB_base/INTEGRATION.md` (dépôt HUB_base du parc) |
