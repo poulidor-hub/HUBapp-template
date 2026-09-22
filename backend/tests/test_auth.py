@@ -4,6 +4,8 @@ Tests des endpoints publics et d'authentification.
 import pytest
 from httpx import AsyncClient
 
+from hub_auth import require_role
+
 
 class TestPublicEndpoints:
     """Tests des endpoints publics (sans authentification)."""
@@ -113,3 +115,25 @@ class TestRoleEndpoints:
         for endpoint in endpoints:
             response = await admin_client.get(endpoint)
             assert response.status_code == 200, f"Admin should access {endpoint}"
+
+
+class TestRequireRoleFailClosed:
+    """require_role doit échouer explicitement sur un rôle inconnu.
+
+    Bug corrigé (2.26.4 → 2.27.0) : ROLE_MAPPING.get(min_role, 0) rendait
+    le niveau 0 pour une typo (ex. require_role("admmin")) → tout
+    utilisateur authentifié passait (fail-open) au lieu d'une erreur.
+    """
+
+    def test_unknown_role_raises_at_declaration(self):
+        with pytest.raises(ValueError):
+            require_role("admmin")
+
+    def test_unknown_role_empty_raises(self):
+        with pytest.raises(ValueError):
+            require_role("")
+
+    @pytest.mark.parametrize("role", ["viewer", "user", "manager", "admin", "service"])
+    def test_known_roles_accepted(self, role):
+        checker = require_role(role)
+        assert callable(checker)
