@@ -86,7 +86,8 @@ Après la query, avant pagination. **Aucune implémentation complète n'existe d
 
 ```python
 if exclude_fields and search:
-    all_entities = session.exec(query).all()
+    result = await db.execute(query)
+    all_entities = result.scalars().all()
     # ... compute match_fields_map pour TOUS les entities ...
     exclude_set = set(exclude_fields)
     filtered = [
@@ -97,7 +98,8 @@ if exclude_fields and search:
     total = len(filtered)
     entities = filtered[skip:skip + limit]
 else:
-    # path normal (count query + offset/limit)
+    # path normal (cf. backend/routes/items.py::list_items) :
+    # count via select(func.count()).select_from(query.subquery()) puis offset/limit
 ```
 
 > **Invariant** : le filtre d'exclusion garde les lignes où `any(f not in exclude_set for f in match_fields[id])`. Les lignes **sans match_fields** (liste vide ou absentes du map) sont **toujours gardées**. Sinon, exclure "Modèle" supprimerait aussi les entités matchées via "Fournisseur".
@@ -110,7 +112,8 @@ class EntityOut(BaseModel):
     # ... existing fields ...
     match_fields: Optional[List[str]] = None
 
-# backend/routes/<domain>.py — paramètre query
+# backend/routes/<domain>.py — paramètre query (route async def, session injectée
+# via db: AsyncSession = Depends(get_db), requêtes en await db.execute(...))
 exclude_fields: Optional[str] = Query(None, description="Champs à exclure (csv: field1,field2)")
 # Parse CSV → List[str] ; setter entity_out.match_fields = match_fields_map.get(entity.id)
 ```

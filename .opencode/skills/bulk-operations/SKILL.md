@@ -60,25 +60,29 @@ class OrderBulkOperationResult(BaseModel):
 Dans le module backend du domaine — ex : `backend/routes/<domain>.py` **à créer dans l'app dérivée** sur le patron de `backend/routes/items.py` (ou un `backend/crud.py` extrait si le domaine grandit) — extraire la logique de filtre dans une fonction réutilisable et ajouter :
 
 ```python
-def list_domain_ids_by_filters(session, search, year, ...) -> List[int]:
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+async def list_domain_ids_by_filters(db: AsyncSession, search, year, ...) -> List[int]:
     """Retourne tous les IDs matchant les filtres (sans pagination)."""
     conditions = _build_domain_filter_conditions(...)
-    return session.exec(select(Domain.id).where(*conditions)).all()
+    result = await db.execute(select(Domain.id).where(*conditions))
+    return result.scalars().all()
 
-def bulk_update_domains(session, order_ids=None, select_all=False,
-                         exclude_order_ids=None, set_status=None, ...) -> int:
+async def bulk_update_domains(db: AsyncSession, order_ids=None, select_all=False,
+                               exclude_order_ids=None, set_status=None, ...) -> int:
     if order_ids:
         target_ids = order_ids
     elif select_all:
-        target_ids = list_domain_ids_by_filters(...)
+        target_ids = await list_domain_ids_by_filters(db, ...)
     # Retirer les IDs explicitement désélectionnés
     if exclude_order_ids:
         target_ids = [id for id in target_ids if id not in set(exclude_order_ids)]
     if not target_ids:
         return 0
     stmt = update(Domain).where(Domain.id.in_(target_ids)).values(...)
-    result = session.exec(stmt)
-    session.commit()
+    result = await db.execute(stmt)
+    await db.commit()
     return result.rowcount
 ```
 
@@ -90,9 +94,14 @@ Dans `backend/routes/<domain>.py` (**à créer dans l'app dérivée**, puis enre
 
 ```python
 @router.post("/bulk-update", response_model=OrderBulkOperationResult)
-def bulk_update(payload: DomainBulkUpdateIn, ...):
+async def bulk_update(
+    payload: DomainBulkUpdateIn,
+    user: TokenPayload = Depends(require_role("user")),  # adapter au rôle requis
+    db: AsyncSession = Depends(get_db),
+    # ... autres params filtres si nécessaire
+):
     try:
-        count = crud.bulk_update_domains(session, ...)
+        count = await crud.bulk_update_domains(db, ...)
         return OrderBulkOperationResult(success_count=count)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

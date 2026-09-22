@@ -18,6 +18,7 @@ import base64
 import re
 import zipfile
 import io
+import shutil
 import uuid
 import hashlib
 import asyncio
@@ -84,20 +85,21 @@ def _compute_checksum_file(path: str | Path) -> str:
 
 def _build_backup_zip_sync(
     zip_path: str | Path,
-    backup_data: dict,
+    data_json_path: str | Path,
     file_relative_paths: List[str],
     resolve_source: Any,
 ) -> int:
     """
     Écrit le ZIP de backup directement sur disque, en streaming.
 
-    RAM bornée : chaque fichier est copié depuis le disque par le compresseur
-    (chunks), jamais chargé intégralement en mémoire. Conçu pour être exécuté
-    dans un thread (asyncio.to_thread) afin de ne pas bloquer la boucle.
+    RAM bornée : data.json est copié depuis le disque vers l'archive par
+    chunks (1 Mo), les fichiers uploadés sont copiés par le compresseur —
+    jamais chargés intégralement en mémoire. Conçu pour être exécuté dans
+    un thread (asyncio.to_thread) afin de ne pas bloquer la boucle.
 
     Args:
         zip_path: Chemin du ZIP à écrire
-        backup_data: Données exportées (métadonnées + tables)
+        data_json_path: Chemin du data.json déjà écrit sur disque (streaming)
         file_relative_paths: Chemins relatifs des fichiers à inclure
         resolve_source: Callable relative_path -> Path|None (storageManager.resolve_path)
 
@@ -106,9 +108,9 @@ def _build_backup_zip_sync(
     """
     files_added = 0
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # JSON principal (dump des tables — volumétrie bornée par la base)
-        data_json = json.dumps(backup_data, indent=2, ensure_ascii=False)
-        zf.writestr("data.json", data_json)
+        # JSON principal : copié depuis le disque par chunks
+        with open(data_json_path, "rb") as src, zf.open("data.json", "w") as dst:
+            shutil.copyfileobj(src, dst, 1024 * 1024)
 
         # Fichiers binaires : streamés depuis le disque vers l'archive
         for relative_path in file_relative_paths:
@@ -225,24 +227,94 @@ async def _export_table_data(db: AsyncSession, table_name: str) -> List[Dict[str
     """
     Exporte toutes les données d'une table sous forme de liste de dictionnaires.
     Sérialise automatiquement les types complexes.
+
+    ⚠️ Charge TOUTE la table en RAM — réserver aux usages ponctuels.
+    Le backup principal utilise _iter_table_rows (streaming par batchs).
     """
-    # Récupérer les noms des colonnes
+    data = []
+    async for batch in _iter_table_rows(db, table_name, batch_size=1000):
+        data.extend(batch)
+    return data
+
+
+EXPORT_BATCH_SIZE = 1000
+
+
+async def _iter_table_rows(db: AsyncSession, table_name: str, batch_size: int = EXPORT_BATCH_SIZE):
+    """
+    Itère les lignes d'une table PAR BATCHS (streaming côté driver).
+
+    RAM bornée à `batch_size` lignes : yield_per active le streaming du
+    curseur (serveur sur asyncpg, client par lots sur aiosqlite) — jamais
+    `fetchall()` de la table entière.
+
+    Yields:
+        list[dict] : un batch de lignes sérialisées (_serialize_value)
+    """
     columns_info = await _get_table_columns(db, table_name)
     column_names = [c["name"] for c in columns_info]
-    
-    # Récupérer toutes les lignes
-    result = await db.execute(text(f'SELECT * FROM "{table_name}"'))
-    rows = result.fetchall()
-    
-    # Convertir en liste de dictionnaires
-    data = []
-    for row in rows:
-        row_dict = {}
-        for i, col_name in enumerate(column_names):
-            row_dict[col_name] = _serialize_value(row[i])
-        data.append(row_dict)
-    
-    return data
+
+    # stream() + yield_per : curseur serveur (asyncpg) / lots client
+    # (aiosqlite) — la table n'est jamais fetchallée en RAM
+    result = await db.stream(
+        text(f'SELECT * FROM "{table_name}"'),
+        execution_options={"yield_per": batch_size},
+    )
+    async for partition in result.partitions():
+        batch = []
+        for row in partition:
+            row_dict = {}
+            for i, col_name in enumerate(column_names):
+                row_dict[col_name] = _serialize_value(row[i])
+            batch.append(row_dict)
+        yield batch
+
+
+async def _write_data_json_stream(
+    db: AsyncSession,
+    path: str | Path,
+    tables: List[str],
+    metadata: Dict[str, Any],
+) -> Dict[str, int]:
+    """
+    Écrit data.json SUR DISQUE table par table, lignes par batchs.
+
+    Le dump complet n'est JAMAIS matérialisé en RAM (le json.dumps global
+    de l'ancienne implémentation doublait la mémoire : dict + string).
+    Le format produit reste un JSON standard {metadata, data} — contrat
+    inchangé avec les backups existants (consommateurs : json.loads).
+
+    Returns:
+        table_stats : {table: nb de lignes}
+    """
+    # Stats par table : COUNT(*) avant l'export (metadata écrite en premier)
+    table_stats: Dict[str, int] = {}
+    for t in tables:
+        table_stats[t] = await _get_table_row_count(db, t)
+
+    metadata_complete = {**metadata, "table_stats": table_stats}
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('{\n  "metadata": ')
+        f.write(json.dumps(metadata_complete, indent=2, ensure_ascii=False))
+        f.write(',\n  "data": {\n')
+
+        first_table = True
+        for t in tables:
+            prefix = "" if first_table else ",\n"
+            first_table = False
+            f.write(f'{prefix}    {json.dumps(t)}: [')
+            first_row = True
+            async for batch in _iter_table_rows(db, t):
+                for row in batch:
+                    separator = "" if first_row else ","
+                    first_row = False
+                    f.write(separator + "\n      " + json.dumps(row, ensure_ascii=False))
+            f.write("\n    ]")
+
+        f.write("\n  }\n}")
+
+    return table_stats
 
 
 async def _get_fk_dependencies(db: AsyncSession) -> dict:
@@ -500,41 +572,25 @@ async def create_backup(
         # 1. Découvrir toutes les tables de la base de données
         tables = await _get_all_tables(db)
         logger.info(f"📊 Tables découvertes: {tables}")
-        
-        # 2. Exporter chaque table
-        data_export = {}
-        table_stats = {}
-        
-        for table_name in tables:
-            try:
-                table_data = await _export_table_data(db, table_name)
-                data_export[table_name] = table_data
-                table_stats[table_name] = len(table_data)
-                if len(table_data) > 0:
-                    logger.debug(f"  ✓ {table_name}: {len(table_data)} enregistrements")
-            except Exception as e:
-                logger.warning(f"  ⚠️ Erreur export {table_name}: {e}")
-                data_export[table_name] = []
-                table_stats[table_name] = 0
-        
-        # 3. Construire le JSON principal
-        backup_data = {
-            "metadata": {
-                "backup_id": backup_id,
-                "app_slug": settings.APP_SLUG,
-                "app_version": APP_VERSION,
-                "created_at": created_at,
-                "created_by": user.sub,
-                "format_version": "3.0",  # Version 3.0 = format générique
-                "tables": list(tables),
-                "table_stats": table_stats
-            },
-            "data": data_export
-        }
-        
-        # 4. Créer le fichier ZIP sur disque (streaming — RAM bornée au plus
-        #    gros chunk, pas à la taille totale des données ; incident OOM 512M)
+
+        # 2. data.json écrit sur DISQUE table par table, lignes par batchs
+        #    (RAM bornée : ni fetchall des tables, ni dump complet en string)
         backup_filename = f"backup_{backup_id}.zip"
+        metadata = {
+            "backup_id": backup_id,
+            "app_slug": settings.APP_SLUG,
+            "app_version": APP_VERSION,
+            "created_at": created_at,
+            "created_by": user.sub,
+            "format_version": "3.0",  # Version 3.0 = format générique
+            "tables": list(tables),
+        }
+
+        json_fd, tmp_json_path = tempfile.mkstemp(
+            prefix=f"backup_{backup_id}_", suffix=".json",
+            dir=str(storage_manager.base_path)
+        )
+        os.close(json_fd)
         tmp_fd, tmp_zip_path = tempfile.mkstemp(
             prefix=f"backup_{backup_id}_", suffix=".zip",
             dir=str(storage_manager.base_path)
@@ -542,18 +598,21 @@ async def create_backup(
         os.close(tmp_fd)
 
         try:
-            file_relative_paths = []
-            if "uploaded_files" in data_export:
-                file_relative_paths = [
-                    meta.get("relative_path")
-                    for meta in data_export["uploaded_files"]
-                    if meta.get("relative_path")
-                ]
+            table_stats = await _write_data_json_stream(db, tmp_json_path, tables, metadata)
 
+            # 3. Chemins des fichiers uploadés à inclure (liste légère)
+            file_relative_paths = []
+            if "uploaded_files" in tables:
+                result = await db.execute(text("SELECT relative_path FROM uploaded_files"))
+                file_relative_paths = [r[0] for r in result.fetchall() if r[0]]
+
+            # 4. Créer le fichier ZIP sur disque (streaming — RAM bornée au
+            #    plus gros chunk : data.json copié depuis le disque, binaires
+            #    compressés en flux ; incident OOM 512M)
             files_added = await asyncio.to_thread(
                 _build_backup_zip_sync,
                 tmp_zip_path,
-                backup_data,
+                tmp_json_path,
                 file_relative_paths,
                 storage_manager.resolve_path,
             )
@@ -569,10 +628,11 @@ async def create_backup(
                 category="backups"
             )
         finally:
-            try:
-                os.remove(tmp_zip_path)
-            except OSError:
-                logger.warning(f"⚠️ Fichier temporaire non supprimé: {tmp_zip_path}")
+            for tmp_path in (tmp_zip_path, tmp_json_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    logger.warning(f"⚠️ Fichier temporaire non supprimé: {tmp_path}")
         
         # Log détaillé
         total_rows = sum(table_stats.values())
@@ -677,12 +737,18 @@ async def restore_backup(
     
     logger.info(f"🔄 Restauration générique démarrée par {user.sub} (clear_existing={clear_existing_bool})")
     
+    tmp_zip_path = None
     try:
-        # 1. Lire le fichier ZIP
-        content = await file.read()
-        zip_buffer = io.BytesIO(content)
-        
-        with zipfile.ZipFile(zip_buffer, "r") as zf:
+        # 1. Streamer l'upload vers un fichier temporaire (RAM bornée au
+        #    chunk — l'ancienne implémentation chargeait tout le ZIP en RAM)
+        tmp_fd, tmp_zip_path = tempfile.mkstemp(
+            prefix="restore_", suffix=".zip", dir=str(storage_manager.base_path)
+        )
+        with os.fdopen(tmp_fd, "wb") as f:
+            while chunk := await file.read(8 * 1024 * 1024):
+                f.write(chunk)
+
+        with zipfile.ZipFile(tmp_zip_path, "r") as zf:
             # 2. Lire le JSON principal
             if "data.json" not in zf.namelist():
                 raise HTTPException(status_code=400, detail="Fichier de backup invalide: data.json manquant")
@@ -902,6 +968,12 @@ async def restore_backup(
         logger.error(f"❌ Erreur restauration: {e}")
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Erreur lors de la restauration: {str(e)}")
+    finally:
+        if tmp_zip_path:
+            try:
+                os.remove(tmp_zip_path)
+            except OSError:
+                logger.warning(f"⚠️ Fichier temporaire non supprimé: {tmp_zip_path}")
 
 
 # ============================================================

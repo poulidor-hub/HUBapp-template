@@ -10,6 +10,7 @@ Fonctionnalités :
 """
 import jwt
 from jwt import PyJWKClient
+from cryptography.hazmat.primitives import serialization
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Callable, Any
@@ -52,6 +53,15 @@ ROLE_MAPPING = {
     "admin": RoleLevel.ADMIN,
     "service": RoleLevel.SERVICE,
 }
+
+
+class JWKSKeyUnknownError(Exception):
+    """Le kid du token n'est pas dans le cache local des clés JWKS.
+
+    Levée par decode_token() (sync, sans réseau). Les dépendances async
+    (get_current_user) l'interceptent pour rafraîchir le cache HORS de la
+    boucle (asyncio.to_thread) puis retenter une seule fois.
+    """
 
 
 def utcnow() -> datetime:
@@ -127,12 +137,18 @@ class HubAuth:
         self._public_key: Optional[str] = None
         self._public_key_fetched_at: Optional[datetime] = None
         self._jwks_available: bool = True  # Flag pour le fallback intelligent
-        
+
         # Nouveau: Cache JWKS avec TTL
         self._cached_jwks_keys: Optional[Any] = None  # Clés JWKS en cache mémoire
         self._cached_key_fetched_at: Optional[datetime] = None  # Timestamp du cache mémoire
         self._hub_reachable: bool = True  # État de connectivité du Hub
-        
+
+        # Cache local des clés de signature PAR KID (PEM) — alimenté UNIQUEMENT
+        # par les fetchs asynchrones (initialize/refresh, via to_thread) :
+        # decode_token() n'effectue JAMAIS d'appel réseau (loop jamais gelée).
+        self._jwks_keys_cache: dict = {}
+        self._jwks_refresh_lock = asyncio.Lock()
+
         # Reconnexion automatique
         self._reconnect_in_progress: bool = False
         self._last_reconnect_attempt: Optional[datetime] = None
@@ -280,13 +296,16 @@ class HubAuth:
                 lifespan=JWKS_CACHE_TTL_SECONDS  # Cache 30 min
             )
             # Test de connexion pour valider que JWKS est accessible
-            signing_keys = self._jwk_client.get_signing_keys()
+            # ⚡ to_thread : PyJWKClient est synchrone (urllib) — un Hub lent
+            # au démarrage ne doit pas geler la boucle asyncio.
+            signing_keys = await asyncio.to_thread(self._jwk_client.get_signing_keys)
             self._jwks_available = True
             self._hub_reachable = True
             self._cached_key_fetched_at = utcnow()
-            
-            # Sauvegarder dans le cache persistant pour fallback futur
+
+            # Remplir le cache local par kid (utilisé par decode_token, sans réseau)
             if signing_keys:
+                self._fill_keys_cache(signing_keys)
                 keys_data = [{"kid": k.key_id, "key": k.key.public_bytes_raw().hex() if hasattr(k.key, 'public_bytes_raw') else str(k.key)} for k in signing_keys]
                 self._save_key_to_persistent_cache({"keys": keys_data, "raw": True})
             
@@ -319,55 +338,60 @@ class HubAuth:
     async def refresh_jwks_cache(self) -> dict:
         """
         Force le rafraîchissement du cache JWKS.
-        Appelé par l'endpoint POST /health/hub/jwks/refresh.
-        
+        Appelé par l'endpoint POST /health/hub/jwks/refresh et par les
+        dépendances async quand une clé de signature est inconnue.
+
+        ⚡ Non bloquant : le fetch (urllib synchrone) s'exécute via
+        asyncio.to_thread ; le verrou évite le stampede si plusieurs
+        requêtes découvrent le même kid inconnu en même temps.
+
         Returns:
             dict avec le statut du rafraîchissement
         """
-        old_status = {
-            "jwks_available": self._jwks_available,
-            "hub_reachable": self._hub_reachable,
-        }
-        
-        # Réinitialiser et tenter de récupérer les clés
-        try:
-            jwks_url = f"{self.settings.hub_api_internal_url}/api/auth/.well-known/jwks.json"
-            self._jwk_client = PyJWKClient(
-                jwks_url,
-                cache_keys=True,
-                lifespan=JWKS_CACHE_TTL_SECONDS
-            )
-            signing_keys = self._jwk_client.get_signing_keys()
-            self._jwks_available = True
-            self._hub_reachable = True
-            self._cached_key_fetched_at = utcnow()
-            
-            # Sauvegarder dans le cache persistant
-            if signing_keys:
-                keys_data = [{"kid": k.key_id} for k in signing_keys]
-                self._save_key_to_persistent_cache({"keys": keys_data, "count": len(signing_keys)})
-            
-            return {
-                "success": True,
-                "message": "Cache JWKS rafraîchi avec succès",
-                "previous_status": old_status,
-                "new_status": {
-                    "jwks_available": self._jwks_available,
-                    "hub_reachable": self._hub_reachable,
-                    "cached_at": self._cached_key_fetched_at.isoformat(),
-                }
+        async with self._jwks_refresh_lock:
+            old_status = {
+                "jwks_available": self._jwks_available,
+                "hub_reachable": self._hub_reachable,
             }
-        except Exception as e:
-            self._hub_reachable = False
-            return {
-                "success": False,
-                "message": f"Impossible de rafraîchir le cache JWKS: {str(e)}",
-                "previous_status": old_status,
-                "new_status": {
-                    "jwks_available": self._jwks_available,
-                    "hub_reachable": self._hub_reachable,
+
+            # Réinitialiser et tenter de récupérer les clés
+            try:
+                jwks_url = f"{self.settings.hub_api_internal_url}/api/auth/.well-known/jwks.json"
+                self._jwk_client = PyJWKClient(
+                    jwks_url,
+                    cache_keys=True,
+                    lifespan=JWKS_CACHE_TTL_SECONDS
+                )
+                signing_keys = await asyncio.to_thread(self._jwk_client.get_signing_keys)
+                self._jwks_available = True
+                self._hub_reachable = True
+                self._cached_key_fetched_at = utcnow()
+
+                # Remplir le cache local par kid (decode_token sans réseau)
+                if signing_keys:
+                    self._fill_keys_cache(signing_keys)
+
+                return {
+                    "success": True,
+                    "message": "Cache JWKS rafraîchi avec succès",
+                    "previous_status": old_status,
+                    "new_status": {
+                        "jwks_available": self._jwks_available,
+                        "hub_reachable": self._hub_reachable,
+                        "cached_at": self._cached_key_fetched_at.isoformat(),
+                    }
                 }
-            }
+            except Exception as e:
+                self._hub_reachable = False
+                return {
+                    "success": False,
+                    "message": f"Impossible de rafraîchir le cache JWKS: {str(e)}",
+                    "previous_status": old_status,
+                    "new_status": {
+                        "jwks_available": self._jwks_available,
+                        "hub_reachable": self._hub_reachable,
+                    }
+                }
     
     async def _refresh_pem_key(self) -> bool:
         """
@@ -393,17 +417,45 @@ class HubAuth:
         elapsed = (utcnow() - self._public_key_fetched_at).total_seconds()
         return elapsed < PEM_CACHE_TTL_SECONDS
     
+    def _fill_keys_cache(self, signing_keys) -> None:
+        """Remplit le cache local {kid: PEM} depuis un jeu de clés JWKS."""
+        for k in signing_keys:
+            try:
+                pem = k.key.public_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+                self._jwks_keys_cache[k.key_id] = pem
+            except Exception as e:
+                logger.warning(f"⚠️ Clé JWKS kid={k.key_id} non cachée: {e}")
+
     def _decode_with_jwks(self, token: str) -> dict:
         """
-        Décode le token avec JWKS.
-        
+        Décode le token avec la clé JWKS du cache LOCAL (par kid).
+
+        ⚡ Aucun réseau : le kid est extrait du header du token (lecture
+        locale) et la clé provient de _jwks_keys_cache, alimentée par les
+        fetchs asynchrones (initialize / refresh_jwks_cache via to_thread).
+        L'ancienne implémentation (PyJWKClient.get_signing_key_from_jwt)
+        déclenchait un fetch urllib BLOQUANT dans la boucle asyncio à
+        chaque kid inconnu.
+
         Raises:
-            Exception si JWKS indisponible ou erreur de décodage
+            JWKSKeyUnknownError: kid absent du cache (à rafraîchir async)
         """
-        signing_key = self._jwk_client.get_signing_key_from_jwt(token)
+        try:
+            kid = jwt.get_unverified_header(token).get("kid")
+        except jwt.PyJWTError:
+            kid = None
+
+        key = self._jwks_keys_cache.get(kid) if kid else None
+        if key is None:
+            raise JWKSKeyUnknownError(
+                f"Kid {kid!r} absent du cache JWKS local ({len(self._jwks_keys_cache)} clé(s) en cache)"
+            )
         return jwt.decode(
             token,
-            signing_key.key,
+            key,
             algorithms=["RS256"],
             options={"verify_exp": True}
         )
@@ -468,6 +520,12 @@ class HubAuth:
                 detail=f"Token invalide: {str(e)}",
                 headers={"WWW-Authenticate": "Bearer"}
             )
+        except JWKSKeyUnknownError:
+            # Laisse remonter : get_current_user / get_optional_user
+            # rafraîchissent le cache JWKS hors boucle puis retentent.
+            # (docstring : les appelants sync directs doivent traiter
+            # cette exception explicitement.)
+            raise
         except HTTPException:
             raise
         except Exception as e:
@@ -480,17 +538,20 @@ class HubAuth:
     def _try_decode(self, token: str) -> dict:
         """
         Tente de décoder le token JWT avec fallback en cascade.
-        
+
         Stratégies (dans l'ordre) :
-        1. JWKS live (recommandé)
-        2. JWKS cache client (si Hub down)
-        3. PEM en cache
-        4. Erreur 503
-        
+        1. JWKS du cache local par kid (SANS réseau — decode_token est sync)
+        2. PEM en cache
+        3. JWKSKeyUnknownError → les dépendances async rafraîchissent le
+           cache hors boucle (to_thread) puis retentent UNE fois
+        4. Erreur 503 si aucun fallback disponible
+
         Returns:
             dict payload du token décodé
         """
-        # Stratégie 1 & 2: JWKS (live puis cache)
+        unknown_key_error = None
+
+        # Stratégie 1 : JWKS du cache local (jamais de réseau ici)
         if self._jwk_client and self._jwks_available:
             try:
                 payload = self._decode_with_jwks(token)
@@ -500,23 +561,20 @@ class HubAuth:
             except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
                 # Token invalide/expiré → ne pas traiter comme une erreur JWKS
                 raise
-            except Exception as jwks_error:
-                logger.warning(f"⚠️ Hub JWKS indisponible en runtime: {jwks_error}")
-                self._hub_reachable = False
+            except JWKSKeyUnknownError as e:
+                # Clé pas encore en cache : cascade PEM, sinon remontée
+                # vers les dépendances async (refresh hors boucle + retry)
+                unknown_key_error = e
                 self.schedule_reconnect()
-                
-                # Pas de cache JWKS client distinct du JWKS live (même _jwk_client).
-                # On tombe directement sur le fallback PEM (stratégie 3 ci-dessous).
-        
-        # Stratégie 3: PEM en cache
+
+        # Stratégie 2: PEM en cache
         if self._public_key:
-            if not self._jwks_available:
-                self.schedule_reconnect()
             logger.info("⚠️ Fallback sur clé PEM en cache")
             return self._decode_with_pem(token)
-        
-        # Aucune méthode disponible
-        self.schedule_reconnect()
+
+        if unknown_key_error is not None:
+            raise unknown_key_error
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service d'authentification non disponible (aucun cache JWKS ni clé PEM)"
@@ -637,6 +695,29 @@ hub_auth = HubAuth()
 security_scheme = HTTPBearer(auto_error=False)
 
 
+async def _decode_token_resilient(token: str) -> TokenPayload:
+    """
+    Décode un token avec reprise sur clé JWKS inconnue.
+
+    Si decode_token() lève JWKSKeyUnknownError (rotation de clé côté Hub,
+    cache pas encore à jour), le cache est rafraîchi HORS de la boucle
+    (asyncio.to_thread via refresh_jwks_cache) puis le décodage est
+    retenté UNE fois. En échec : 401 propre — jamais de gel de la loop.
+    """
+    try:
+        return hub_auth.decode_token(token)
+    except JWKSKeyUnknownError:
+        await hub_auth.refresh_jwks_cache()
+        try:
+            return hub_auth.decode_token(token)
+        except JWKSKeyUnknownError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Clé de signature inconnue après rafraîchissement JWKS: {e}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
 ) -> TokenPayload:
@@ -650,8 +731,8 @@ async def get_current_user(
             detail="Token d'authentification requis",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
-    return hub_auth.decode_token(credentials.credentials)
+
+    return await _decode_token_resilient(credentials.credentials)
 
 
 async def get_optional_user(
@@ -663,9 +744,9 @@ async def get_optional_user(
     """
     if not credentials:
         return None
-    
+
     try:
-        return hub_auth.decode_token(credentials.credentials)
+        return await _decode_token_resilient(credentials.credentials)
     except HTTPException:
         return None
 
