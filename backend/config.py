@@ -5,7 +5,7 @@ import os
 import socket
 from functools import lru_cache
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional
 
@@ -176,10 +176,13 @@ class Settings(BaseSettings):
             return {'HUB_API_PORT': 8000, 'HUB_FRONTEND_PORT': 80}[info.field_name]
         return v
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    # Pydantic v2 : model_config remplace la classe Config (dépréciée,
+    # retirée en v3)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
     
     @property
     def local_ip(self) -> str:

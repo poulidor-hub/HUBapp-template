@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   BookOpen, Check, ClipboardList, Crown, Eye, FlaskConical, Info,
   Lock, Package, Rocket, User, XCircle,

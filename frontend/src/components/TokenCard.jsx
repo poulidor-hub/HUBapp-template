@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Check, Copy, KeyRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 

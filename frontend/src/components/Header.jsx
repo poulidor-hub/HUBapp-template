@@ -1,4 +1,3 @@
-import React from 'react'
 import { MoonStar, ShieldCheck, SunMedium } from 'lucide-react'
 import { APP_VERSION } from '../config'
 import { useAuth } from '../context/AuthContext'

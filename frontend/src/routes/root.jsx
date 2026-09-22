@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useConfig } from '../context/ConfigContext'
 import Header from '../components/Header'

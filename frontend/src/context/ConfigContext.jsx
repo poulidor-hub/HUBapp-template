@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import config, { APP_VERSION } from '../config'
 
 const ConfigContext = createContext(null)
@@ -13,11 +13,7 @@ export function ConfigProvider({ children }) {
     error: null
   })
 
-  useEffect(() => {
-    loadConfig()
-  }, [])
-
-  const checkVersion = async () => {
+  const checkVersion = useCallback(async () => {
     // Ne pas vérifier en mode dev (pas de version embarquée)
     if (APP_VERSION === 'dev') return
     // Guard anti-boucle : un seul reload par session
@@ -39,9 +35,9 @@ export function ConfigProvider({ children }) {
     } catch {
       // Silencieux : pas critique si la vérification échoue
     }
-  }
+  }, [])
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       console.log(`🔄 Chargement config depuis ${config.apiUrl}/api/config...`)
       
@@ -92,7 +88,11 @@ export function ConfigProvider({ children }) {
       
       console.warn('⚠️ Utilisation des valeurs par défaut')
     }
-  }
+  }, [checkVersion])
+
+  useEffect(() => {
+    loadConfig()
+  }, [loadConfig])
 
   return (
     <ConfigContext.Provider value={appConfig}>

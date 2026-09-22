@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useConfig } from './ConfigContext'
 import config from '../config'
 
@@ -111,7 +111,7 @@ export function AuthProvider({ children }) {
         }
       }
     }
-  }, [token])
+  }, [token, logout])
 
   // Sync inter-onglets : quand un autre onglet de la même app met à jour le
   // token dans localStorage (rotation sous verrou), adopter la nouvelle
@@ -464,7 +464,7 @@ export function AuthProvider({ children }) {
     if (!userRole) return false
     
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[minRole] || 0)
-  }, [user, getAppRole])
+  }, [getAppRole])
 
   // Force le rafraîchissement du token (utile après modification des droits)
   const forceRefreshToken = useCallback(async () => {

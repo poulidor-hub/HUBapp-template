@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, AlertTriangle, Check, FlaskConical, Info, Lightbulb, Link2,
   List, Loader2, RefreshCw, Search, Target, XCircle,
@@ -128,20 +128,13 @@ function M2MTests() {
   // Vérifier si l'utilisateur est admin
   const isAdmin = user?.apps?.[config.appSlug] === 'admin'
 
-  // Charger le statut M2M au montage
-  useEffect(() => {
-    if (isAdmin) {
-      fetchM2MStatus()
-    }
-  }, [isAdmin])
-
   /**
    * Récupère le statut M2M de l'application
    */
-  const fetchM2MStatus = async () => {
+  const fetchM2MStatus = useCallback(async () => {
     setLoading(prev => ({ ...prev, status: true }))
     setError(null)
-    
+
     try {
       const response = await fetch(`${config.apiUrl}/api/m2m/status`, {
         headers: {
@@ -149,12 +142,12 @@ function M2MTests() {
         }
       })
       const contentType = response.headers.get('content-type')
-      
+
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text()
         throw new Error(`Réponse non-JSON: ${text.substring(0, 100)}`)
       }
-      
+
       const data = await response.json()
       setM2mStatus(data)
     } catch (err) {
@@ -163,7 +156,14 @@ function M2MTests() {
     } finally {
       setLoading(prev => ({ ...prev, status: false }))
     }
-  }
+  }, [token, config.apiUrl])
+
+  // Charger le statut M2M au montage et quand le token change
+  useEffect(() => {
+    if (isAdmin) {
+      fetchM2MStatus()
+    }
+  }, [isAdmin, fetchM2MStatus])
 
   /**
    * Découvre les services M2M disponibles via le Hub
