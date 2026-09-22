@@ -25,7 +25,11 @@ services:
       dockerfile: Dockerfile.frontend.dev
       args:
         - APP_VERSION=${APP_VERSION:-0.0.0}
-    ports:
+    # !override : remplace la liste `ports` du fichier de base au lieu de la
+    # concaténer (sinon double bind du port hôte FRONTEND_PORT → échec au
+    # démarrage : "port is already allocated"). En dev, vite (3000) sert le
+    # frontend sur le même port hôte que nginx en prod.
+    ports: !override
       - "${FRONTEND_PORT:-4250}:3000"
     environment:
       - HUB_HOST=${HUB_HOST}
