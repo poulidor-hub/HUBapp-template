@@ -39,19 +39,36 @@ class StorageManager:
         """
         Construit le chemin complet du fichier.
         Structure: uploads/{owner}/{category}/{filename}
+
+        Garantie de confinement : le chemin final canonique doit rester dans
+        base_path (défense ultime contre les traversées, ex. owner/category
+        extraits d'une entrée de ZIP de restore).
         """
         safe_owner = self._sanitize_path(owner)
         safe_category = self._sanitize_path(category)
         safe_filename = self._sanitize_filename(filename)
-        
-        dir_path = self.base_path / safe_owner / safe_category
+
+        if not safe_owner or not safe_category or safe_owner == "." or safe_category == ".":
+            raise ValueError(f"Chemin de storage invalide (owner/category vides ou dégénérés): {owner!r}/{category!r}")
+
+        dir_path = (self.base_path / safe_owner / safe_category).resolve()
+        if not dir_path.is_relative_to(self.base_path.resolve()):
+            raise ValueError(f"Chemin hors du storage refusé: {owner!r}/{category!r}")
         dir_path.mkdir(parents=True, exist_ok=True)
-        
+
         return dir_path / safe_filename
-    
+
     def _sanitize_path(self, name: str) -> str:
-        """Nettoie un nom de chemin pour éviter les injections."""
-        return "".join(c for c in name if c.isalnum() or c in "-_.")[:100]
+        """Nettoie un nom de chemin pour éviter les injections.
+
+        Les séquences de points consécutifs sont neutralisées (les segments
+        '.'/'..' ne doivent jamais survivre : ils permettraient une traversée
+        hors du storage via owner/category).
+        """
+        filtered = "".join(c for c in name if c.isalnum() or c in "-_.")
+        while ".." in filtered:
+            filtered = filtered.replace("..", ".")
+        return filtered[:100]
     
     def _sanitize_filename(self, filename: str) -> str:
         """Nettoie un nom de fichier."""
@@ -252,18 +269,25 @@ class StorageManager:
     async def delete_file(self, relative_path: str) -> bool:
         """
         Supprime un fichier.
-        
+
         Args:
             relative_path: Chemin relatif depuis UPLOADS_DIR
-        
+
         Returns:
-            True si supprimé, False sinon
+            True si supprimé, False sinon (dont chemins hors du storage)
         """
-        file_path = self.base_path / relative_path
-        
+        # Confinement obligatoire (même règle que resolve_path) : un chemin
+        # relatif ne doit jamais sortir de base_path.
+        try:
+            file_path = (self.base_path / relative_path).resolve()
+            file_path.relative_to(self.base_path.resolve())
+        except (ValueError, OSError):
+            logger.error(f"🚨 Tentative de suppression hors du storage: {relative_path}")
+            return False
+
         if not file_path.exists():
             return False
-        
+
         try:
             await aiofiles.os.remove(file_path)
             logger.info(f"🗑️ Fichier supprimé: {relative_path}")
