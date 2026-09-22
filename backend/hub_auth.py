@@ -680,8 +680,17 @@ def require_role(min_role: str):
             ...
     
     Args:
-        min_role: Rôle minimum requis ("viewer", "user", "manager", "admin")
+        min_role: Rôle minimum requis ("viewer", "user", "manager", "admin", "service")
+
+    Raises:
+        ValueError: si min_role n'est pas un rôle connu — fail-closed :
+            une typo ne doit jamais silencieusement autoriser tout le monde.
     """
+    if min_role not in ROLE_MAPPING:
+        raise ValueError(
+            f"require_role({min_role!r}): rôle inconnu. "
+            f"Rôles valides: {sorted(ROLE_MAPPING)}"
+        )
     min_level = ROLE_MAPPING.get(min_role, 0)
     settings = get_settings()
     

@@ -25,6 +25,12 @@ os.environ["ENABLE_DEMO_ENDPOINTS"] = "true"
 from database import Base, get_db
 from config import get_settings
 
+# IMPORTANT : importer models AVANT tout create_all. Sans cet import,
+# Base.metadata est vide au moment où la fixture async_engine crée les
+# tables → aucune table créée → le premier test DB-écrivain de chaque
+# worker échoue ("no such table") selon l'ordre d'exécution.
+import models  # noqa: F401
+
 # Slug réel de l'app (settings, surchargeable par env) — les mocks de tokens
 # doivent porter CE slug, sinon hub_auth ne résout aucun rôle quand l'app
 # instanciée a un slug ≠ "mon-app" (38 tests cassent en conteneur).
@@ -60,12 +66,12 @@ async def async_engine():
         "sqlite+aiosqlite:///:memory:",
         echo=False,
     )
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     yield engine
-    
+
     await engine.dispose()
 
 
@@ -85,6 +91,17 @@ async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
 # ============================================================
 # AUTH FIXTURES (Mock)
 # ============================================================
+
+@pytest.fixture
+async def outbox_svc(async_engine):
+    """OutboxService branché sur la base de test."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from outbox import OutboxService
+    maker = async_sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    return OutboxService(session_maker=maker)
+
 
 @pytest.fixture
 def mock_hub_client():

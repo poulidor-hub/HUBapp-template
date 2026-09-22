@@ -8,7 +8,7 @@ argument-hint: 'What notification operation is needed (send a message to users, 
 
 Système de notifications app→utilisateur via le Hub. Une app envoie des messages via son Service Account, le Hub les stocke et les pousse en temps réel (SSE) vers les utilisateurs connectés. Le frontend React affiche les notifications via `MessageBanner` et `MessageArchive`.
 
-Documentation complète : `docs/HUB_MESSAGES.md` (585 lignes), `../../HUB_base/exemple-app.md`.
+Documentation complète : `docs/HUB_MESSAGES.md`, `../../HUB_base/exemple-app.md`.
 
 ## Checklist
 
@@ -55,7 +55,7 @@ async def send_user_message(
 
 ### Ce qui se passe côté Hub
 
-1. `send_user_message` appelle `POST /api/messages/m2m/send` (auth SA + header `X-Slug`, code dans `../../HUB_base/hub/app/routes/messages.py:1318-1399`).
+1. `send_user_message` appelle `POST /api/messages/m2m/send` (auth SA + header `X-Slug`, code dans `../../HUB_base/hub/app/routes/messages.py`).
 2. Le Hub crée un `UserMessage` **par destinataire**.
 3. Pour chaque destinataire connecté, un événement SSE `user_message` est poussé (avec le payload `MessageBrief`).
 4. Un broadcast `messages_updated` est émis à tous les connectés.
@@ -67,7 +67,7 @@ Une URL relative (ex: `/factures/1234`) est **automatiquement préfixée** par l
 ### Exemple réel — exemple-app
 
 ```python
-# APPS/exemple-app/backend/routes/transfers.py:260-270
+# Exemple réel — APPS/exemple-app/backend/routes/transfers.py
 await hub_client.send_user_message(
     target_usernames=[transfer.owner],
     title="Document récupéré",
@@ -132,7 +132,7 @@ const hubApiUrl = `${window.location.origin}/hub`;
 const hubApiUrl = `http://${HUB_HOST}:${HUB_API_PORT}`;
 ```
 
-Voir `frontend/src/context/AuthContext.jsx` et `docs/HUB_MESSAGES.md:243-271`.
+Voir `frontend/src/context/AuthContext.jsx` et la section « Côté frontend : lecture, SSE et accusés de lecture » de `docs/HUB_MESSAGES.md`.
 
 ### Événements SSE pertinents
 
@@ -157,18 +157,20 @@ Le JWT a une durée de vie de 15 minutes. Le frontend doit rafraîchir le token 
 
 ### Intégration typique
 
-```jsx
-// Dans App.jsx
-import { MessageBanner } from './components/MessageBanner';
-import { MessageArchive } from './components/MessageArchive';
+Dans le template, `AuthProvider` est monté dans `frontend/src/main.jsx` et `MessageBanner`/`MessageArchive` dans le `RootLayout` (`frontend/src/routes/root.jsx`) :
 
-function App() {
+```jsx
+// frontend/src/routes/root.jsx (RootLayout)
+import MessageBanner from '../components/MessageBanner';
+import MessageArchive from '../components/MessageArchive';
+
+function RootLayout() {
   return (
-    <AuthProvider>
+    <div className="app">
+      {/* ... Header, <Outlet /> ... */}
       <MessageBanner />        {/* Toast overlay */}
-      <MessageArchive />        {/* Icône avec badge + drawer */}
-      <Router>{/* ... */}</Router>
-    </AuthProvider>
+      <MessageArchive />       {/* Icône avec badge + drawer */}
+    </div>
   );
 }
 ```
@@ -200,7 +202,7 @@ curl -X POST http://localhost:${API_PORT:-9045}/api/tests/messages/send \
   -d '{"target_usernames": ["votre-username"]}'
 ```
 
-Route : `backend/routes/tests.py:616-638` (admin only). Vérifie :
+Route : `send_test_message_endpoint()` dans `backend/routes/tests.py` (admin only). Vérifie :
 1. Que `send_user_message` retourne un succès (200 du Hub).
 2. Que le message apparaît dans l'UI frontend (SSE + badge).
 3. Que le clic sur l'action redirige correctement.
@@ -222,19 +224,19 @@ Après la requête, faire `make logs-api` pour vérifier l'absence d'erreurs dan
 
 | Réf | Chemin |
 |-----|--------|
-| Doc messages app | `docs/HUB_MESSAGES.md` (585 lignes) |
+| Doc messages app | `docs/HUB_MESSAGES.md` |
 | Spec exemple-app | `../../HUB_base/exemple-app.md` |
-| Route M2M send Hub | `../../HUB_base/hub/app/routes/messages.py:1318-1399` |
+| Route M2M send Hub | `../../HUB_base/hub/app/routes/messages.py` |
 | SSE Hub | `../../HUB_base/hub/app/routes/events.py` |
 | MessageBanner | `frontend/src/components/MessageBanner.jsx` |
 | MessageArchive | `frontend/src/components/MessageArchive.jsx` |
 | AuthContext (SSE) | `frontend/src/context/AuthContext.jsx` |
-| Smoke test route | `backend/routes/tests.py:616-638` |
-| Exemple notifs | `../../APPS/exemple-app/backend/routes/transfers.py:260-270` |
+| Smoke test route | `backend/routes/tests.py` (`send_test_message_endpoint`) |
+| Exemple notifs | `../../APPS/exemple-app/backend/routes/transfers.py` |
 
 ## Annexe — Rétrofit d'une app pré-template
 
-> ⚠️ Cas rare. Le template fournit déjà toute la messagerie montée (`MessageBanner`/`MessageArchive`, `AuthContext` avec SSE, route smoke test). Cette section ne sert **que** pour une app **legacy** (pré-template, sans messagerie) qu'on veut migrer — son ancien skill dédié `hub-messages-integration` a été fusionné ici.
+> ⚠️ Cas rare. Le template fournit déjà toute la messagerie montée : `MessageBanner` et `MessageArchive` sont câblés dans le `RootLayout` (`frontend/src/routes/root.jsx`), `AuthContext` gère le flux SSE et la route smoke test existe (`send_test_message_endpoint`). Cette section ne sert **que** pour une app **legacy** (pré-template, sans messagerie) qu'on veut migrer — son ancien skill dédié `hub-messages-integration` a été fusionné ici.
 
 ### Prérequis à vérifier avant tout code
 
@@ -245,8 +247,8 @@ Après la requête, faire `make logs-api` pour vérifier l'absence d'erreurs dan
 
 ### Composants à monter
 
-- `frontend/src/components/MessageBanner.jsx` + `MessageArchive.jsx` au root layout (`App.jsx`).
-- CSS `message-banner*` / `message-archive*` dans `frontend/src/styles/index.css`.
+- `frontend/src/components/MessageBanner.jsx` + `MessageArchive.jsx` dans le layout racine (`RootLayout` dans `frontend/src/routes/root.jsx`).
+- CSS `message-banner*` / `message-archive*` dans `frontend/src/styles/app.css`.
 - `lucide-react` présent dans `frontend/package.json` (icônes du bandeau).
 - Switch `${origin}/hub` hors dev Vite via `frontend/src/config.js` + `ConfigContext.jsx`.
 

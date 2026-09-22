@@ -1,7 +1,7 @@
 """
 Schémas Pydantic pour la validation des données.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -34,8 +34,8 @@ class ItemResponse(ItemBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    # Pydantic v2 : model_config remplace la classe Config (dépréciée, retirée en v3)
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============ User Preferences ============
@@ -62,8 +62,8 @@ class UserPreferenceResponse(UserPreferenceBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    # Pydantic v2 : model_config remplace la classe Config (dépréciée, retirée en v3)
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============ Auth / User ============
@@ -163,8 +163,8 @@ class UploadedFileResponse(UploadedFileBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    # Pydantic v2 : model_config remplace la classe Config (dépréciée, retirée en v3)
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============ Backup / Restore ============
@@ -282,8 +282,8 @@ class TestDataResponse(TestDataBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    # Pydantic v2 : model_config remplace la classe Config (dépréciée, retirée en v3)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TestDataListResponse(BaseModel):

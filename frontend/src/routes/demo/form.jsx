@@ -1,4 +1,3 @@
-import React from 'react'
 import FormDemo from '../../components/demo/FormDemo'
 import { FormDevtoolsPanel } from '@tanstack/react-form-devtools'
 

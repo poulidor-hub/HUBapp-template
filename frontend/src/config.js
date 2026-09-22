@@ -23,14 +23,6 @@ const getHost = () => {
   return 'localhost'
 }
 
-// Détecte automatiquement si on est en HTTPS
-const getProtocol = () => {
-  if (typeof window !== 'undefined') {
-    return window.location.protocol
-  }
-  return 'http:'
-}
-
 const isViteDevServer = () => {
   if (typeof window === 'undefined') return false
   return window.location.port === '3000'

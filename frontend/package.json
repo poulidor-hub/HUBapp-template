@@ -1,6 +1,6 @@
 {
   "name": "hubapp-frontend",
-  "version": "2.26.4",
+  "version": "2.27.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint:classes": "node scripts/lint-classes.mjs",
-    "verify:ui": "node scripts/verify-ui.mjs"
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@tanstack/react-form": "^1.33.2",
@@ -19,12 +20,16 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tanstack/react-form-devtools": "^0.2.31",
     "@tanstack/react-query-devtools": "^5.62.0",
     "@tanstack/react-router-devtools": "^1.167.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "msw": "^2.15.0",
     "playwright": "^1.63.0",
     "vite": "^5.0.0"

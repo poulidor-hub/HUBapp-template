@@ -28,7 +28,7 @@ Quand une page liste a de la pagination server-side, l'utilisateur ne peut inter
 
 ## Phase 1 — Backend : schémas bulk
 
-Dans `app/schemas.py` :
+Dans `backend/schemas.py` (classes **à créer** pour le domaine, à côté des patrons `ItemResponse` / `PaginatedResponse`) :
 
 ```python
 class DomainBulkUpdateIn(BaseModel):
@@ -57,7 +57,7 @@ class OrderBulkOperationResult(BaseModel):
 
 ## Phase 2 — Backend : helpers CRUD
 
-Dans `app/crud.py`, extraire la logique de filtre dans une fonction réutilisable et ajouter :
+Dans le module backend du domaine — ex : `backend/routes/<domain>.py` **à créer dans l'app dérivée** sur le patron de `backend/routes/items.py` (ou un `backend/crud.py` extrait si le domaine grandit) — extraire la logique de filtre dans une fonction réutilisable et ajouter :
 
 ```python
 def list_domain_ids_by_filters(session, search, year, ...) -> List[int]:
@@ -86,7 +86,7 @@ def bulk_update_domains(session, order_ids=None, select_all=False,
 
 ## Phase 3 — Backend : endpoints
 
-Dans `app/api/routes/<domain>.py` :
+Dans `backend/routes/<domain>.py` (**à créer dans l'app dérivée**, puis enregistrer le router dans `backend/main.py`) :
 
 ```python
 @router.post("/bulk-update", response_model=OrderBulkOperationResult)
@@ -98,19 +98,25 @@ def bulk_update(payload: DomainBulkUpdateIn, ...):
         raise HTTPException(status_code=400, detail=str(e))
 ```
 
-## Phase 4 — Frontend : méthodes API
+## Phase 4 — Frontend : mutations API
 
-Dans `frontend/src/services/api.js` :
+Le template n'a pas de couche `services/api.js` : les appels passent par le hook `useApiMutation` (invalidation de cache incluse).
 
 ```javascript
-bulkUpdate: async (data) => {
-  const response = await api.post('/domain/bulk-update', data);
-  return response.data;
-},
-bulkDelete: async (data) => {
-  const response = await api.post('/domain/bulk-delete', data);
-  return response.data;
-},
+const bulkUpdateMutation = useApiMutation({
+  endpoint: '/api/<domain>/bulk-update',
+  method: 'POST',
+  invalidateKeys: [['<domain>']],   // resynchronise la liste après l'opération
+});
+
+const bulkDeleteMutation = useApiMutation({
+  endpoint: '/api/<domain>/bulk-delete',
+  method: 'POST',
+  invalidateKeys: [['<domain>']],
+});
+
+// Déclenchement au clic sur une action de masse :
+// bulkUpdateMutation.mutate(buildBulkPayload({ set_status: '...' }))
 ```
 
 ## Phase 5 — Frontend : état de sélection + handlers
@@ -157,17 +163,26 @@ const handleSelectionChange = (e) => {
 };
 ```
 
-## Phase 6 — Frontend : DataTable + batch bar
+## Phase 6 — Frontend : colonne checkbox + batch bar
 
-Colonne checkbox (admin only) :
+La table du socle (`frontend/src/components/DataTable.jsx`) est une page concrète **sans sélection** : la colonne checkbox est **à ajouter dans l'app dérivée** (admin only) :
 
 ```jsx
-<AppDataTable
-  selection={isAdmin ? selectedItems : undefined}
-  onSelectionChange={isAdmin ? handleSelectionChange : undefined}
-  ...
->
-  {isAdmin && <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />}
+{/* Header de la table */}
+{isAdmin && <th style={{ width: '3rem' }} />}
+
+{/* Cellule de chaque ligne — toggle dans selectedItems ou deselectedIds (cf. Phase 5) */}
+{isAdmin && (
+  <td>
+    <input
+      type="checkbox"
+      checked={selectAllMode
+        ? !deselectedIds.has(item.id)
+        : selectedItems.some((s) => s.id === item.id)}
+      onChange={() => toggleRow(item)}
+    />
+  </td>
+)}
 ```
 
 Batch action bar (affichée quand la sélection est active) :
@@ -202,15 +217,16 @@ Batch action bar (affichée quand la sélection est active) :
 
 ## Implementation References
 
-| Référence | Chemin |
+> **Note** : ce template ne contient **pas** d'implémentation complète du bulk-operations. Les fichiers ci-dessous servent de patrons de structure ; le pattern complet (select-all filtré, bulk update/delete) est **à créer dans l'app dérivée** en suivant les phases ci-dessus.
+
+| Référence | Chemin (existe dans le template) |
 |---|---|
-| Orders page (sélection + assignation budget line + bulk delete) | `frontend/src/pages/OrdersPage.jsx` |
-| Orders backend CRUD | `app/crud.py::bulk_update_orders` / `bulk_delete_orders` |
-| Orders backend routes | `app/api/routes/orders.py::POST /orders/bulk-update` / `POST /orders/bulk-delete` |
-| Assets page (sélection + status change) | `frontend/src/pages/AssetsPage.jsx` |
-| Assets backend CRUD | `app/crud.py::bulk_update_assets` |
-| Assets backend routes | `app/api/routes/assets.py::POST /assets/bulk-update` |
-| Schemas | `app/schemas.py::OrderBulkUpdateIn` / `OrderBulkDeleteIn` / `AssetBulkUpdateIn` / `OrderBulkOperationResult` |
+| Patron CRUD paginé backend (rôles, filtres, pagination) | `backend/routes/items.py` |
+| Route de liste avec filtre simple | `backend/routes/test_data.py` |
+| Schémas Pydantic (patrons `ItemResponse`, `PaginatedResponse`) | `backend/schemas.py` |
+| Enregistrement des routers | `backend/main.py` |
+| Page liste frontend (filtre + mutations optimistes) | `frontend/src/components/DataTable.jsx` |
+| Hooks API (`useApiQuery` / `useApiMutation`, invalidation de cache) | `frontend/src/hooks/useApiQuery.js`, `frontend/src/hooks/useApiMutation.js` |
 
 ## Conventions pour nouvelles pages
 

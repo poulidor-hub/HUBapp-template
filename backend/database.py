@@ -36,6 +36,10 @@ async_session_maker = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# Alias de l'engine global (permet à apply_migrations(engine=...) d'avoir un
+# paramètre nommé naturellement sans masquer la globale).
+_default_engine = engine
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -81,36 +85,84 @@ def _strip_sql_comments(sql_block: str) -> str:
     return '\n'.join(lines).strip()
 
 
-async def apply_migrations():
+def _split_sql_statements(sql: str) -> list[str]:
+    """Split un script SQL sur ';' en ignorant les points-virgules placés
+    dans des chaînes quotées ('...' avec échappement '' en SQL).
+
+    Un split naïf sur ';' casse les statements contenant une valeur du type
+    VALUES ('a;b') — le statement tronqué échoue et la donnée est perdue.
+    """
+    statements: list[str] = []
+    buf: list[str] = []
+    in_string = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_string:
+            buf.append(ch)
+            if ch == "'":
+                if i + 1 < len(sql) and sql[i + 1] == "'":
+                    buf.append("'")  # '' échappé → un seul quote
+                    i += 1
+                else:
+                    in_string = False
+        elif ch == "'":
+            in_string = True
+            buf.append(ch)
+        elif ch == ';':
+            statements.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    if buf:
+        statements.append("".join(buf))
+    return statements
+
+
+async def apply_migrations(
+    migrations_dir: Path = None,
+    engine=None,
+):
     """
     Applique automatiquement les migrations SQL depuis le dossier migrations/.
     Utilise une table schema_migrations pour suivre les migrations appliquées.
     Les fichiers doivent suivre le format NNN_description.sql (ex: 001_add_column.sql).
-    
+
     Chaque statement est isolé via SAVEPOINT pour éviter qu'un échec
     (ex: colonne déjà existante) n'avorte toute la transaction PostgreSQL.
-    """
-    migrations_dir = Path("/app/migrations")
-    if not migrations_dir.exists():
-        # Mode local (hors Docker)
-        migrations_dir = Path(__file__).parent / "migrations"
 
+    Fiabilité : une migration n'est marquée « appliquée » que si TOUS ses
+    statements passent. En cas d'échec partiel, elle n'est PAS enregistrée
+    (log ERROR) et sera re-jouée au prochain démarrage — les migrations
+    doivent donc être idempotentes (IF NOT EXISTS, ALTER tolérant, etc.).
+
+    Args:
+        migrations_dir: dossier des migrations (défaut : /app/migrations ou
+            ./migrations en mode local) — injectable pour les tests.
+        engine: engine SQLAlchemy async cible (défaut : engine global).
+    """
+    if migrations_dir is None:
+        migrations_dir = Path("/app/migrations")
+        if not migrations_dir.exists():
+            # Mode local (hors Docker)
+            migrations_dir = Path(__file__).parent / "migrations"
+
+    migrations_dir = Path(migrations_dir)
     if not migrations_dir.exists():
         logger.info("ℹ️ Pas de dossier migrations/ — aucune migration à appliquer")
         return
 
-    # Lister et trier les fichiers de migration
-    migration_files = sorted(migrations_dir.glob("*.sql"))
-    if not migration_files:
-        return
+    target_engine = engine or _default_engine
 
-    async with engine.begin() as conn:
+    async with target_engine.begin() as conn:
         # Créer la table de suivi si elle n'existe pas
+        # (CURRENT_TIMESTAMP : accepté par PostgreSQL ET SQLite)
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version VARCHAR(10) PRIMARY KEY,
                 filename VARCHAR(255) NOT NULL,
-                applied_at TIMESTAMP DEFAULT NOW()
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
 
@@ -119,14 +171,15 @@ async def apply_migrations():
         applied = {row[0] for row in result.fetchall()}
 
         # Appliquer les nouvelles migrations dans l'ordre
-        for mf in migration_files:
+        for mf in sorted(migrations_dir.glob("*.sql")):
             version = mf.name.split('_')[0]
             if version in applied:
                 continue
 
             logger.info(f"📦 Application de la migration {mf.name}...")
             sql = mf.read_text()
-            for statement in sql.split(';'):
+            failed_statements = 0
+            for statement in _split_sql_statements(sql):
                 statement = _strip_sql_comments(statement)
                 if statement:
                     try:
@@ -135,7 +188,18 @@ async def apply_migrations():
                         await conn.execute(text("RELEASE SAVEPOINT migration_stmt"))
                     except Exception as e:
                         await conn.execute(text("ROLLBACK TO SAVEPOINT migration_stmt"))
-                        logger.warning(f"Migration {mf.name} statement ignoré: {e}")
+                        failed_statements += 1
+                        logger.warning(f"Migration {mf.name} statement en échec: {e}")
+
+            if failed_statements:
+                # NE PAS marquer appliquée : elle sera re-jouée au prochain
+                # démarrage (les statements déjà passés doivent être idempotents).
+                logger.error(
+                    f"❌ Migration {mf.name} partiellement appliquée "
+                    f"({failed_statements} statement(s) en échec) — NON marquée "
+                    f"appliquée, nouvelle tentative au prochain démarrage"
+                )
+                continue
 
             await conn.execute(text(
                 "INSERT INTO schema_migrations (version, filename) VALUES (:v, :f)"

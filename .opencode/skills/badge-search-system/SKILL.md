@@ -23,11 +23,11 @@ Installer la recherche globale à badges sur une page liste : un champ unique sc
 
 ```
 ┌─ Frontend ──────────────────────────────────────────────────┐
-│  TableToolbar (search input)                                │
-│  └─ Badge bar (extra prop) ← detectedFields (useMemo)       │
+│  Search input (toolbar de la page)                          │
+│  └─ Badge bar ← detectedFields (useMemo)                    │
 │     └─ Click → toggle excludedFields (Set) → API call       │
-│  DataTable ← orders/assets (from server, already filtered)  │
-│  Paginator ← totalRecords (from server, after exclusion)    │
+│  Table de la page ← données du serveur (déjà filtrées)      │
+│  Pagination ← total du serveur (après exclusion)            │
 └─────────────────────────────────────────────────────────────┘
         │ GET /api/orders?search=dell&exclude_fields=supplier
         ▼
@@ -48,7 +48,7 @@ Installer la recherche globale à badges sur une page liste : un champ unique sc
 
 ### 1. Définir les match fields
 
-Dans `app/crud.py`, déclarer **chaque champ searchable** :
+Dans le module backend du domaine — ex : `backend/routes/<domain>.py`, **à créer dans l'app dérivée** sur le patron de `backend/routes/items.py` — déclarer **chaque champ searchable** :
 
 ```python
 _DOMAIN_MATCH_FIELDS = [
@@ -82,7 +82,7 @@ if search:
 
 ### 3. exclude_fields logic — L'INVARIANT CRITIQUE
 
-Après la query, avant pagination. Le code complet (`compute_domain_match_fields_map`, `_build_child_texts_map`) est dans `app/crud.py::list_orders` / `list_assets` — **source canonique à recopier**.
+Après la query, avant pagination. **Aucune implémentation complète n'existe dans ce template** : `compute_domain_match_fields_map` / `_build_child_texts_map` sont **à créer dans l'app dérivée**, dans le module du domaine. Le socle fournit seulement le patron de liste paginée (`backend/routes/items.py::list_items`).
 
 ```python
 if exclude_fields and search:
@@ -105,12 +105,12 @@ else:
 ### 4. Schema + route
 
 ```python
-# schemas.py
+# backend/schemas.py
 class EntityOut(BaseModel):
     # ... existing fields ...
     match_fields: Optional[List[str]] = None
 
-# routes/<domain>.py — paramètre query
+# backend/routes/<domain>.py — paramètre query
 exclude_fields: Optional[str] = Query(None, description="Champs à exclure (csv: field1,field2)")
 # Parse CSV → List[str] ; setter entity_out.match_fields = match_fields_map.get(entity.id)
 ```
@@ -151,27 +151,27 @@ const params = {
 // Ajouter excludedFields au tableau de dépendances du useEffect de reload
 ```
 
-### 3. Rendu badges via `TableToolbar extra`
+### 3. Rendu de la barre de badges
 
-Le JSX complet (badge cliquable + style exclu/barré + bouton "Tout réactiver") vit dans `AssetsPage.jsx` / `OrdersPage.jsx` — **source canonique à recopier**. Structure :
+Le template n'a ni composant `TableToolbar` ni page d'exemple avec badges : ce JSX (badge cliquable + style exclu/barré + bouton « Tout réactiver ») est **à créer dans l'app dérivée**, intégré sous l'input de recherche de la page (cf. la structure de page de `frontend/src/components/DataTable.jsx`). Structure :
 
 ```jsx
-<TableToolbar
-  filters={filters} onFilterChange={...} onReset={handleResetFilters}
-  config={[{ key: 'search', type: 'search', placeholder: 'Rechercher...' }]}
-  extra={detectedFields.length > 0 && (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-[10px] uppercase ...">Trouvé dans :</span>
-      {detectedFields.map(field => (
-        <button key={field}
-          onClick={() => toggleExclude(field)}
-          className={isExcluded(field) ? '... line-through ...' : '... bg-indigo-50 ...'}>
-          {FIELD_LABELS[field] || field}
-        </button>
-      ))}
-    </div>
-  )}
-/>
+{/* Barre de badges sous l'input de recherche */}
+{detectedFields.length > 0 && (
+  <div className="flex items-center gap-1.5 flex-wrap">
+    <span className="text-[10px] uppercase ...">Trouvé dans :</span>
+    {detectedFields.map(field => (
+      <button key={field}
+        onClick={() => toggleExclude(field)}
+        className={isExcluded(field) ? '... line-through ...' : '... bg-indigo-50 ...'}>
+        {FIELD_LABELS[field] || field}
+      </button>
+    ))}
+    {excludedFields.size > 0 && (
+      <button onClick={() => setExcludedFields(new Set())}>Tout réactiver</button>
+    )}
+  </div>
+)}
 ```
 
 > **Imports** : `X` de `lucide-react`, `useMemo` de React. Le `excludedFields` se vide dans `handleResetFilters`.
@@ -184,12 +184,12 @@ Le JSX complet (badge cliquable + style exclu/barré + bouton "Tout réactiver")
 
 ### 5. (Optionnel) Highlight du texte matché
 
-`HighlightText` (`frontend/src/components/ui/HighlightText.jsx`) surligne le terme cherché dans les cellules dont le champ est dans `match_fields` et non exclu. Voir `AssetsPage.jsx` pour le pattern `cellTemplate`.
+Le template n'a pas de composant `HighlightText` : **à créer dans l'app dérivée** (ex : `frontend/src/components/HighlightText.jsx`) pour surligner le terme cherché dans les cellules dont le champ est dans `match_fields` et non exclu.
 
 ## Vérification
 
 1. `cd frontend && npm run build`
-2. `python -c "import ast; ast.parse(open('app/crud.py').read())"`
+2. `python -m py_compile backend/routes/<domain>.py backend/schemas.py`
 3. `make build && make up`
 4. Tests manuels :
    - Terme matché sur plusieurs champs → plusieurs badges
@@ -199,14 +199,19 @@ Le JSX complet (badge cliquable + style exclu/barré + bouton "Tout réactiver")
    - « Tout réactiver » → tous les badges reviennent
    - Recherche vide → aucun badge
 
-## Implementation References (sources canoniques)
+## Implementation References
 
-| Réf | Chemin |
+> **Note** : ce template ne contient **pas** d'implémentation complète du badge-search. Les fichiers ci-dessous servent de patrons de structure ; le pattern complet (match fields, exclusion server-side, barre de badges) est **à créer dans l'app dérivée** en suivant les sections ci-dessus.
+
+| Réf | Chemin (existe dans le template) |
 |---|---|
-| **Assets page** (impl complète) | `frontend/src/pages/AssetsPage.jsx` + `app/crud.py::list_assets` + `app/api/routes/assets.py` |
-| **Orders page** (impl complète) | `frontend/src/pages/OrdersPage.jsx` + `app/crud.py::list_orders` + `app/api/routes/orders.py` |
-| HighlightText | `frontend/src/components/ui/HighlightText.jsx` |
-| TableToolbar | `frontend/src/components/ui/TableToolbar.jsx` |
+| Patron CRUD paginé backend (WHERE + count + offset/limit, rôles) | `backend/routes/items.py` |
+| Route de liste avec filtre simple (query param) | `backend/routes/test_data.py` |
+| Schémas Pydantic (`PaginatedResponse`, `ItemResponse`) | `backend/schemas.py` |
+| Modèles SQLAlchemy | `backend/models.py` |
+| Enregistrement des routers | `backend/main.py` |
+| Page liste frontend (filtre + `useApiQuery`/`useApiMutation`) | `frontend/src/components/DataTable.jsx` |
+| Hooks API (fetch + mutations optimistes) | `frontend/src/hooks/useApiQuery.js`, `frontend/src/hooks/useApiMutation.js` |
 
 ## Key Design Decisions
 

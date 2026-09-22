@@ -95,15 +95,8 @@ async def test_outbox_nullable_fields(db_session):
     assert saved.delivered_at is None
 
 
-@pytest.fixture
-async def outbox_svc(async_engine):
-    """OutboxService with test database session."""
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-    from outbox import OutboxService
-    maker = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    return OutboxService(session_maker=maker)
+# La fixture outbox_svc vit désormais dans conftest.py (partagée avec
+# tests/test_outbox_recovery.py).
 
 
 async def test_enqueue_message(outbox_svc, db_session):

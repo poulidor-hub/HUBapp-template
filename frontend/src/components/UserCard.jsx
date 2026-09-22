@@ -1,10 +1,7 @@
-import React from 'react'
 import { User } from 'lucide-react'
-import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
 function UserCard() {
-  const config = useConfig()
   const { user, getAppRole } = useAuth()
 
   if (!user) return null

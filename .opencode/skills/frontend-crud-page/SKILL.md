@@ -8,7 +8,7 @@ argument-hint: 'CRUD scope, for example: list page for /api/items, detail + edit
 
 Use this skill when the task is to add or rework a React page that reads and writes a backend resource. It enforces the conventions from [docs/DATA_FETCHING.md](../../../docs/DATA_FETCHING.md).
 
-This skill covers the frontend only. For the backend endpoint side, use the prompt `/add-backend-endpoint`.
+This skill covers the frontend only. For the backend endpoint side, ask the agent to create the endpoint following `backend/routes/items.py` as the standard.
 
 ## What This Repository Uses
 

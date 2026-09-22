@@ -1,4 +1,3 @@
-import React from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
 import LoginPrompt from '../components/LoginPrompt'
@@ -16,14 +15,16 @@ export default function HomePage() {
         <h2>Bienvenue {user?.username || user?.sub} !</h2>
         <p>Votre application est prête. Commencez à développer ici.</p>
       </div>
-      <div className="card">
-        <h3>Outils de développement</h3>
-        <p>
-          <Link to="/demo/form" className="app-link">
-            → Démo TanStack Form (avec DevTools)
-          </Link>
-        </p>
-      </div>
+      {import.meta.env.DEV && (
+        <div className="card">
+          <h3>Outils de développement</h3>
+          <p>
+            <Link to="/demo/form" className="app-link">
+              → Démo TanStack Form (avec DevTools)
+            </Link>
+          </p>
+        </div>
+      )}
     </>
   )
 }

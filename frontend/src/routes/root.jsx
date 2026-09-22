@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useConfig } from '../context/ConfigContext'
 import Header from '../components/Header'
+import MessageBanner from '../components/MessageBanner'
+import MessageArchive from '../components/MessageArchive'
 
 export function RootLayout() {
   const [theme, setTheme] = useState(() =>
@@ -32,6 +34,9 @@ export function RootLayout() {
       <div className="container">
         <Outlet />
       </div>
+      {/* Messagerie Hub (SSE) — flottants, null si non authentifié */}
+      <MessageBanner />
+      <MessageArchive />
     </div>
   )
 }
