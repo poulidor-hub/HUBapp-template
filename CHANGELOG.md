@@ -1,3 +1,53 @@
+## [2.27.1] - 22 septembre 2026
+
+### ⚡ Suite d'audit — backup streaming (RAM bornée) + JWKS hors boucle + skills async
+
+**Backup (routes/backup.py) — le commentaire « RAM bornée » mentait pour la
+partie DB : toutes les tables étaient fetchallées en RAM puis le dump complet
+sérialisé en une seule string (json.dumps = dict + string en mémoire) — le
+bug OOM 512M pouvait récidiver.**
+
+- **Fix** : export — data.json écrit sur DISQUE table par table, lignes par
+  batchs (`_iter_table_rows` : `db.stream` + `yield_per` — curseur serveur
+  sur asyncpg) ; `_build_backup_zip_sync` reçoit un chemin et copie le JSON
+  par chunks ; `table_stats` via `COUNT(*)` ; chemins des fichiers par
+  requête légère dédiée. Format `{metadata, data}` inchangé — contrat
+  préservé avec les backups existants.
+- **Fix** : restore — l'upload entier n'est plus chargé en RAM (BytesIO) :
+  copie par chunks de 8 Mo vers un fichier temporaire, `ZipFile` ouvert
+  depuis le disque, cleanup garanti en finally. Limite documentée :
+  data.json reste lu en RAM une fois.
+- +8 tests (`tests/test_backup_streaming.py`).
+
+**Auth (hub_auth.py) — PyJWKClient (urllib synchrone) était appelé dans des
+coroutines : initialize(), refresh_jwks_cache() et surtout
+_decode_with_jwks() sur CHAQUE requête (via get_current_user) → Hub lent ou
+coupé (rotation de clé, kid inconnu) = event loop entièrement gelée, health
+checks compris.**
+
+- **Fix** : initialize()/refresh_jwks_cache() — fetch via
+  `asyncio.to_thread` (+ verrou anti-stampede sur le refresh).
+- **Fix** : decode_token() ne fait JAMAIS de réseau — cache local
+  `{kid: PEM}` alimenté par les fetchs async ; kid inconnu →
+  `JWKSKeyUnknownError` (cascade PEM conservée, reprise async armée).
+- **Fix** : get_current_user/get_optional_user — refresh hors boucle + retry
+  unique (`_decode_token_resilient`) → 401 propre en cas d'échec.
+- +5 tests (`tests/test_hub_auth_async.py`).
+
+**Skills**
+
+- **Fix** : snippets backend des skills `badge-search-system` et
+  `bulk-operations` réécrits en SQLAlchemy 2.0 async conforme à la norme
+  `backend/routes/items.py` (`AsyncSession`, `await db.execute`,
+  `.scalars()`, `update()` bulk) — les apps dérivées ne copient plus du code
+  synchrone qui casse au premier run.
+- **Hygiène** : cache JWKS runtime (`backend/storage/`) gitigné — un test
+  pouvait laisser un artefact dans le dépôt.
+
++13 tests au total (249 verts).
+
+---
+
 ## [2.27.0] - 22 septembre 2026
 
 ### ⚡ Audit complet du socle — P0 bloquants, P1 sécurité/fiabilité, P2 cohérence, P3 hygiène
