@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL = 5
 BATCH_SIZE = 50
 BASE_BACKOFF = 30
+# Durée de validité d'un claim in_progress : au-delà, le message est réputé
+# perdu par un crash/restart et repris par le worker. Doit couvrir le pire
+# cas d'une livraison légitime (timeout HTTP 30s) avec une marge confortable.
+IN_PROGRESS_STALE_SECONDS = 600
 DELIVERED_RETENTION_DAYS = 7
 FAILED_RETENTION_DAYS = 30
 
@@ -70,9 +74,18 @@ class OutboxService:
             )
             return msg.id
 
-    async def _fetch_pending(self, session: AsyncSession) -> list[OutboxMessage]:
-        now = datetime.now(timezone.utc)
-        stmt = (
+    def _fetch_pending_stmt(self, now: datetime):
+        """Construit le SELECT des messages à traiter.
+
+        1. pending/failed dont le retry est dû ;
+        2. in_progress dont le claim est expiré (next_retry_at <= now) :
+           le claim (voir _process_batch) positionne next_retry_at dans le
+           futur — si le worker crash avant la fin de la livraison, le
+           message est repris ici au lieu d'être perdu ;
+        Le tout avec FOR UPDATE SKIP LOCKED : sur PostgreSQL, deux workers
+        ne prennent jamais le même message (ignoré par SQLite en tests).
+        """
+        return (
             select(OutboxMessage)
             .where(
                 or_(
@@ -85,12 +98,20 @@ class OutboxService:
                         OutboxMessage.next_retry_at <= now,
                         OutboxMessage.retry_count < OutboxMessage.max_retries,
                     ),
+                    and_(
+                        OutboxMessage.status == "in_progress",
+                        OutboxMessage.next_retry_at <= now,
+                    ),
                 )
             )
             .order_by(OutboxMessage.created_at.asc())
             .limit(BATCH_SIZE)
+            .with_for_update(skip_locked=True)
         )
-        result = await session.execute(stmt)
+
+    async def _fetch_pending(self, session: AsyncSession) -> list[OutboxMessage]:
+        now = datetime.now(timezone.utc)
+        result = await session.execute(self._fetch_pending_stmt(now))
         return list(result.scalars().all())
 
     async def _deliver(self, msg: OutboxMessage) -> bool:
@@ -141,7 +162,11 @@ class OutboxService:
             now = datetime.now(timezone.utc)
 
             for msg in messages:
+                # Claim : in_progress + next_retry_at repoussé (heartbeat).
+                # Si le worker crash pendant la livraison, le message est
+                # repris par le prochain batch dès que le claim expire.
                 msg.status = "in_progress"
+                msg.next_retry_at = now + timedelta(seconds=IN_PROGRESS_STALE_SECONDS)
                 await session.flush()
 
                 delivered = await self._deliver(msg)
@@ -257,9 +282,9 @@ class OutboxService:
             )
             await session.commit()
             count = deleted.rowcount or 0
+            if count:
+                logger.info(f"🧹 Purged {count} old outbox messages")
             return count
-            if deleted.rowcount:
-                logger.info(f"🧹 Purged {deleted.rowcount} old outbox messages")
 
 
 outbox_service = OutboxService()

@@ -93,6 +93,17 @@ async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
 # ============================================================
 
 @pytest.fixture
+async def outbox_svc(async_engine):
+    """OutboxService branché sur la base de test."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from outbox import OutboxService
+    maker = async_sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    return OutboxService(session_maker=maker)
+
+
+@pytest.fixture
 def mock_hub_client():
     """Mock du client Hub."""
     with patch('hub_client.hub_client') as mock:
