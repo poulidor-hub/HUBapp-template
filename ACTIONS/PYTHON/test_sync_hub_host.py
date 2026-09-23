@@ -323,14 +323,53 @@ def test_sync_warns_on_legacy_hub_without_ports(tmp_path, monkeypatch, capsys):
 
 
 def test_sync_preserves_host_propagation(tmp_path, monkeypatch):
-    """HUB_HOST continue d'être propagé (cas IP change, instance identique)."""
+    """HUB_HOST continue d'être propagé (hub déménagé : l'ancienne IP ne
+    répond plus, seule la nouvelle répond)."""
     env = tmp_path / ".env"
     env.write_text(f"HUB_HOST=192.0.2.10\nHUB_API_PORT=18000\nHUB_INSTANCE_ID={'a' * 32}\n")
     monkeypatch.setattr(sync_hub_host, "ENV_PATH", env)
     resp = {"host": "192.0.2.11", "configured": True,
             "api_port": 18000, "frontend_port": 18080, "instance_id": "a" * 32}
-    monkeypatch.setattr(sync_hub_host, "query_hub_host_full",
-                        lambda host, port, timeout=1.5: resp)
+    # Déménagement réel : le Hub ne répond PLUS via l'ancienne IP (192.0.2.10),
+    # la découverte passe par localhost et sa réponse annonce la nouvelle.
+    def fake_query(host, port, timeout=1.5):
+        return resp if host in ("192.0.2.11", "localhost") else None
+    monkeypatch.setattr(sync_hub_host, "query_hub_host_full", fake_query)
     rc = sync_hub_host.main(["--quiet"])
     assert rc == 0
     assert "HUB_HOST=192.0.2.11" in env.read_text()
+
+
+# --- Garde compat hub legacy : ne pas écraser HUB_HOST si le Hub y répond déjà ---
+
+def test_sync_keeps_host_when_current_answers_legacy_announce(tmp_path, monkeypatch, capsys):
+    """Hub legacy : l'annonce contient l'IP docker INTERNE du conteneur hub
+    (injoignable depuis le réseau dédié de l'app). Le Hub répond via le
+    HUB_HOST courant (IP LAN) → HUB_HOST est CONSERVÉ, annonce ignorée."""
+    env = tmp_path / ".env"
+    env.write_text("HUB_HOST=192.0.2.10\nHUB_API_PORT=18100\n")
+    monkeypatch.setattr(sync_hub_host, "ENV_PATH", env)
+    before = env.read_text()
+    def fake_query(host, port, timeout=1.5):
+        # Le Hub répond via l'IP LAN ; sa réponse annonce son IP interne.
+        return {"host": "172.26.0.3"} if host == "192.0.2.10" else None
+    monkeypatch.setattr(sync_hub_host, "query_hub_host_full", fake_query)
+    rc = sync_hub_host.main(["--quiet"])
+    assert rc == 0
+    assert env.read_text() == before  # HUB_HOST intact
+    assert "conservé" in capsys.readouterr().out
+
+
+def test_sync_interactive_keeps_host_when_current_answers(tmp_path, monkeypatch, capsys):
+    """Mode interactif : même garde, message explicite avec l'annonce ignorée."""
+    env = tmp_path / ".env"
+    env.write_text("HUB_HOST=192.0.2.10\nHUB_API_PORT=18100\n")
+    monkeypatch.setattr(sync_hub_host, "ENV_PATH", env)
+    def fake_query(host, port, timeout=1.5):
+        return {"host": "172.26.0.3"} if host == "192.0.2.10" else None
+    monkeypatch.setattr(sync_hub_host, "query_hub_host_full", fake_query)
+    rc = sync_hub_host.main([])
+    assert rc == 0
+    assert "HUB_HOST=192.0.2.10" in env.read_text()
+    out = capsys.readouterr().out
+    assert "conservé" in out and "172.26.0.3" in out

@@ -154,11 +154,21 @@ def main(argv: list[str] | None = None) -> int:
         discovered = {"host": discovered}
 
     if discovered:
-        # Propagation HUB_HOST (comportement inchangé : message même en --quiet)
         hub_host_val = discovered.get("host")
-        if isinstance(hub_host_val, str) and hub_host_val.strip() and hub_host_val.strip() != current:
-            set_env_var(ENV_PATH, "HUB_HOST", hub_host_val.strip())
-            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {hub_host_val.strip()}")
+        if isinstance(hub_host_val, str):
+            hub_host_val = hub_host_val.strip()
+        # Garde compat hub legacy (3.9.x) : le champ `host` annoncé peut être
+        # l'IP docker INTERNE du conteneur hub (ex. 172.26.0.3), injoignable
+        # depuis le réseau dédié de l'app. Si le Hub répond déjà via le
+        # HUB_HOST courant, on le CONSERVE — ne pas casser ce qui marche.
+        if (current and hub_host_val and hub_host_val != current
+                and query_hub_host_full(current, hub_api_port) is not None):
+            print(f"✅ HUB_HOST conservé ({current}) — le Hub y répond déjà "
+                  f"(annonce « {hub_host_val} » ignorée)")
+            hub_host_val = current
+        if hub_host_val and hub_host_val != current:
+            set_env_var(ENV_PATH, "HUB_HOST", hub_host_val)
+            print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {hub_host_val}")
         elif not args.quiet:
             print(f"✅ HUB_HOST déjà à jour ({hub_host_val})")
 
