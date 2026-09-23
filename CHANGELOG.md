@@ -1,3 +1,31 @@
+## [2.28.0] - 23 septembre 2026
+
+### ⚡ Sous-réseau exemple-app : script manuel + fallback `sync-env` (hub legacy sans allocate-ports)
+
+Le Hub legacy hub-legacy (3.9.x, pré-H9) n'expose pas `POST /api/apps/allocate-ports` :
+`make sync-env` échouait bloquant et `docker compose up` refusait de démarrer
+(`${APP_SUBNET:?}`). Deux apports pour déployer les apps socle sur exemple-app
+pendant la période pré-migration :
+
+- **Ajouté** : `scripts/set_app_subnet.py` — écriture MANUELLE de `APP_SUBNET`
+  dans le `.env` existant. Plage dédiée exemple-app `10.220.0.0/16` (un /24 par
+  app, disjointe de 10.50/16 hub neuf, 10.210.x ateliers, plages prod
+  usuelles). `--subnet CIDR` imposé, sinon auto (premier /24 libre) ;
+  `--check` diagnostic sans écriture ; `--force` écrasement explicite.
+  Sécurités : refus d'écraser une valeur non vide sans `--force`, disjonction
+  vérifiée contre les réseaux Docker actifs + `APP_SUBNET` des `.env` voisins
+  (apps éteintes), backup horodaté `.env.pre-subnet-<stamp>`, best-effort si
+  Docker indisponible.
+- **Ajouté** : `ACTIONS/PYTHON/allocate_ports.py` — fallback local automatique :
+  ports déjà figés + subnet vide → allocation locale sans appel Hub ; Hub
+  404/injoignable → fallback tenté (les ports manquants restent l'erreur
+  bloquante) ; réponse Hub sans champ subnet → même fallback. Logique partagée
+  par import de `scripts/set_app_subnet.py` ; Hub neuf inchangé.
+- **Tests** : `scripts/test_set_app_subnet.py` (12 cas autonomes) +
+  `ACTIONS/PYTHON/tests/test_allocate_ports.py` (11 cas hermétiques).
+  Smoke test réel banc (75+ subnets Docker actifs) : allocation disjointe et
+  idempotence vérifiées.
+
 ## [2.27.1] - 22 septembre 2026
 
 ### ⚡ Suite d'audit — backup streaming (RAM bornée) + JWKS hors boucle + skills async
