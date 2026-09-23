@@ -1,3 +1,22 @@
+
+## [2.28.1] - 23 septembre 2026
+
+### ⚡ sync_hub_host : garde compat hub legacy sur HUB_HOST
+
+- **Fix** : le hub legacy hub-legacy (3.9.x) annonce dans
+  `GET /api/config/hub-host` l'IP docker **interne** de son conteneur
+  (ex. 172.26.0.3), injoignable depuis le réseau dédié de l'app —
+  `make sync-env`/`make up` écrasaient `HUB_HOST` par cette IP morte à
+  chaque boot (register M2M en timeout, app en mode dégradé). Désormais :
+  si le Hub répond déjà via le `HUB_HOST` courant, il est **conservé** et
+  l'annonce ignorée (message explicite, même en `--quiet`). Premier boot
+  (`HUB_HOST` vide) et hub injoignable sur l'IP courante : comportement
+  inchangé.
+- **Tests** : garde legacy (quiet + interactif), cas déménagement précisé
+  (ancienne IP morte). 32 (sync_hub_host) + 86 (ACTIONS) verts.
+
+Découvert par le pilote `test-socle-228` sur le banc exemple-app.
+
 ## [2.28.0] - 23 septembre 2026
 
 ### ⚡ Sous-réseau exemple-app : script manuel + fallback `sync-env` (hub legacy sans allocate-ports)
