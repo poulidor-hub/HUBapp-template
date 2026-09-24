@@ -144,7 +144,7 @@ Voir `frontend/src/context/AuthContext.jsx` et la section « Côté frontend : l
 
 ### Refresh proactif
 
-Le JWT a une durée de vie de 15 minutes. Le frontend doit rafraîchir le token **2 minutes avant expiration** pour ne jamais perdre la connexion SSE. Cette logique est déjà dans le template (`AuthContext.jsx`).
+Le JWT a une durée de vie de **8 heures** (`ACCESS_TOKEN_EXPIRE_MINUTES=480`, défaut déploiement LAN ; historiquement 15 min puis 30 min). Le frontend doit rafraîchir le token **2 minutes avant expiration** pour ne jamais perdre la connexion SSE. Cette logique est déjà dans le template (`AuthContext.jsx`).
 
 ## Phase C — Frontend : afficher l'UI de notifications
 
