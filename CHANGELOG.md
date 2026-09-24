@@ -1,4 +1,13 @@
 
+## [2.28.2] - 24 septembre 2026
+
+### ⚡ Doc skill hub-notifications : durée JWT alignée sur 8h
+
+- **Doc** : le skill app `hub-notifications` annonçait un JWT de 15 min (historique) ;
+  le TTL réel est de 480 min = 8h (`ACCESS_TOKEN_EXPIRE_MINUTES=480`, défaut déploiement
+  LAN). Le mécanisme de refresh proactif 2 min avant expiration reste inchangé
+  (`AuthContext.jsx`).
+
 ## [2.28.1] - 23 septembre 2026
 
 ### ⚡ sync_hub_host : garde compat hub legacy sur HUB_HOST
