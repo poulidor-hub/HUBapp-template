@@ -10,6 +10,26 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# === Réparation propriété des volumes de données (root uniquement) ===
+# L'entrypoint démarre en root, corrige la propriété des répertoires de
+# données montés en volume (storage/uploads/certs/data — fichiers DB SQLite,
+# locks Hub, cache JWKS, uploads) au profit d'appuser, puis ABANDONNE les
+# privilèges (gosu) avant de lancer l'application. Cas visé : volumes créés
+# par root sur l'hôte (ancien conteneur root, exécution sudo) → l'app
+# non-root ne peut plus rien écrire ("attempt to write a readonly database",
+# "Permission denied: /app/storage/..."). Un simple redémarrage répare.
+if [ "$(id -u)" = "0" ]; then
+    for d in /app/storage /app/uploads /app/certs /app/data /app/DATA; do
+        if [ -d "$d" ] && [ "$(stat -c %u "$d")" != "1000" ]; then
+            echo -e "${YELLOW}🔧 Propriété de $d corrigée (root → appuser)...${NC}"
+            chown -R 1000:1000 "$d" 2>/dev/null \
+                || echo -e "${YELLOW}⚠️  chown $d impossible (volume read-only ?)${NC}"
+        fi
+    done
+    # Abandon des privilèges : re-exec de cet entrypoint en appuser
+    exec gosu appuser:appuser /app/entrypoint.sh "$@"
+fi
+
 # === Auto-détection de l'IP de l'hôte ===
 # Si APP_HOST n'est pas défini, on détecte automatiquement l'IP
 if [ -z "$APP_HOST" ]; then

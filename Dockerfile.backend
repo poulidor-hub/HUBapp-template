@@ -28,6 +28,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Installer les wheels pré-compilés
@@ -53,8 +54,10 @@ RUN chmod +x /app/entrypoint.sh
 # Créer les répertoires nécessaires et donner les permissions
 RUN mkdir -p /app/uploads /app/storage && chown -R appuser:appuser /app
 
-# Passer en utilisateur non-root
-USER appuser
+# NOTE : pas de USER ici — l'entrypoint démarre en root, répare la propriété
+# des volumes de données (storage/uploads/certs/data, cas : volumes root
+# créés par un ancien conteneur), puis bascule en appuser via gosu.
+# Le process applicatif tourne donc TOUJOURS en non-root au runtime.
 
 # Port exposé (HTTP)
 EXPOSE 8000
