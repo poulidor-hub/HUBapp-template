@@ -1,4 +1,26 @@
 
+## [2.28.3] - 29 septembre 2026
+
+### ⚡ Fix socle — réparation automatique des permissions de volumes au démarrage
+
+- `backend/entrypoint.sh` + `Dockerfile.backend` : l'entrypoint démarre en
+  root, corrige la propriété (`chown -R 1000:1000`) des répertoires de
+  données montés en volume (`/app/storage`, `/app/uploads`, `/app/certs`,
+  `/app/data`, `/app/DATA`) puis abaisse les privilèges via `gosu` :
+  **l'application tourne toujours en non-root** (durcissement préservé,
+  pattern images officielles postgres/redis).
+- `docker-compose.yml` (service api) : ajout des caps `CHOWN`, `SETUID`,
+  `SETGID` — strictement nécessaires à la séquence chown→gosu avec
+  `cap_drop: ALL`. `no-new-privileges` conservé.
+- Motivation (incident prod réel, app exemple-app site distant) : volumes créés
+  par root (ancien conteneur root / exécution sudo) → l'app non-root ne
+  pouvait plus écrire (SQLite `readonly database`, locks Hub, cache JWKS)
+  → 500 sur toute écriture + app jamais enregistrée au Hub. Un simple
+  redémarrage du conteneur répare désormais tout, sur tous les sites.
+- Vérifié : volume root-owned auto-créé par le daemon → chown auto → app
+  opérationnelle, process applicatif en uid 1000.
+- `gosu` ajouté aux dépendances runtime Debian.
+
 ## [2.28.2] - 24 septembre 2026
 
 ### ⚡ Doc skill hub-notifications : durée JWT alignée sur 8h
