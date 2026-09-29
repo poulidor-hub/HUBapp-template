@@ -119,12 +119,19 @@ services:
       timeout: 10s
       retries: 3
     # === Durcissement (audit sécurité #21) ===
-    # L'image tourne en USER appuser (Dockerfile.backend) et écoute sur 8000
-    # (port non privilégié) → aucune capability nécessaire.
+    # L'app tourne en appuser (uid 1000, port non privilégié) : l'entrypoint
+    # démarre root, répare la propriété des volumes de données puis bascule
+    # en appuser via gosu. Caps strictement nécessaires :
+    # - CHOWN/SETUID/SETGID : chown des volumes + drop de privilèges gosu
+    #   (même pattern que le service postgres de ce compose)
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
 
   # === FRONTEND ===
   frontend:
