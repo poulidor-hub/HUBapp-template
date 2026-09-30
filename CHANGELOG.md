@@ -126,6 +126,19 @@ checks compris.**
 
 ---
 
+## [2.28.4] - 1er octobre 2026
+
+### ⚡ Fix UI — header responsive mobile
+
+- `frontend/src/styles/app.css` : media query ≤ 768px sur le `header` — les
+  groupes (titre / nav / actions) s'empilent en colonne au lieu de déborder
+  horizontalement ; `.header-actions` passe en `flex-wrap` avec `width: 100%`.
+  Concerne toutes les apps instanciées (le nav ajouté par certaines apps
+  wrappe aussi via `.header-nav` — à compléter côté app si présent).
+
+---
+
+
 ## [2.27.0] - 22 septembre 2026
 
 ### ⚡ Audit complet du socle — P0 bloquants, P1 sécurité/fiabilité, P2 cohérence, P3 hygiène
