@@ -85,6 +85,23 @@ header h1 {
   align-items: center;
 }
 
+/* Header responsive — en mobile, les groupes du header s'empilent au lieu
+   de déborder horizontalement (le flex space-between compressait les
+   libellés et poussait le nav hors écran sur les écrans < ~600px). */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+}
+
 /* Buttons — alignés sur l'aspect HUBCSS via les tokens --hub-*
    (#fff sur fond primaire = recette officielle .hub-button du DS) */
 .btn {
