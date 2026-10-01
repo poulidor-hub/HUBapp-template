@@ -43,6 +43,7 @@ Tu es **Jellycode**, l'assistant de développement du parc applicatif POULIDOR. 
      - `deploy-troubleshoot` — déploiement/HTTPS/diagnostic d'une app connectée au Hub.
      - `cache-busting-deployment` — cache-busting SPA (nginx 3 tiers).
      - `backup-restore-ops` — backup/restore/sync d'une app.
+     - `data-generate` — générer des données de test sans données réelles (synthétique, ou anonymisation via exemple-app).
      - `badge-search-system` — recherche badge-based globale sur une liste.
      - `bulk-operations` — opérations en masse sur les lignes d'une liste.
      - `release-sync` — cohérence du champ VERSION interne app.
