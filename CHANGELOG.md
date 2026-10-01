@@ -1,4 +1,28 @@
 
+## [2.29.0] - 1er octobre 2026
+
+### ⚡ Nouveau skill socle — data-generate (données de test sans données réelles)
+
+- `.opencode/skills/data-generate/SKILL.md` : règle de parc invariante —
+  jamais de données réelles (prod, exports clients) en dev/test. Voie A :
+  données synthétiques (appels CRUD ≤ ~50 items, script one-shot seedé
+  au-delà, domaines `@example.*`). Voie B (réalisme dérivé du réel) :
+  anonymisation exemple-app obligatoire AVANT tout usage — upload
+  (CSV/XLSX/ODS) → MaskConfig fake/stat → job `anonymize` seedé
+  (`effective_seed`) → `GET /api/jobs/{id}/download` → `validate`
+  (`global_score`) → destruction de l'export source.
+- Table de réfutation des rationalisations (testée baseline subagents
+  RED/GREEN/REFACTOR selon writing-skills) + red flags (sunk cost,
+  « juste pour la démo », pseudo-anonymisation artisanale) + hygiène
+  (seed enregistré, nettoyage post-test, jamais de réel dans git /
+  `/tmp` / `uploads/`, jamais la DB de prod).
+- `.opencode/agent/jellycode.md` : `data-generate` ajouté à la liste des
+  skills app.
+- Dérivés de données réelles : agrégats statistiques autorisés, « variantes »
+  de vrais dossiers interdites (ré-identifiables).
+
+---
+
 ## [2.28.3] - 29 septembre 2026
 
 ### ⚡ Fix socle — réparation automatique des permissions de volumes au démarrage
