@@ -166,6 +166,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"✅ HUB_HOST conservé ({current}) — le Hub y répond déjà "
                   f"(annonce « {hub_host_val} » ignorée)")
             hub_host_val = current
+        # Garde anti-IP-morte (complément du garde ci-dessus) : si HUB_HOST
+        # courant est vide ou mort, l'annonce injoignable ne doit pas être
+        # écrite non plus — fallback : IP LAN de l'hôte si le Hub y répond
+        # (port publié sur 0.0.0.0) ; sinon aucune écriture.
+        if (hub_host_val and hub_host_val != current
+                and not query_hub_host_full(hub_host_val, hub_api_port)):
+            fallback = None
+            lan = get_local_ip()
+            if lan and query_hub_host_full(lan, hub_api_port):
+                fallback = lan
+            if fallback:
+                print(f"⚠️ Hub annonce {hub_host_val} (injoignable) — adoption "
+                      f"de {fallback} (joignable) ; corrigez l'IP configurée du Hub")
+                hub_host_val = fallback
+            else:
+                print(f"⚠️ Hub annonce {hub_host_val} (injoignable), aucun candidat "
+                      f"joignable — HUB_HOST inchangé")
+                hub_host_val = current
         if hub_host_val and hub_host_val != current:
             set_env_var(ENV_PATH, "HUB_HOST", hub_host_val)
             print(f"🔄 HUB_HOST mis à jour: {current or '(vide)'} → {hub_host_val}")
