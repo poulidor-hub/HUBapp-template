@@ -23,6 +23,16 @@
 
 ---
 
+## [2.29.1] - 3 octobre 2026
+
+### ⚡ sync_hub_host : fallback IP LAN si annonce injoignable et HUB_HOST vide/mort
+
+- Complément du garde dfc672d (conservé tel quel, cas « HUB_HOST courant joignable ») : quand le courant est **vide ou mort**, l'annonce du Hub était adoptée **sans validation** — une IP injoignable (config Hub obsolète après changement d'IP de la machine, IP de conteneur annoncée par auto-détection inter-bridges) finissait dans le `.env` et l'app perdait le Hub au prochain build
+- Incident réel 01/10/2026 (app instanciée) : `HUB_HOST=10.50.150.133` propagé par le sync → `hub_connected` perdu à la recréation des conteneurs
+- Désormais, si l'annonce ne répond pas depuis l'hôte : adoption de l'IP LAN (`get_local_ip`, port du Hub publié sur 0.0.0.0) si le Hub y répond ; sinon **aucune écriture** + avertissement
+- Tests : 4 cas unitaires (`test_sync_hub_host.py` — courant joignable conservé, fallback LAN, adoption normale inchangée, tout-mort sans écriture)
+
+## [2.29.0]
 ## [2.28.3] - 29 septembre 2026
 
 ### ⚡ Fix socle — réparation automatique des permissions de volumes au démarrage
