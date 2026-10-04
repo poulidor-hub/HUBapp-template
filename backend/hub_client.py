@@ -13,6 +13,7 @@ Fonctionnalités :
 import httpx
 import asyncio
 import os
+import time
 from typing import Optional, List, Dict
 
 # fcntl n'est pas disponible sur Windows — fallback sans file locking
@@ -26,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 from config import get_settings, APP_VERSION
+from logging_config import HubClock
 from pathlib import Path
 from outbox import outbox_service
 import yaml
@@ -157,6 +159,46 @@ class HubClient:
         if self._http_client and not self._http_client.is_closed:
             await self._http_client.close()
             self._http_client = None
+
+    async def sync_hub_time(self) -> bool:
+        """Synchronise l'horloge de logging sur l'heure du Hub.
+
+        GET /api/system/time (public, sans auth) → epoch_ms ; l'offset
+        (heure hub − heure locale) est mesuré au point médian
+        request/réponse pour absorber la latence réseau. Appelé après
+        chaque (re)connexion Hub et périodiquement par la boucle de fond
+        (HUB_TIME_SYNC_INTERVAL). En cas d'échec, le dernier offset est
+        conservé (fallback : heure locale UTC, conforme règle parc n°10).
+        """
+        was_synced = HubClock.shared().synced
+        t0 = time.time()
+        try:
+            client = await self._get_client()
+            url = f"{self.settings.hub_api_internal_url.rstrip('/')}/api/system/time"
+            response = await client.get(url, timeout=5.0)
+            t1 = time.time()
+            if response.status_code != 200:
+                logger.warning(f"⚠️ Sync heure Hub: HTTP {response.status_code}")
+                return False
+            epoch_ms = response.json().get("epoch_ms")
+            if not isinstance(epoch_ms, (int, float)) or epoch_ms <= 0:
+                logger.warning(
+                    "⚠️ Sync heure Hub: epoch_ms absent/invalide (Hub trop ancien ?)"
+                )
+                return False
+            offset = HubClock.shared().apply_epoch_ms(int(epoch_ms), t0, t1)
+            if not was_synced:
+                logger.info(
+                    f"⏱️ Horodatage des logs aligné sur l'heure du Hub "
+                    f"(offset {offset:+.3f}s, resynchro toutes les "
+                    f"{self.settings.HUB_TIME_SYNC_INTERVAL}s)"
+                )
+            else:
+                logger.debug(f"⏱️ Heure Hub resynchronisée (offset {offset:+.3f}s)")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Sync heure Hub impossible ({e}) — offset conservé")
+            return False
     
     @property
     def is_registered(self) -> bool:
