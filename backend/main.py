@@ -44,11 +44,10 @@ from routes.preferences import router as preferences_router
 from routes.m2m import router as m2m_router
 from routes.test_data import router as test_data_router
 
-# Configuration logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configuration logging — horodatée à l'heure du Hub (cf. logging_config.py)
+from logging_config import setup_logging
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
@@ -107,6 +106,25 @@ async def hub_reconnection_loop():
             logger.debug(f"Erreur dans la boucle de reconnexion: {e}")
 
 
+async def hub_time_sync_loop():
+    """
+    Resynchronise périodiquement l'horloge de logging sur l'heure du Hub
+    (dérive naturelle des horloges locales). No-op tant que l'app n'est
+    pas enregistrée ; en cas d'échec, le dernier offset reste appliqué.
+    """
+    interval = max(30, settings.HUB_TIME_SYNC_INTERVAL)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            if hub_client.is_registered:
+                await hub_client.sync_hub_time()
+        except asyncio.CancelledError:
+            logger.debug("🛑 Arrêt de la boucle de synchro heure Hub")
+            break
+        except Exception as e:
+            logger.debug(f"Erreur boucle synchro heure Hub: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -121,6 +139,10 @@ async def lifespan(app: FastAPI):
     registered = await hub_client.register()
     if not registered:
         logger.warning("⚠️ Impossible de s'enregistrer auprès du Hub. Mode dégradé.")
+    else:
+        # 1bis. Aligner l'horloge de logging sur l'heure du Hub (best-effort :
+        # en cas d'échec le fallback heure locale UTC reste appliqué)
+        await hub_client.sync_hub_time()
     
     # 2. Initialisation de l'authentification Hub
     await hub_auth.initialize()
@@ -177,6 +199,10 @@ async def lifespan(app: FastAPI):
     #    (boucle no-op par itération si HTTPS_ENABLED=false)
     app.state.cert_sync_task = asyncio.create_task(cert_sync_loop())
     logger.info("🔐 Tâche de synchro des certs HTTPS démarrée (toutes les 6h)")
+
+    # 9. Resynchro périodique de l'heure Hub (horodatage des logs)
+    app.state.hub_time_sync_task = asyncio.create_task(hub_time_sync_loop())
+    logger.info(f"⏱️ Tâche de synchro heure Hub démarrée (toutes les {settings.HUB_TIME_SYNC_INTERVAL}s)")
     
     startup_duration = (datetime.now(timezone.utc) - startup_time).total_seconds()
     logger.info(f"✅ Application prête sur {settings.api_url} (démarrage en {startup_duration:.2f}s)")
@@ -199,6 +225,14 @@ async def lifespan(app: FastAPI):
         cert_sync_task.cancel()
         try:
             await cert_sync_task
+        except asyncio.CancelledError:
+            pass
+
+    time_sync_task = getattr(app.state, 'hub_time_sync_task', None)
+    if time_sync_task and not time_sync_task.done():
+        time_sync_task.cancel()
+        try:
+            await time_sync_task
         except asyncio.CancelledError:
             pass
 

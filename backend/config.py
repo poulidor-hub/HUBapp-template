@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     # Environnement
     DEBUG: bool = False
 
+    # Synchro de l'heure Hub pour l'horodatage des logs (secondes, min 30)
+    HUB_TIME_SYNC_INTERVAL: int = 300
+
     # Endpoints de demo/test — desactiver en production
     ENABLE_DEMO_ENDPOINTS: bool = False
     

@@ -1,4 +1,27 @@
 
+## [2.29.3] - 4 octobre 2026
+
+### ⚡ Logging horodaté à l'heure du Hub
+
+- **`backend/logging_config.py`** (nouveau) : `setup_logging()` configure
+  root + loggers uvicorn avec le format parc
+  `2026-10-04T12:34:56.789Z | LEVEL | logger | message` (ISO 8601 UTC,
+  règle parc n°10). `HubClock` maintient l'offset (heure hub − heure
+  locale) ; `HubTimeFormatter` horodate chaque record. Niveau via
+  `LOG_LEVEL` (défaut INFO). Idempotent.
+- **`hub_client.sync_hub_time()`** : synchro via `GET /api/system/time`
+  (`epoch_ms`, public) au point médian request/réponse ; appelée au boot
+  après register, puis périodiquement par la boucle de fond
+  `hub_time_sync_loop` (`HUB_TIME_SYNC_INTERVAL`, défaut 300 s, tâche
+  annulée au shutdown). Échec → dernier offset conservé (fallback heure
+  locale UTC) ; hub sans `epoch_ms` → rejet explicite.
+- **`main.py`** : `basicConfig` remplacé par `setup_logging()` (fin de
+  l'heure conteneur non synchronisée) ; sync immédiate en lifespan.
+- **Config** : `HUB_TIME_SYNC_INTERVAL` (Settings + `.env.example`,
+  avec `LOG_LEVEL`).
+- **Tests** : `tests/test_logging_config.py` (13 tests — offset, format,
+  setup, sync mockée, fallback). Suite complète : 266 passed.
+
 ## [2.29.2] - 4 octobre 2026
 
 ### ⚡ Plugins OpenCode V2 — superpowers réparé + hub.ts migré
