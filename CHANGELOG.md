@@ -1,4 +1,26 @@
 
+## [2.29.2] - 4 octobre 2026
+
+### ⚡ Plugins OpenCode V2 — superpowers réparé + hub.ts migré
+
+- `opencode.json` : clé `plugin` renommée `plugins` (format canonique V2) et
+  pin superpowers déplacé de `896224c` (v6.0.3, format plugin V1 seul, rejeté
+  au chargement par l'API plugin V2) vers `8ca22db` (tag v6.4.2,
+  dual-compatible V1/V2). Les skills superpowers (brainstorming,
+  test-driven-development, systematic-debugging,
+  verification-before-completion, using-git-worktrees…) se chargent à
+  nouveau.
+- `.opencode/plugins/hub.ts` : migration au format plugin V2 — export
+  `default { id: "poulidor-hub", setup(ctx) }` (l'ancienne fonction V1
+  déclenchait `Plugin must export a default definition…`) et hook
+  `permission.ask` remplacé par `ctx.permission.hook("evaluate", …)`.
+  Garde-fou inchangé : toute décision `allow` matchant un motif destructeur
+  (`hub_*_delete`, `rm -rf`, `docker compose down -v`, `git push --force`,
+  `prod… deploy`…) est rétrogradée `ask`.
+- Validé en runtime : les deux plugins se chargent sans erreur sous l'API
+  plugin V2 (logs serveur OpenCode). Copie template synchronisée avec la
+  source de vérité POULIDOR.
+
 ## [2.29.0] - 1er octobre 2026
 
 ### ⚡ Nouveau skill socle — data-generate (données de test sans données réelles)
