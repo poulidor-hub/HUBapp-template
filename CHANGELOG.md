@@ -1,3 +1,14 @@
+## [2.29.2] - 5 octobre 2026
+
+### ⚡ fix(hub) — plugin opencode hub.ts migré au format API V2
+
+- `.opencode/plugins/hub.ts` resynchronisé depuis le méta-repo (0.70.7) :
+  export par défaut `{ id: "hub.guard", setup }` + hook
+  `ctx.permission.hook("evaluate")` — le superviseur de plugins OpenCode v2
+  (binaire embarqué OpenChamber v2.0.22) rejette l'ancien format V1.
+- Garde-fou « opérations destructrices » (rétrogradation allow→ask) de nouveau
+  actif dans toutes les sessions ; sémantique inchangée.
+
 
 ## [2.29.3] - 4 octobre 2026
 
