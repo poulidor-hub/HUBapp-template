@@ -5,9 +5,10 @@
  * Source de verite : POULIDOR/.opencode/plugins/hub.ts
  * Copie template synchronisee via `make sync-hub-tooling` (verif : `make sync-hub-tooling-check`).
  *
- * Format : plugin OpenCode V2 — export default { id, setup(ctx) }
- * (plugin API V2 : https://opencode.ai/v2/docs/build/plugins).
- * Pur JS sans dependance : aucun import runtime requis.
+ * API plugins OpenCode V2 : le PluginSupervisor exige un export par defaut
+ * `{ id, setup }` (l'ancien format V1 - fonction exportee + hook string
+ * "permission.asked" - n'est plus charge, cf. incident "skills indisponibles"
+ * du 05/10/2026). Le hook V2 equivalent est ctx.permission.hook("evaluate").
  *
  * Garde-fou : pour les operations destructrices (suppression Hub, restore,
  * revocation, prod, rm -rf, down -v, push --force...), on ne fait JAMAIS
@@ -27,31 +28,48 @@ const DESTRUCTIVE = [
   /\b(prod|production)\b.*\b(deploy|up|down|restart)\b/i,
 ]
 
+/**
+ * Decision de permission V2 (PermissionEvaluation) : le hook "evaluate" est
+ * appele pour les decisions "allow" et "ask" ; un "deny" explicite (regle
+ * configuree) est final et n'atteint jamais le hook. Seuls `effect` et
+ * `message` sont mutables.
+ */
+interface PermissionEvaluation {
+  readonly action: string
+  readonly resources: readonly string[]
+  readonly metadata?: Record<string, unknown>
+  effect: "allow" | "ask" | "deny"
+  message?: string
+}
+
+/** Sous-ensemble du contexte plugin V2 utilise ici (typage structurel local,
+ * sans dependance a @opencode/plugin non installe localement). */
+interface HubGuardContext {
+  permission: {
+    hook(
+      name: "evaluate",
+      callback: (event: PermissionEvaluation) => Promise<void> | void,
+    ): Promise<unknown>
+  }
+}
+
 export default {
-  id: "poulidor-hub",
-  async setup(ctx) {
-    await ctx.permission.hook("evaluate", async (event) => {
+  id: "hub.guard",
+  async setup(ctx: HubGuardContext) {
+    await ctx.permission.hook("evaluate", (event) => {
       try {
-        // Un "deny" configure n'atteint jamais ce hook ; on ne retrograde
-        // que les "allow" automatiques. Les "ask" restent "ask".
+        // On ne retrograde qu'un "allow" automatique ; un "ask" reste "ask".
         if (event.effect !== "allow") return
-        let metadata = ""
-        try {
-          metadata = JSON.stringify(event.metadata ?? {})
-        } catch {
-          metadata = ""
-        }
-        const haystack = [event.action, ...event.resources, metadata]
-          .filter(Boolean)
-          .join(" ")
+        const parts: string[] = [event.action, ...event.resources]
+        if (event.metadata) parts.push(JSON.stringify(event.metadata))
+        const haystack = parts.filter(Boolean).join(" ")
         if (DESTRUCTIVE.some((re) => re.test(haystack))) {
           event.effect = "ask"
           event.message =
-            "Garde-fou POULIDOR : operation potentiellement destructrice, confirmation humaine requise."
+            "Operation destructive detectee (garde-fou hub) : validation humaine requise."
         }
       } catch {
-        // En cas d'erreur du garde-fou, ne jamais bloquer l'action : on
-        // laisse la decision configuree telle quelle.
+        // Le garde-fou ne doit jamais casser le pipeline de permissions.
         return
       }
     })
