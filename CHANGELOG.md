@@ -1,4 +1,4 @@
-## [2.29.2] - 5 octobre 2026
+## [2.29.4] - 5 octobre 2026
 
 ### ⚡ fix(hub) — plugin opencode hub.ts migré au format API V2
 
