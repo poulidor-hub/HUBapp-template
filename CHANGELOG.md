@@ -1,3 +1,19 @@
+## [2.29.5] - 8 octobre 2026
+
+### ⚡ fix(front) — TDZ « logout » dans AuthContext : crash des apps neuves au premier render
+
+- **`frontend/src/context/AuthContext.jsx`** : le `useEffect` de
+  décodage/expiration du token référençait `logout` dans son tableau de deps
+  **avant** sa définition (`const logout = useCallback(...)` plus bas) —
+  TDZ « Cannot access 'logout' before initialization » à chaque render, donc
+  crash total de l'AuthProvider sur toute app fraîchement créée depuis le
+  template. Régression introduite par `05a2aff` (sync inter-onglets) :
+  invisible jusqu'ici, les apps existantes ayant été créées avant.
+- Fix : le `useEffect` est déplacé **après** la définition de `logout`
+  (comportement inchangé, ordre de déclaration corrigé).
+- Détecté par le test e2e `lab-hubcss` (création d'une app depuis le template
+  pour valider HUBCSS 0.3.0) ; fix validé en conditions réelles sur cette app
+  + build frontend vert.
 ## [2.29.4] - 5 octobre 2026
 
 ### ⚡ fix(hub) — plugin opencode hub.ts migré au format API V2
