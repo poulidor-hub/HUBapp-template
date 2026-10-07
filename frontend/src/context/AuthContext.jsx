@@ -97,22 +97,6 @@ export function AuthProvider({ children }) {
     [appConfig.hubApiUrl]
   )
 
-  // Décoder et vérifier le token quand il change (après refresh par ex.)
-  useEffect(() => {
-    if (token) {
-      const decoded = decodeToken(token)
-      if (decoded && decoded.exp) {
-        const now = Math.floor(Date.now() / 1000)
-        if (decoded.exp > now) {
-          setUser(decoded)
-        } else {
-          // Token expiré
-          logout()
-        }
-      }
-    }
-  }, [token, logout])
-
   // Sync inter-onglets : quand un autre onglet de la même app met à jour le
   // token dans localStorage (rotation sous verrou), adopter la nouvelle
   // valeur. Sans ça, un onglet garde un JWT expiré « en mémoire » et retente
@@ -147,6 +131,26 @@ export function AuthProvider({ children }) {
     console.log('🚪 Déconnexion via le Hub')
     window.location.href = hubLogoutUrl
   }, [appConfig.hubFrontendUrl])
+
+  // Décoder et vérifier le token quand il change (après refresh par ex.).
+  // Placé APRÈS la définition de `logout` : référencé dans son tableau de
+  // deps, il déclenchait un TDZ « Cannot access 'logout' before
+  // initialization » au premier render (régression 05a2aff, détectée par le
+  // test e2e lab-hubcss : toute app neuve crashait au boot React).
+  useEffect(() => {
+    if (token) {
+      const decoded = decodeToken(token)
+      if (decoded && decoded.exp) {
+        const now = Math.floor(Date.now() / 1000)
+        if (decoded.exp > now) {
+          setUser(decoded)
+        } else {
+          // Token expiré
+          logout()
+        }
+      }
+    }
+  }, [token, logout])
 
   // Référence pour éviter le rafraîchissement en double
   const refreshingRef = useRef(false)
