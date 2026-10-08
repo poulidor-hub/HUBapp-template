@@ -10,12 +10,29 @@ Use this skill when the task is to add or rework a React page that reads and wri
 
 This skill covers the frontend only. For the backend endpoint side, ask the agent to create the endpoint following `backend/routes/items.py` as the standard.
 
+## UI Directive (HUBCSS) — read first
+
+Every page follows the canonical structure. Copy it, don't invent:
+
+```
+Header global (Header.jsx) → .container → <PageHeader /> → ONE toolbar (.hub-toolbar) → ONE hub-panel (content)
+```
+
+- Use [frontend/src/components/PageHeader.jsx](../../../frontend/src/components/PageHeader.jsx) for the page header — it owns the page's ONLY `h1` (single back button, version pill, actions slot). Never render a second `h1`.
+- ONE toolbar per page, rendered by the page under the PageHeader.
+- A modal is NOT a page: content that needs tabs or navigation is a **route**.
+- No card inside card: `PageHeader → toolbar → hub-panel`, no nesting.
+- Style with seed classes only (`hub-*` from `public/design-system/current/`) — no ad hoc CSS, no extra UI dependencies.
+- List pattern to copy: [frontend/src/components/ExampleList.jsx](../../../frontend/src/components/ExampleList.jsx).
+
+Full recipe and rules: [frontend/README.md](../../../frontend/README.md).
+
 ## What This Repository Uses
 
 - Read hook: [frontend/src/hooks/useApiQuery.js](../../../frontend/src/hooks/useApiQuery.js).
 - Mutation hook: [frontend/src/hooks/useApiMutation.js](../../../frontend/src/hooks/useApiMutation.js).
 - API base URL via [frontend/src/context/ConfigContext.jsx](../../../frontend/src/context/ConfigContext.jsx); auth token via [frontend/src/context/AuthContext.jsx](../../../frontend/src/context/AuthContext.jsx).
-- Reference component for paginated lists with filters: [frontend/src/components/DataTable.jsx](../../../frontend/src/components/DataTable.jsx).
+- Reference component for paginated lists with filters: [frontend/src/components/ExampleList.jsx](../../../frontend/src/components/ExampleList.jsx) (canonical HUBCSS list composition).
 
 ## Procedure
 
