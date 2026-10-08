@@ -522,8 +522,8 @@ def update_file(filepath: Path, replacements: list, description: str) -> bool:
             filepath.write_text(content, encoding='utf-8')
             print(f"  {Colors.GREEN}✓ {description}: {filepath.name}{Colors.ENDC}")
             return True
-        print(f"  {Colors.YELLOW}○ Pas de changement: {filepath.name}{Colors.ENDC}")
-        return True
+        print(f"  {Colors.RED}❌ Aucun motif trouvé dans {filepath.name} — rebranding/migration raté{Colors.ENDC}")
+        return False
     except Exception as e:
         print(f"  {Colors.RED}✗ Erreur {filepath.name}: {e}{Colors.ENDC}")
         return False
@@ -666,10 +666,25 @@ def update_frontend_index(root: Path, config: dict) -> bool:
 
 def update_frontend_header(root: Path, config: dict) -> bool:
     filepath = root / 'frontend' / 'src' / 'components' / 'Header.jsx'
-    replacements = [
-        ('<h1>🔐 Template App - Hub Auth</h1>', f'<h1>🔐 {config["APP_NAME"]}</h1>'),
-    ]
-    return update_file(filepath, replacements, "Header frontend mis à jour")
+    try:
+        if not filepath.exists():
+            print(f"  {Colors.YELLOW}⚠ Fichier non trouvé: {filepath.name}{Colors.ENDC}")
+            return False
+        content = filepath.read_text(encoding='utf-8')
+        new_content = re.sub(
+            r'(<h1\b[^>]*>)[^<]*(</h1>)',
+            rf'\g<1>🔐 {config["APP_NAME"]}\g<2>',
+            content,
+        )
+        if new_content != content:
+            filepath.write_text(new_content, encoding='utf-8')
+            print(f"  {Colors.GREEN}✓ Header frontend mis à jour: {filepath.name}{Colors.ENDC}")
+            return True
+        print(f"  {Colors.RED}❌ Aucun motif trouvé dans {filepath.name} — rebranding/migration raté{Colors.ENDC}")
+        return False
+    except Exception as e:
+        print(f"  {Colors.RED}✗ Erreur {filepath.name}: {e}{Colors.ENDC}")
+        return False
 
 
 def update_frontend_package_json(root: Path, config: dict) -> bool:
