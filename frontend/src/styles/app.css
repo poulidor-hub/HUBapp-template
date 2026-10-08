@@ -1203,6 +1203,17 @@ header h1 {
   flex-wrap: wrap;
 }
 
+/* Titre de panel socle : la purge de `.card h2` a laissé les <h2> en tête
+   de hub-panel--padded (FormDemo, ErrorBoundary, UserCard, EndpointTests)
+   en style navigateur — le DS ne fournit pas ce motif lui-même */
+.hub-panel > h2:first-child {
+  color: var(--hub-color-accent);
+  font-size: var(--hub-font-size-lg);
+  border-bottom: 1px solid var(--hub-color-border);
+  padding-bottom: var(--hub-space-2);
+  margin-bottom: var(--hub-space-4);
+}
+
 /* Lien accentué dans le contenu */
 .app-link {
   color: var(--accent);

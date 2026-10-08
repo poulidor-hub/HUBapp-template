@@ -71,7 +71,9 @@ Référence complète : l'app `lab-hubcss`. Le seed CSS local reste le fallback 
 
 ### Gotcha Docker dev : `docker compose up -V`
 
-Le volume anonyme `node_modules` **fige les dépendances** : après avoir changé un tarball vendu (ou toute dep), faire `docker compose up -V` pour recréer le volume — sinon l'image tourne avec les anciennes deps malgré un `package.json` à jour.
+Le volume anonyme `node_modules` **fige les dépendances** : après avoir changé un tarball placé dans `frontend/vendor/` (ou toute dep), faire `docker compose up -V` pour recréer le volume — sinon l'image tourne avec les anciennes deps malgré un `package.json` à jour.
+
+Ré-exécuter INITIALISE sur un arbre déjà initialisé échoue désormais bruyamment (rebranding raté = erreur explicite) — INITIALISE est single-run.
 
 ## Sections de démonstration du template
 
