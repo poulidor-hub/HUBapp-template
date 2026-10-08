@@ -1,3 +1,28 @@
+## [2.30.0] - 8 octobre 2026
+
+### ⚡ Phase 2 — template exemplaire CSS-first (structure canonique, purge app.css, seed HUBCSS 0.3.0)
+
+- **Structure canonique** : `components/PageHeader.jsx` (markup
+  `hub-page-header` du DS 0.3.0 — title/back/badge/version défaut
+  APP_VERSION/meta/actions) ; routes réécrites (`index`, `demo/form`,
+  `notFound`) en composition visible `PageHeader > toolbar unique >
+  hub-panel` ; `components/ExampleList.jsx` remplace le monolithe
+  `DataTable.jsx` (410 l., dead code — importé nulle part).
+- **Purge app.css** : `.btn*/.card*/.role-badge*/.empty-state*/.category-badge`
+  + alias `--bg-*` supprimés ; 8 composants socle migrés `hub-*` (LoginPrompt,
+  TokenCard, UserCard, M2MTests, EndpointTests, FormDemo, Header,
+  ErrorBoundary) ; style socle titres de panels (`.hub-panel > h2:first-child`).
+- **Seed HUBCSS 0.3.0** (`make refresh-design-seed`) : classes structurelles
+  livrées d'office (`hub-page-header*`, `hub-modal*`, `hub-panel--padded`,
+  tokens z-index).
+- **INITIALISE** : rebranding Header bruyant (échec explicite si motif absent,
+  `update_file` global) + regex robuste (h1 multiligne, span imbriqué, icône
+  préservée) — fin des rebrandings silencieusement ratés.
+- **frontend/README.md** : recette de page canonique + 4 règles + matrice de
+  consommation HUBCSS (seed CSS / paquet React vendor / Verdaccio) + gotcha
+  `up -V`.
+- Exécuté en subagent-driven (6 tâches reviewées + review finale + e2e app
+  fraîche : Header rebrandé + structure canonique héritée d'emblée).
 ## [2.29.5] - 8 octobre 2026
 
 ### ⚡ fix(front) — TDZ « logout » dans AuthContext : crash des apps neuves au premier render
