@@ -43,11 +43,11 @@ function Header({ theme, toggleTheme }) {
           )}
         </button>
         {isAuthenticated ? (
-          <button className="btn btn-danger btn-small" onClick={logout}>
+          <button className="hub-button hub-button--danger hub-button--sm" onClick={logout}>
             Déconnexion
           </button>
         ) : (
-          <button className="btn btn-primary btn-small" onClick={login}>
+          <button className="hub-button hub-button--sm" onClick={login}>
             Connexion
           </button>
         )}
