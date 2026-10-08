@@ -292,9 +292,9 @@ function M2MTests() {
   }
 
   return (
-    <div className="card m2m-tests">
+    <div className="hub-panel hub-panel--padded m2m-tests">
       <h2><Link2 className="hub-icon" aria-hidden="true" /> Tests M2M (Machine-to-Machine)</h2>
-      <p className="card-intro">
+      <p className="app-intro">
         Section réservée aux administrateurs - Test de la communication inter-services via le Hub.
       </p>
 
@@ -310,7 +310,7 @@ function M2MTests() {
         <h3><Activity className="hub-icon" aria-hidden="true" /> Statut M2M de l'application</h3>
         <div className="m2m-toolbar">
           <button
-            className="btn btn-small btn-secondary"
+            className="hub-button hub-button-secondary hub-button--sm"
             onClick={fetchM2MStatus}
             disabled={loading.status}
           >
@@ -358,13 +358,13 @@ function M2MTests() {
       {/* Découverte des services */}
       <div className="m2m-section m2m-section-spaced">
         <h3><Search className="hub-icon" aria-hidden="true" /> Services M2M disponibles</h3>
-        <p className="card-intro">
+        <p className="app-intro">
           Interroge le Hub pour découvrir les APIs partagées (is_shared_service=true).
         </p>
 
         <div className="m2m-actions">
           <button
-            className="btn btn-primary"
+            className="hub-button"
             onClick={discoverServices}
             disabled={loading.discover || !m2mStatus?.can_get_token}
           >
@@ -376,7 +376,7 @@ function M2MTests() {
 
           {sharedServices.length > 0 && (
             <button
-              className="btn btn-secondary"
+              className="hub-button hub-button-secondary"
               onClick={testAllServices}
               disabled={Object.values(loading.test).some(v => v)}
             >
@@ -419,7 +419,7 @@ function M2MTests() {
                       ))}
                     </select>
                     <button
-                      className="btn btn-small btn-primary"
+                      className="hub-button hub-button--sm"
                       onClick={() => testService(service)}
                       disabled={loading.test[service.slug]}
                     >
@@ -490,11 +490,11 @@ function M2MTests() {
             ))}
           </div>
         ) : (
-          <div className="empty-state">
+          <div className="hub-empty-state">
             {loading.discover ? (
-              <p><Loader2 className="hub-icon" aria-hidden="true" /> Recherche des services en cours...</p>
+              <p className="hub-empty-state-description"><Loader2 className="hub-icon" aria-hidden="true" /> Recherche des services en cours...</p>
             ) : (
-              <p>Cliquez sur "Découvrir les services" pour interroger le Hub.</p>
+              <p className="hub-empty-state-description">Cliquez sur "Découvrir les services" pour interroger le Hub.</p>
             )}
           </div>
         )}

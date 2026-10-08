@@ -43,9 +43,9 @@ export default function FormDemo() {
   })
 
   return (
-    <div className="card">
+    <div className="hub-panel hub-panel--padded">
       <h2>Nouveau client (démo)</h2>
-      <p className="card-intro">
+      <p className="app-intro">
         Formulaire TanStack Form avec validation. Les devtools montrent l'état en temps réel.
       </p>
 
@@ -162,14 +162,14 @@ export default function FormDemo() {
             <div className="demo-form-footer">
               <button
                 type="submit"
-                className="btn btn-primary"
+                className="hub-button"
                 disabled={!state.canSubmit || state.isSubmitting}
               >
                 {state.isSubmitting ? 'Envoi...' : 'Enregistrer'}
               </button>
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="hub-button hub-button-secondary"
                 onClick={() => {
                   form.reset()
                   setSubmitResult(null)

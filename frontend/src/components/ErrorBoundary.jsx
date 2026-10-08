@@ -24,7 +24,7 @@ class ErrorBoundary extends React.Component {
             {this.state.error?.message || 'Erreur inconnue'}
           </p>
           <button
-            className="btn btn-secondary"
+            className="hub-button hub-button-secondary"
             onClick={() => this.setState({ hasError: false, error: null })}
           >
             Réessayer

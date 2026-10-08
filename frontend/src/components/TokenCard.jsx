@@ -17,11 +17,11 @@ function TokenCard() {
   }
 
   return (
-    <div className="card">
+    <div className="hub-panel hub-panel--padded">
       <div className="token-header">
         <h2><KeyRound className="hub-icon" aria-hidden="true" /> Token JWT</h2>
         <button
-          className="btn btn-small btn-secondary"
+          className="hub-button hub-button-secondary hub-button--sm"
           onClick={copyToken}
           disabled={!token}
         >
