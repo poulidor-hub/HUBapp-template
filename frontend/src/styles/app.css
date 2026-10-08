@@ -2,8 +2,6 @@
    legacy variable names to HUBCSS tokens so existing rules keep working and
    dark mode is handled entirely by HUBCSS ([data-theme="dark"] flips --hub-*). */
 :root {
-  --bg-primary: var(--hub-color-page);
-  --bg-secondary: var(--hub-color-surface);
   --text-primary: var(--hub-color-text);
   --text-secondary: var(--hub-color-muted);
   --accent: var(--hub-color-primary);
@@ -66,7 +64,7 @@
 
 /* Header */
 header {
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   padding: 15px 20px;
   box-shadow: var(--shadow-hub);
   display: flex;
@@ -102,90 +100,6 @@ header h1 {
   }
 }
 
-/* Buttons — alignés sur l'aspect HUBCSS via les tokens --hub-*
-   (#fff sur fond primaire = recette officielle .hub-button du DS) */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-hub, 8px);
-  background: var(--hub-color-primary);
-  color: #ffffff;
-  font-weight: var(--hub-font-weight-semibold);
-  line-height: 1;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.btn:hover {
-  background: var(--hub-color-primary-strong);
-}
-
-.btn:focus-visible {
-  box-shadow: var(--shadow-hub-focus);
-}
-
-.btn-primary {
-  background: var(--hub-color-primary);
-  color: #ffffff;
-}
-
-.btn-primary:hover {
-  background: var(--hub-color-primary-strong);
-}
-
-.btn-danger {
-  background: var(--hub-color-danger);
-  color: #ffffff;
-}
-
-.btn-danger:hover {
-  background: var(--hub-color-danger);
-  filter: brightness(0.92);
-}
-
-.btn-secondary {
-  background: var(--hub-color-surface);
-  border-color: var(--hub-color-border);
-  color: var(--hub-color-text);
-}
-
-.btn-secondary:hover {
-  background: var(--hub-color-surface-muted);
-}
-
-.btn-small {
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 0.8rem;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Cards */
-.card {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-hub);
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-hub);
-}
-
-.card h2 {
-  margin-bottom: 15px;
-  font-size: var(--hub-font-size-xl);
-  color: var(--accent);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 10px;
-}
-
 /* User Info */
 .user-info {
   display: flex;
@@ -210,23 +124,6 @@ header h1 {
   font-size: 1.1rem;
 }
 
-/* Role Badge — recette HUBCSS .hub-badge-* (fond *-soft + couleur du DS,
-   bascule automatique en dark via les tokens) */
-.role-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 12px;
-  border-radius: var(--radius-hub-full);
-  font-size: var(--hub-font-size-sm);
-  font-weight: var(--hub-font-weight-semibold);
-}
-
-.role-viewer { background: var(--hub-color-primary-soft); color: var(--hub-color-primary-strong); }
-.role-user { background: var(--hub-color-success-soft); color: var(--hub-color-success); }
-.role-manager { background: var(--hub-color-warning-soft); color: var(--hub-color-warning); }
-.role-admin { background: var(--hub-color-danger-soft); color: var(--hub-color-danger); }
-.role-none, .role-aucun { background: var(--hub-color-surface-muted); color: var(--hub-color-muted); }
-
 /* Test Grid */
 .test-grid {
   display: grid;
@@ -235,7 +132,7 @@ header h1 {
 }
 
 .test-item {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub-sm);
   padding: 15px;
@@ -282,7 +179,7 @@ header h1 {
 
 /* Token Display */
 .token-display {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub-sm);
   padding: 15px;
@@ -373,7 +270,7 @@ header h1 {
 }
 
 .m2m-status-card {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub);
   padding: 15px;
@@ -407,7 +304,7 @@ header h1 {
 }
 
 .m2m-status-card .status-detail code {
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.85em;
@@ -429,7 +326,7 @@ header h1 {
 }
 
 .service-card {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub);
   padding: 15px;
@@ -460,7 +357,7 @@ header h1 {
 }
 
 .service-url code {
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -480,7 +377,7 @@ header h1 {
 .service-card .test-response {
   margin-top: 8px;
   padding: 8px;
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   border-radius: 4px;
   font-size: 0.75rem;
   max-height: 100px;
@@ -492,20 +389,11 @@ header h1 {
   font-size: 0.85rem;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 30px;
-  color: var(--text-secondary);
-  background: var(--bg-primary);
-  border-radius: var(--radius-hub);
-  border: 1px dashed var(--border);
-}
-
 /* Panneau d'info M2M (remplace les styles inline de M2MTests) */
 .m2m-info {
   margin-top: var(--hub-space-5);
   padding: var(--hub-space-4);
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border-radius: var(--radius-hub);
 }
 
@@ -520,7 +408,7 @@ header h1 {
 }
 
 .m2m-info code {
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   padding: 2px 6px;
   border-radius: var(--radius-hub-sm);
   font-size: 0.85em;
@@ -600,7 +488,7 @@ header h1 {
 }
 
 .data-table th {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   font-weight: 600;
   color: var(--text-secondary);
   font-size: 0.8rem;
@@ -609,7 +497,7 @@ header h1 {
 }
 
 .data-table tbody tr:hover {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
 }
 
 .data-table .data-id {
@@ -649,7 +537,7 @@ header h1 {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-hub-sm);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   color: var(--text-primary);
   font-size: 0.9rem;
   width: 100%;
@@ -665,7 +553,7 @@ header h1 {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-hub-sm);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
@@ -678,7 +566,7 @@ header h1 {
 
 /* Formulaire d'ajout */
 .data-form {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   padding: 12px;
   border-radius: var(--radius-hub-sm);
   margin-bottom: 15px;
@@ -699,21 +587,6 @@ header h1 {
 .data-form-row .data-select {
   min-width: 120px;
 }
-
-/* Badges de catégorie — recette HUBCSS (tokens auto-dark, pas d'override manuel) */
-.category-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: var(--radius-hub-full);
-  font-size: var(--hub-font-size-xs);
-  font-weight: var(--hub-font-weight-medium);
-}
-
-.category-general { background: var(--hub-color-surface-muted); color: var(--hub-color-muted); }
-.category-infrastructure { background: var(--hub-color-primary-soft); color: var(--hub-color-primary-strong); }
-.category-stack { background: var(--hub-color-success-soft); color: var(--hub-color-success); }
-.category-config { background: var(--hub-color-warning-soft); color: var(--hub-color-warning); }
-.category-custom { background: var(--hub-color-accent-soft); color: var(--hub-color-accent-strong); }
 
 /* États */
 .data-loading,
@@ -825,7 +698,7 @@ header h1 {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   padding: 4px 10px;
   border-radius: var(--radius-hub-sm);
   border: 1px solid var(--border);
@@ -839,7 +712,7 @@ header h1 {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub-full);
   padding: 4px 14px;
@@ -849,7 +722,7 @@ header h1 {
 }
 
 .message-banner-dismiss-all:hover {
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   color: var(--text-primary);
 }
 
@@ -867,7 +740,7 @@ header h1 {
   display: flex;
   gap: 12px;
   padding: 16px;
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   border-radius: var(--radius-hub);
   border-left: 4px solid var(--accent);
   border-top: 1px solid var(--border);
@@ -963,7 +836,7 @@ header h1 {
 
 .message-banner-close:hover {
   opacity: 1;
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   color: var(--text-primary);
 }
 
@@ -1059,7 +932,7 @@ header h1 {
   height: 36px;
   border-radius: var(--radius-hub-full);
   border: 1px solid var(--border);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
@@ -1111,7 +984,7 @@ header h1 {
   right: 20px;
   width: 370px;
   max-height: 480px;
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-hub);
   box-shadow: var(--shadow-hub-raised);
@@ -1129,7 +1002,7 @@ header h1 {
 .message-archive-header {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-primary);
+  background: var(--hub-color-page);
   border-radius: var(--radius-hub) var(--radius-hub) 0 0;
   display: flex;
   justify-content: space-between;
@@ -1315,14 +1188,16 @@ header h1 {
 
 /* ============ Utilitaires partagés (remplacent les styles inline) ============ */
 
-/* Paragraphe d'introduction sous le titre d'une carte */
-.card-intro {
+/* Paragraphe d'introduction sous le titre d'un panel (ex-.card-intro,
+   renommé socle : la classe DS hub-panel ne fournit pas d'intro muted) */
+.app-intro {
   color: var(--text-secondary);
   margin-bottom: var(--hub-space-4);
 }
 
-/* Ligne d'actions dans une carte (boutons) */
-.card-actions {
+/* Ligne d'actions dans un panel (ex-.card-actions, renommée socle :
+   flex-gap uniquement, le box model vient de hub-panel--padded) */
+.app-actions {
   display: flex;
   gap: var(--hub-space-3);
   flex-wrap: wrap;
@@ -1380,7 +1255,7 @@ header h1 {
   padding: 6px 10px;
   border-radius: var(--radius-hub-sm);
   border: 1px solid var(--border);
-  background: var(--bg-secondary);
+  background: var(--hub-color-surface);
   color: var(--text-primary);
   font-size: var(--hub-font-size-sm);
   min-width: 180px;

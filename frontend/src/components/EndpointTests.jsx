@@ -6,6 +6,17 @@ import {
 import { useConfig } from '../context/ConfigContext'
 import { useAuth } from '../context/AuthContext'
 
+// Mapping rôle → variante hub-badge (spec §4.3) : admin = pill, user = défaut,
+// viewer = success, manager = warning (couleur héritée de l'ancien .role-manager).
+const roleBadgeClasses = (role) => {
+  switch (role) {
+    case 'admin': return 'hub-badge hub-badge--pill'
+    case 'viewer': return 'hub-badge hub-badge-success'
+    case 'manager': return 'hub-badge hub-badge-warning'
+    default: return 'hub-badge'
+  }
+}
+
 // icon: composant Lucide (affiché via className="hub-icon")
 const ENDPOINTS = [
   { name: 'Public', endpoint: '/api/public', description: 'Aucune authentification requise', icon: BookOpen },
@@ -84,9 +95,9 @@ function EndpointTests() {
 
   return (
     <>
-      <div className="card">
+      <div className="hub-panel hub-panel--padded">
         <h2><FlaskConical className="hub-icon" aria-hidden="true" /> Test des endpoints par rôle</h2>
-        <p className="card-intro">
+        <p className="app-intro">
           Cliquez sur "Tester" pour vérifier votre accès à chaque endpoint.
         </p>
 
@@ -98,7 +109,7 @@ function EndpointTests() {
                   <Icon className="hub-icon" aria-hidden="true" /> {name}
                 </span>
                 <button
-                  className="btn btn-small btn-primary"
+                  className="hub-button hub-button--sm"
                   onClick={() => testEndpoint(endpoint)}
                   disabled={loading[endpoint]}
                 >
@@ -108,7 +119,7 @@ function EndpointTests() {
               <div className="endpoint">GET {endpoint}</div>
               <div className="required-role">
                 {role ? (
-                  <>Rôle minimum: <span className={`role-badge role-${role}`}>{role}</span></>
+                  <>Rôle minimum: <span className={roleBadgeClasses(role)}>{role}</span></>
                 ) : (
                   description
                 )}
@@ -130,16 +141,16 @@ function EndpointTests() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="hub-panel hub-panel--padded">
         <h2><Rocket className="hub-icon" aria-hidden="true" /> Actions rapides</h2>
-        <div className="card-actions">
-          <button className="btn btn-primary" onClick={runAllTests}>
+        <div className="app-actions">
+          <button className="hub-button" onClick={runAllTests}>
             Tester tous les endpoints
           </button>
-          <button className="btn btn-secondary" onClick={clearResults}>
+          <button className="hub-button hub-button-secondary" onClick={clearResults}>
             Effacer les résultats
           </button>
-          <a href={`${config.apiUrl}/api/docs`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
+          <a href={`${config.apiUrl}/api/docs`} target="_blank" rel="noopener noreferrer" className="hub-button hub-button-secondary">
             <BookOpen className="hub-icon" aria-hidden="true" /> Documentation API
           </a>
         </div>
