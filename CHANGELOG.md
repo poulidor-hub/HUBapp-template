@@ -1,3 +1,16 @@
+## [2.30.1] - 8 octobre 2026
+
+### ⚡ docs(front) — directive IA sèche + skills resynchronisés
+
+- **`frontend/README.md`** : la matrice de consommation (seed / vendor /
+  Verdaccio) remplacée par la directive — « classes `hub-*` du seed, c'est
+  tout » ; recette + 4 règles + mapping conservés ; option React DS résumée
+  à un renvoi vers `HUBCSS/docs/HOW2USE.md`.
+- **Skills frontend resynchronisés** : `frontend-crud-page` (directive
+  « UI Directive — read first » : structure canonique + 4 règles + référence
+  ExampleList), `react-list-rendering`, `badge-search-system`,
+  `bulk-operations` — références `DataTable.jsx` (supprimé en 2.30.0)
+  → `ExampleList.jsx`.
 ## [2.30.0] - 8 octobre 2026
 
 ### ⚡ Phase 2 — template exemplaire CSS-first (structure canonique, purge app.css, seed HUBCSS 0.3.0)
