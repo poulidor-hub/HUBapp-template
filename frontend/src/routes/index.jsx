@@ -19,7 +19,7 @@ export default function HomePage() {
       <PageHeader
         title="Accueil"
         meta={total != null ? `${total} éléments · structure canonique` : 'structure canonique'}
-        actions={(
+        actions={import.meta.env.DEV && (
           <Link to="/demo/form" className="hub-button">
             Démo Form
           </Link>
