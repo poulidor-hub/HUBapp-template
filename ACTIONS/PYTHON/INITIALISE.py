@@ -671,12 +671,22 @@ def update_frontend_header(root: Path, config: dict) -> bool:
             print(f"  {Colors.YELLOW}⚠ Fichier non trouvé: {filepath.name}{Colors.ENDC}")
             return False
         content = filepath.read_text(encoding='utf-8')
-        new_content = re.sub(
-            r'(<h1\b[^>]*>)[^<]*(</h1>)',
-            rf'\g<1>🔐 {config["APP_NAME"]}\g<2>',
-            content,
-        )
-        if new_content != content:
+        # Cible le texte affiché : span imbriqué dans le h1 (icône préservée),
+        # avec repli sur un h1 texte simple. Lambda => APP_NAME jamais interprété.
+        replacement = lambda m: f"{m.group(1)}🔐 {config['APP_NAME']}{m.group(3)}"
+        # Passe 1 : h1 multiligne avec éléments imbriqués (structure réelle du Header).
+        # (?:(?!</h1>).)*? : ne franchit pas </h1> -> un span APRÈS le h1 ne peut pas
+        # être capturé par erreur (sinon la passe 2 ne servirait jamais).
+        new_content, n = re.subn(
+            r'(<h1\b[^>]*>(?:(?!</h1>).)*?<span[^>]*>)([^<]*)(</span>)',
+            replacement, content, flags=re.S)
+        if n == 0:
+            # Passe 2 : h1 texte simple (attributs optionnels). 3 groupes capturants
+            # (texte ancien = groupe 2) => même lambda que la passe 1.
+            new_content, n = re.subn(
+                r'(<h1\b[^>]*>)([^<]*)(</h1>)',
+                replacement, content, flags=re.S)
+        if n > 0:
             filepath.write_text(new_content, encoding='utf-8')
             print(f"  {Colors.GREEN}✓ Header frontend mis à jour: {filepath.name}{Colors.ENDC}")
             return True
