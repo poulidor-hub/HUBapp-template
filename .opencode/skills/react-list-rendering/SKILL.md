@@ -17,7 +17,7 @@ Both patterns also interact poorly with the TanStack Query cache used in this re
 
 - Read hook: [frontend/src/hooks/useApiQuery.js](../../../frontend/src/hooks/useApiQuery.js).
 - Mutation hook: [frontend/src/hooks/useApiMutation.js](../../../frontend/src/hooks/useApiMutation.js) — relies on `invalidateKeys` to refresh lists, so mutations rarely require local array edits.
-- Reference list/table component: [frontend/src/components/DataTable.jsx](../../../frontend/src/components/DataTable.jsx).
+- Reference list/table component: [frontend/src/components/ExampleList.jsx](../../../frontend/src/components/ExampleList.jsx).
 - Companion skill for full pages: [frontend-crud-page](../frontend-crud-page/SKILL.md).
 
 ## Rule 1 — Treat state as immutable

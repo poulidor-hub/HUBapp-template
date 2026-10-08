@@ -156,7 +156,7 @@ const params = {
 
 ### 3. Rendu de la barre de badges
 
-Le template n'a ni composant `TableToolbar` ni page d'exemple avec badges : ce JSX (badge cliquable + style exclu/barré + bouton « Tout réactiver ») est **à créer dans l'app dérivée**, intégré sous l'input de recherche de la page (cf. la structure de page de `frontend/src/components/DataTable.jsx`). Structure :
+Le template n'a ni composant `TableToolbar` ni page d'exemple avec badges : ce JSX (badge cliquable + style exclu/barré + bouton « Tout réactiver ») est **à créer dans l'app dérivée**, intégré sous l'input de recherche de la page (cf. la structure de page de `frontend/src/components/ExampleList.jsx`). Structure :
 
 ```jsx
 {/* Barre de badges sous l'input de recherche */}
@@ -213,7 +213,7 @@ Le template n'a pas de composant `HighlightText` : **à créer dans l'app dériv
 | Schémas Pydantic (`PaginatedResponse`, `ItemResponse`) | `backend/schemas.py` |
 | Modèles SQLAlchemy | `backend/models.py` |
 | Enregistrement des routers | `backend/main.py` |
-| Page liste frontend (filtre + `useApiQuery`/`useApiMutation`) | `frontend/src/components/DataTable.jsx` |
+| Page liste frontend (filtre + `useApiQuery`/`useApiMutation`) | `frontend/src/components/ExampleList.jsx` |
 | Hooks API (fetch + mutations optimistes) | `frontend/src/hooks/useApiQuery.js`, `frontend/src/hooks/useApiMutation.js` |
 
 ## Key Design Decisions

@@ -49,31 +49,15 @@ Les classes "maison" dupliquant le design system ont été purgées d'`app.css` 
 
 Nouveau code : utiliser directement les classes `hub-*` — voir [`../HUBCSS/docs/HOW2USE.md`](../HUBCSS/docs/HOW2USE.md) (symlink ou checkout HUBCSS voisin).
 
-## Matrice de consommation HUBCSS
+## La directive
 
-| Besoin | Chemin |
-|---|---|
-| Structure + styles (template & apps) | Seed CSS `hub-*` — **défaut, zéro dépendance** |
-| Composants React DS (StatCard, Modal…) | Option app : tarball `npm pack` → `vendor/` + dep `file:` (pattern lab-hubcss) + `setIconSpriteHref('/design-system/current/icons/lucide.svg')` au boot ; Dockerfiles : `COPY frontend/vendor/ ./vendor/` **avant** `npm install` |
-| Registre npm privé | Verdaccio (`HUBCSS/docs/VERDACCIO.md`) pour les builds serveur air-gapped |
+Tu codes avec les classes `hub-*` du seed. **C'est tout.**
 
-### Pattern vendor (option app)
+Une page = `PageHeader` → une toolbar → un `hub-panel`. Pas d'autre système, pas de CSS ad hoc, pas de dépendance à ajouter.
 
-Pour consommer la bibliothèque React du DS (`@poutchouli/design-system/react`) sans registre :
+Besoin d'un composant React du DS (Modal, StatCard…) un jour ? Voir `HUBCSS/docs/HOW2USE.md` — décision d'app, jamais une règle du template.
 
-1. Dans HUBCSS : `npm run build` puis `npm pack`.
-2. Copier le tarball dans `frontend/vendor/`.
-3. Dépendance dans `frontend/package.json` : `"file:./vendor/<tarball>.tgz"`.
-4. Appeler `setIconSpriteHref('/design-system/current/icons/lucide.svg')` au boot (le paquet ne porte pas le sprite).
-5. Ajouter `COPY frontend/vendor/ ./vendor/` **avant** `npm install` dans les Dockerfiles — sinon le build échoue (fichier introuvable).
-
-Référence complète : l'app `lab-hubcss`. Le seed CSS local reste le fallback de premier boot / hors-ligne ; en production, le bundle servi par le Hub (`/design-system/current/`) fait foi (voir HOW2USE).
-
-### Gotcha Docker dev : `docker compose up -V`
-
-Le volume anonyme `node_modules` **fige les dépendances** : après avoir changé un tarball placé dans `frontend/vendor/` (ou toute dep), faire `docker compose up -V` pour recréer le volume — sinon l'image tourne avec les anciennes deps malgré un `package.json` à jour.
-
-Ré-exécuter INITIALISE sur un arbre déjà initialisé échoue désormais bruyamment (rebranding raté = erreur explicite) — INITIALISE est single-run.
+Ré-exécuter INITIALISE sur un arbre déjà initialisé échoue bruyamment — INITIALISE est single-run.
 
 ## Sections de démonstration du template
 

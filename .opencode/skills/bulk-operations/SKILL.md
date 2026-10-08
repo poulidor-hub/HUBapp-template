@@ -174,7 +174,7 @@ const handleSelectionChange = (e) => {
 
 ## Phase 6 — Frontend : colonne checkbox + batch bar
 
-La table du socle (`frontend/src/components/DataTable.jsx`) est une page concrète **sans sélection** : la colonne checkbox est **à ajouter dans l'app dérivée** (admin only) :
+La table du socle (`frontend/src/components/ExampleList.jsx`) est une page concrète **sans sélection** : la colonne checkbox est **à ajouter dans l'app dérivée** (admin only) :
 
 ```jsx
 {/* Header de la table */}
@@ -234,7 +234,7 @@ Batch action bar (affichée quand la sélection est active) :
 | Route de liste avec filtre simple | `backend/routes/test_data.py` |
 | Schémas Pydantic (patrons `ItemResponse`, `PaginatedResponse`) | `backend/schemas.py` |
 | Enregistrement des routers | `backend/main.py` |
-| Page liste frontend (filtre + mutations optimistes) | `frontend/src/components/DataTable.jsx` |
+| Page liste frontend (filtre + mutations optimistes) | `frontend/src/components/ExampleList.jsx` |
 | Hooks API (`useApiQuery` / `useApiMutation`, invalidation de cache) | `frontend/src/hooks/useApiQuery.js`, `frontend/src/hooks/useApiMutation.js` |
 
 ## Conventions pour nouvelles pages
