@@ -125,22 +125,41 @@ def main() -> int:
     if host:
         body["host"] = host
 
-    print(f"🎰 Demande d'allocation de ports au Hub: {url} (slug={slug}, host={host or 'auto'})")
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-    except Exception as e:
-        # Le Hub est injoignable ou sans endpoint d'allocation : on prépare au
+    # CAS 1 (APP_HOST vide = app sur le même serveur que le Hub) : l'endpoint
+    # n'accepte que des IP réseaux Docker (whitelist anti-abus) — depuis
+    # l'hôte via HUB_HOST=<IP LAN>, la source vue par hub-api est hors
+    # whitelist → 403. Le repli localhost (port publié) présente la gateway
+    # Docker comme source → accepté. CAS 2 (app distante) : pas de repli.
+    candidates = [url]
+    if not host:
+        candidates.append(f"http://localhost:{hub_api_port}/api/apps/allocate-ports")
+    candidates = list(dict.fromkeys(candidates))  # dédoublonne si HUB_HOST=localhost
+
+    payload = json.dumps(body).encode()
+    data = None
+    last_err: Exception | None = None
+    for candidate in candidates:
+        print(f"🎰 Demande d'allocation de ports au Hub: {candidate} (slug={slug}, host={host or 'auto'})")
+        req = urllib.request.Request(
+            candidate,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            break
+        except Exception as e:
+            last_err = e
+            if candidate != candidates[-1]:
+                print(f"⚠️  {candidate} indisponible ({e}) — nouvel essai via {candidates[-1]}")
+    if data is None:
+        # Hub injoignable ou sans endpoint d'allocation : on prépare au
         # moins le sous-réseau localement (fallback legacy), mais les ports
         # manquants restent bloquants.
         allocate_subnet_locally(ENV_PATH)
-        print(f"❌ Échec de l'allocation des ports auprès du Hub: {e}")
+        print(f"❌ Échec de l'allocation des ports auprès du Hub: {last_err}")
         return 1
 
     api = str(data["api_port"])
