@@ -1,3 +1,25 @@
+## [2.30.2] - 13 octobre 2026
+
+### ⚡ allocate_ports : repli localhost pour l'allocation des ports (CAS 1)
+
+- **Fix** : l'endpoint Hub `POST /api/apps/allocate-ports` n'accepte que des
+  IP **réseaux Docker** (whitelist anti-abus 172.17–31). Depuis l'hôte via
+  `HUB_HOST=<IP LAN>`, la source vue par `hub-api` est hors whitelist →
+  `HTTP 403` → `make sync-env` échouait sur un `.env` frais (premier boot),
+  et le fallback legacy allouait un subnet `10.220.x` (plage exemple-app)
+  inadapté au parc avant de sortir en erreur.
+- Désormais : quand `APP_HOST` est vide (app sur le même serveur que le Hub),
+  nouvel essai via `http://localhost:{port}` — la source devient la gateway
+  Docker → accepté, valeurs du parc obtenues (ex. `10.50.x.0/24`). Le fallback
+  legacy reste le dernier recours ; en app distante (`APP_HOST` renseigné),
+  comportement inchangé (pas de repli localhost).
+- **Tests** : `ACTIONS/PYTHON/test_allocate_ports.py` (4 cas — repli
+  403→localhost sans fallback legacy, pas d'appel superflu, pas de repli en
+  remote, skip si déjà alloué) ; suite ACTIONS complète 36 passed.
+- Détecté via l'app exemple-app (même bug sur sa copie, corrigé en 0.8.2).
+
+---
+
 ## [2.30.1] - 8 octobre 2026
 
 ### ⚡ docs(front) — directive IA sèche + skills resynchronisés
