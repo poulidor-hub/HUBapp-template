@@ -157,7 +157,9 @@ class HubClient:
     async def close(self) -> None:
         """Ferme le client HTTP partagé. À appeler au shutdown de l'application."""
         if self._http_client and not self._http_client.is_closed:
-            await self._http_client.close()
+            # httpx.AsyncClient expose aclose(), pas close() — AttributeError
+            # au shutdown sinon (httpx >= 0.28, bug 2.30.2).
+            await self._http_client.aclose()
             self._http_client = None
 
     async def sync_hub_time(self) -> bool:
