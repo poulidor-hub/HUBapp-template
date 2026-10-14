@@ -34,6 +34,30 @@
 
 ---
 
+## [2.31.0] - 14 octobre 2026
+
+### ⚡ `sync_socle_version` — auto-alignement APP_SOCLE_VERSION (apps fines sur image socle)
+
+- **Nouveau** `scripts/sync_socle_version.py`, branché dans `make sync-env`
+  : `APP_SOCLE_VERSION` suit **automatiquement** le socle construit
+  localement (`HUBsocle/VERSION` + présence de l'image) — plus d'échec
+  "pull access denied" sur `docker.io/poulidor/socle-api` après un
+  `./hubctl socle build` (image locale du parc, jamais publiée ; le
+  `.env` ne suivait pas car `update_env.py` ne met jamais à jour une clé
+  existante). Motivation : déploiement serveur d'exemple-app
+  (2.25.0 resté figé après 3 bumps socle).
+- **Sécurités** : HUBsocle absent (apps inline) ou docker indisponible →
+  no-op ; image attendue absente → échec explicite et actionnable
+  ("lancez `./hubctl socle build`") ; idempotent.
+- Pour les apps inline ce script est un no-op documenté (pas de clé
+  `APP_SOCLE_VERSION`) — un seul Makefile pour les deux familles d'apps.
+- Les apps fines **existantes** (hors INITIALISE) backportent le script +
+  la ligne `sync-env` manuellement — fait pour exemple-app 1.9.0.
+- Suite : sans impact backend (script standalone) — validé sandbox
+  4 cas + serveur client.
+
+---
+
 ## [2.30.2] - 13 octobre 2026
 
 ### ⚡ allocate_ports : repli localhost pour l'allocation des ports (CAS 1)
