@@ -80,9 +80,41 @@ async def close_db():
 
 
 def _strip_sql_comments(sql_block: str) -> str:
-    """Retire les lignes de commentaires SQL (--) d'un bloc et renvoie le SQL nettoyé."""
-    lines = [line for line in sql_block.splitlines() if not line.strip().startswith('--')]
-    return '\n'.join(lines).strip()
+    """Retire les commentaires SQL (--) d'un bloc : lignes entières ET fins de
+    ligne, en ignorant les occurrences de '--' placées dans une chaîne quotée
+    ('...' avec échappement '' en SQL).
+
+    Doit être appelé AVANT _split_sql_statements : une apostrophe dans un
+    commentaire (« d'ingestion ») ouvre sinon une chaîne fantôme dans le
+    splitter, qui avale tous les ';' suivants et fusionne la migration entière
+    en un statement → échec systématique, migration jamais appliquée
+    (bug 2.30.2 : fresh-install bloquée, ex. exports 003/006).
+    """
+    cleaned_lines: list[str] = []
+    for line in sql_block.splitlines():
+        out: list[str] = []
+        in_string = False
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if in_string:
+                out.append(ch)
+                if ch == "'":
+                    if i + 1 < len(line) and line[i + 1] == "'":
+                        out.append("'")  # '' échappé → un seul quote
+                        i += 1
+                    else:
+                        in_string = False
+            elif ch == "'":
+                in_string = True
+                out.append(ch)
+            elif ch == '-' and line[i + 1:i + 2] == '-':
+                break  # commentaire → on coupe jusqu'à la fin de ligne
+            else:
+                out.append(ch)
+            i += 1
+        cleaned_lines.append(''.join(out).rstrip())
+    return '\n'.join(cleaned_lines).strip()
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -179,8 +211,12 @@ async def apply_migrations(
             logger.info(f"📦 Application de la migration {mf.name}...")
             sql = mf.read_text()
             failed_statements = 0
-            for statement in _split_sql_statements(sql):
-                statement = _strip_sql_comments(statement)
+            # Strip des commentaires AVANT le split : une apostrophe dans un
+            # commentaire (« d'ingestion ») ouvre sinon une chaîne fantôme dans
+            # le splitter → tous les ';' avalés → un seul statement fusionné →
+            # migration jamais appliquée (bug 2.30.2, ex. exports 003/006).
+            for statement in _split_sql_statements(_strip_sql_comments(sql)):
+                statement = statement.strip()
                 if statement:
                     try:
                         await conn.execute(text("SAVEPOINT migration_stmt"))

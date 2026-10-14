@@ -1,3 +1,39 @@
+## [2.30.3] - 14 octobre 2026
+
+### ⚡ Cinq correctifs socle — migrations fresh-install, shutdown, suite de tests, tooling
+
+- **Fix (bloquant fresh-install)** — Migrations SQL : `_strip_sql_comments` devient
+  quote-aware (lignes entières **et** fins de ligne, `--` à l'intérieur d'une chaîne
+  préservé) et `apply_migrations` strip les commentaires **avant** le split. Une
+  apostrophe dans un commentaire (« Tables d'ingestion ») ouvrait une chaîne fantôme
+  dans `_split_sql_statements` : tous les `;` suivants avalés, la migration fusionnée
+  en un seul statement → asyncpg « cannot insert multiple commands » → jamais marquée
+  appliquée, re-jouée à chaque boot. Cas réels : exports 003/006, HUB 003/006 (23/21
+  statements désormais correctement séparés). +4 tests (rouge prouvé avant fix).
+- **Fix shutdown** — `hub_client.close()` : `httpx.AsyncClient` n'expose que `aclose()`
+  (httpx ≥ 0.28) → `AttributeError` au shutdown (« Application shutdown failed »).
+  +2 tests (close dispose le client, close idempotent sans client).
+- **Fix tests** — `test_download_backup_streams_from_disk` compatible Starlette ≥ 1.0 :
+  `FileResponse` écoute `receive()` en attendant `http.disconnect` pendant le stream ;
+  le mock répondait `http.request` en boucle → attente infinie à 100 % CPU en conteneur
+  (starlette 1.8 ; passait en 10 ms sur l'hôte en starlette 0.38). `receive()` attend
+  désormais la fin du body (signalé par `send()`, `more_body=False`) puis renvoie
+  `http.disconnect`.
+- **Fix tests** — conftest `async_engine` : SQLite fichier temporaire (`mkstemp`,
+  unlink au teardown) au lieu de `:memory:` — SQLAlchemy 2.1 : StaticPool = connexion
+  unique partagée, course sur lastrowid → IDs dupliqués en concurrence
+  (`test_concurrent_enqueue` échouait en conteneur : `assert 3 == 10` ; passait sur
+  l'hôte en 2.0.48).
+- **Fix tooling** — `make test-docker` / `test-docker-cov` exécutent pytest en appuser
+  (`docker compose exec --user 1000`, fidèle à la prod) : le conteneur démarre en root
+  (entrypoint gosu) sans DAC_OVERRIDE, pytest root ne pouvait pas créer
+  `/app/storage/.hub_register.lock` (appartient à appuser) → `PermissionError` sur
+  2 tests `test_hub_client_depends`.
+- Tests : 272 passed hôte (`pytest -n auto`) ; cycle Docker vérifié
+  (`make test-docker XDIST_WORKERS=4` : 268 passed / 4 skipped).
+
+---
+
 ## [2.30.2] - 13 octobre 2026
 
 ### ⚡ allocate_ports : repli localhost pour l'allocation des ports (CAS 1)

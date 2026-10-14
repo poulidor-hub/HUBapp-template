@@ -162,10 +162,12 @@ ensure-api-fresh: ## (interne) Rebuilder l'image api si les sources sont plus r�
 	elif [ $$rc -ne 0 ]; then exit $$rc; fi
 
 test-docker: ensure-api-fresh ## Lancer pytest dans le conteneur api (env Docker, image runtime)
-	$(COMPOSE) exec api python -m pytest -n $(XDIST_WORKERS) -v
+	# --user 1000 (appuser) : le conteneur démarre en root sans DAC_OVERRIDE,
+	# /app/storage (lock d'enregistrement) appartient à appuser → PermissionError sinon.
+	$(COMPOSE) exec --user 1000 api python -m pytest -n $(XDIST_WORKERS) -v
 
 test-docker-cov: ensure-api-fresh ## Pytest + couverture dans le conteneur api
-	$(COMPOSE) exec api python -m pytest -n $(XDIST_WORKERS) --cov=. --cov-report=term-missing -v
+	$(COMPOSE) exec --user 1000 api python -m pytest -n $(XDIST_WORKERS) --cov=. --cov-report=term-missing -v
 
 # === SANTÉ ===
 

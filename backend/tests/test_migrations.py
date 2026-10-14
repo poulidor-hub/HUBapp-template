@@ -105,6 +105,69 @@ class TestQuoteAwareSplit:
         assert values == ["a;b;c"], "le ';' dans la chaîne a cassé le statement"
 
 
+class TestCommentApostrophes:
+    """Bug 2.30.2 : une apostrophe dans un commentaire SQL ('d'ingestion') ouvre
+    une chaîne fantôme dans _split_sql_statements (le split s'exécutait AVANT le
+    strip des commentaires) : tous les ';' suivants sont avalés, la migration
+    part en un seul statement fusionné → asyncpg 'cannot insert multiple
+    commands' → jamais marquée appliquée (bloquant fresh-install, ex. exports
+    003_create_exports / 006_create_export_requests).
+    """
+
+    def test_split_ignores_apostrophes_in_comments(self):
+        sql = (
+            "-- Tables d'ingestion des exports externes.\n"
+            "CREATE TABLE zz_a (id INTEGER);\n"
+            "-- demande d'export en 2 phases\n"
+            "CREATE TABLE zz_b (id INTEGER);\n"
+        )
+        statements = database._split_sql_statements(database._strip_sql_comments(sql))
+        assert len(statements) == 2, (
+            f"attendu 2 statements, obtenu {len(statements)} : {statements!r}"
+        )
+
+    async def test_apostrophe_in_full_line_comment(self, migration_engine, migrations_dir):
+        (migrations_dir / "904_test_comment.sql").write_text(
+            "-- Tables d'ingestion des exports externes.\n"
+            "CREATE TABLE IF NOT EXISTS zz_cmt_a (id INTEGER PRIMARY KEY);\n"
+            "-- demande d'export en 2 phases\n"
+            "CREATE TABLE IF NOT EXISTS zz_cmt_b (id INTEGER PRIMARY KEY);\n"
+        )
+        await database.apply_migrations(migrations_dir=migrations_dir, engine=migration_engine)
+
+        async with migration_engine.connect() as conn:
+            tables = {row[0] for row in (await conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )).fetchall()}
+        assert "zz_cmt_a" in tables and "zz_cmt_b" in tables, \
+            "les apostrophes des commentaires ont fusionné les statements"
+
+        async with migration_engine.connect() as conn:
+            applied = {row[0] for row in (await conn.execute(
+                text("SELECT version FROM schema_migrations")
+            )).fetchall()}
+        assert "904" in applied
+
+    async def test_apostrophe_in_inline_comment(self, migration_engine, migrations_dir):
+        (migrations_dir / "905_test_inline.sql").write_text(
+            "CREATE TABLE IF NOT EXISTS zz_inl_a (id INTEGER);  -- usage d'export\n"
+            "CREATE TABLE IF NOT EXISTS zz_inl_b (id INTEGER);\n"
+        )
+        await database.apply_migrations(migrations_dir=migrations_dir, engine=migration_engine)
+
+        async with migration_engine.connect() as conn:
+            tables = {row[0] for row in (await conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )).fetchall()}
+        assert "zz_inl_a" in tables and "zz_inl_b" in tables
+
+    def test_strip_keeps_double_dash_inside_string(self):
+        """Un '--' à l'intérieur d'une chaîne quotée n'est PAS un commentaire."""
+        sql = "INSERT INTO zz_t (v) VALUES ('a--b');"
+        stripped = database._strip_sql_comments(sql)
+        assert "'a--b'" in stripped, "le '--' de la chaîne a été traité comme commentaire"
+
+
 class TestHappyPath:
     async def test_successful_migration_marked_applied(self, migration_engine, migrations_dir):
         (migrations_dir / "903_test_ok.sql").write_text(

@@ -61,18 +61,31 @@ def settings():
 
 @pytest.fixture
 async def async_engine():
-    """Crée un engine SQLite en mémoire pour les tests."""
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False,
-    )
+    """Crée un engine SQLite sur fichier temporaire pour les tests.
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    ⚠️ Fichier temporaire (pas :memory:) : avec SQLAlchemy 2.1, les sessions
+    concurrentes sur une base :memory: (StaticPool = connexion unique partagée)
+    produisent des IDs dupliqués (course sur lastrowid) — ex.
+    test_concurrent_enqueue échouait en conteneur (assert 3 == 10) alors qu'il
+    passait sur l'hôte (2.0.48). Un fichier temporaire par test donne une base
+    unique partagée par toutes les connexions, rowids fiables.
+    """
+    fd, db_path = tempfile.mkstemp(suffix=".db", prefix="hubtest_")
+    os.close(fd)
+    try:
+        engine = create_async_engine(
+            f"sqlite+aiosqlite:///{db_path}",
+            echo=False,
+        )
 
-    yield engine
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    await engine.dispose()
+        yield engine
+
+        await engine.dispose()
+    finally:
+        os.unlink(db_path)
 
 
 @pytest.fixture
