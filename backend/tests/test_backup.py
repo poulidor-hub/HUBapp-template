@@ -2,6 +2,8 @@
 Tests pour le système de backup/restore.
 Teste les endpoints de backup, restore et le storage manager.
 """
+import asyncio
+
 import pytest
 import json
 import zipfile
@@ -523,8 +525,16 @@ class TestBackupStreaming:
         received = 0
         start_headers = {}
 
+        # Starlette >= 1.0 : FileResponse écoute receive() en attendant
+        # http.disconnect pendant le stream. Répondre http.request en boucle
+        # provoque une attente infinie à 100 % CPU (conteneur starlette 1.8) :
+        # on répond disconnect une fois le body entièrement consommé
+        # (signalé par send(), more_body=False).
+        body_done = asyncio.Event()
+
         async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+            await body_done.wait()
+            return {"type": "http.disconnect"}
 
         async def send(message):
             nonlocal received
@@ -533,6 +543,8 @@ class TestBackupStreaming:
                     start_headers[raw_key.decode().lower()] = raw_value.decode()
             elif message["type"] == "http.response.body":
                 received += len(message.get("body", b""))
+                if not message.get("more_body", True):
+                    body_done.set()
 
         await response(
             {"type": "http", "asgi": {"version": "3.0"}, "method": "GET",
