@@ -51,6 +51,7 @@ For SPA cache headers, stale frontend bundles, or production cache-busting rules
 - SSE disconnects fast: check `proxy_buffering off`, `proxy_cache off`, and a long `proxy_read_timeout` in the `/hub/` block.
 - JWT validation fails after Hub restart: JWKS cache may be stale; the lifespan loop in [backend/main.py](../../../backend/main.py) re-initializes Hub auth, but a manual `make restart-api` forces it.
 - Frontend env changes not visible after restart: the build is static, run `cd frontend && npm run build` (or rebuild the frontend container) when Vite-visible config changes.
+- `docker compose build` fails with `additional privileges requested: pass "--allow=network.host"` (buildx ≥ 0.37.2, advisory GHSA-gwr2-q96m-6682): the app compose pins `build.network: host` (DNS workaround on some hosts) and compose does not forward `--allow` to bake (compose fix PR #14325 not yet released as of 2026-10). If the host DNS bridge works, set `APP_BUILD_NETWORK=default` in `.env` — apps adopting the pattern interpolate `network: ${APP_BUILD_NETWORK:-host}` (reference: exemple-app ≥ 1.24.1). Otherwise pin buildx 0.37.1 until the fixed compose release ships (both workarounds measured against compose 5.6.0 / buildx 0.38.0).
 
 ## Guardrails
 
