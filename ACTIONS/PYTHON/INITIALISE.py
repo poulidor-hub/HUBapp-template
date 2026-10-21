@@ -1197,7 +1197,11 @@ export default function HomePage() {
 
 
 def _clean_demo_tests(root: Path) -> bool:
-    demo_tests = ['test_auth.py', 'test_items.py', 'test_backup.py']
+    demo_tests = [
+        'test_auth.py', 'test_items.py', 'test_backup.py', 'test_services.py',
+        'test_backup_stats.py', 'test_backup_streaming.py',
+        'test_hub_data.py', 'test_backup_restore_order.py',
+    ]
     tests_dir = root / 'backend' / 'tests'
     success = True
     for test_file in demo_tests:
