@@ -79,6 +79,8 @@ def load_manifest(source: Path) -> dict:
         manifest = json.loads(mpath.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         _fail(f"{MANIFEST_NAME} illisible dans {source} : {exc}")
+    if not isinstance(manifest, dict):
+        _fail(f"{MANIFEST_NAME} invalide : objet JSON attendu ({{version, files}}) dans {source}")
     if not isinstance(manifest.get("files"), list):
         _fail(f"{MANIFEST_NAME} invalide : champ 'files' absent ou non liste")
     return manifest

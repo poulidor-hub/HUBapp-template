@@ -1,3 +1,26 @@
+## [2.32.1] - 21 octobre 2026
+
+### ⚡ --clean cohérent côté tests + migration items clean-safe
+
+- **fix(initialise)** — `_clean_demo_tests` : ajout de `test_services.py`,
+  `test_backup_stats.py`, `test_backup_streaming.py`, `test_hub_data.py`,
+  `test_backup_restore_order.py` — ils couvrent les endpoints/modèles/tables de
+  démonstration retirés par `--clean` (404/ImportError/KeyError au `make test`
+  de toute app scaffoldée : −26 échecs constatés, de 31 à 5, les 5 restants
+  exigeant un Hub réel pour l'auth M2M).
+- **refactor(tests)** — les stats backup AN-4/AN-7 de
+  `test_socle_2232_alignment.py` (mixte) migrent vers `test_backup_stats.py`
+  (pleinement démo) ; le socle AN-3 reste testé dans l'app scaffoldée.
+- **fix(migrations)** — `001_fix_datetime_timezone.sql` n'altère plus les tables
+  démo `items`/`test_data` (warning « relation does not exist » au boot des apps
+  `--clean`) ; l'ALTER migre en `010_fix_items_tz_clean_safe.sql` avec
+  `ALTER TABLE IF EXISTS` (splitter SQL naïf sur `;` : pas de DO block).
+- **fix(ds)** — revue 2.32.0 : F4 manifest JSON non-objet → exit 1 actionnable
+  (traceback brut avant) ; F5 docstring `test_missing_env_file_noop` corrigée.
+- **test** — `test_initialise_clean.py` : verrouille la liste des tests démo
+  retirés + la forme des migrations ; suite 288/288 locale, scaffold conteneur
+  vérifié (5 échecs Hub-absent seulement, 0 échec démo).
+
 ## [2.32.0] - 21 octobre 2026
 
 ### ⚡ Vendor HUBCSS officiel + scaffold cohérent

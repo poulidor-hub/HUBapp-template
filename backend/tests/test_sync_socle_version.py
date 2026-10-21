@@ -43,6 +43,7 @@ def test_env_key_present_still_fails(tmp_path, monkeypatch, capsys):
 
 
 def test_missing_env_file_noop(tmp_path, monkeypatch):
-    """Pas de .env du tout → no-op (comportement existant conservé)."""
+    """Pas de .env du tout → no-op (aligné sur le lot 4 : clé absente ⇒ no-op ;
+    l'ancien code échouait avant ce fix dès que l'image socle était absente)."""
     _setup(tmp_path, monkeypatch, None)
     assert svs.main() == 0
