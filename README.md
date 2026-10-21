@@ -350,6 +350,22 @@ curl http://localhost:9045/api/version
 
 ## 📝 Personnalisation
 
+### Mettre à jour le Design System (HUBCSS)
+
+Les assets HUBCSS sont **vendored** : committés dans
+`frontend/public/design-system/current/` et embarqués dans l'image nginx au
+build. La montée de version est un commit reviewable :
+
+1. `make update-ds` — copie les assets depuis le checkout `HUBCSS` du stack
+   (`../../HUBCSS`, surcharge `HUBCSS_DIR=...` ou `--from <dir>`), sha256
+   vérifiés contre `manifest.json` (version visible dans
+   `current/manifest.json`).
+2. Relire le `git diff`, puis committer.
+
+Surcharges locales : **uniquement dans `frontend/src/app.css`** — ne jamais
+éditer les fichiers de `current/` (ils seraient écrasés à la prochaine mise
+à jour, sans être signalés).
+
 ### Changer le slug de l'application
 
 1. Modifier `.env` : `APP_SLUG=mon-nouvelle-app`
