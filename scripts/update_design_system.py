@@ -91,6 +91,8 @@ def plan_entries(source: Path, manifest: dict) -> list[tuple[str, str]]:
         rel = item.get("path") if isinstance(item, dict) else None
         if not isinstance(rel, str) or not rel or not is_runtime_asset(rel):
             continue
+        if rel.startswith(("/", "\\")) or "\\" in rel or ".." in rel.split("/"):
+            _fail(f"chemin invalide dans le manifest : {rel!r}")
         if not item.get("sha256"):
             _fail(f"entrée sans sha256 dans le manifest : {rel}")
         entries.append((rel, item["sha256"]))
@@ -99,13 +101,16 @@ def plan_entries(source: Path, manifest: dict) -> list[tuple[str, str]]:
     return entries
 
 
-def files_up_to_date(dest: Path, entries: list[tuple[str, str]]) -> bool:
+def files_up_to_date(dest: Path, entries: list[tuple[str, str]], source: Path) -> bool:
     """True si tous les assets ET le manifest sont déjà conformes en destination."""
     for rel, sha in entries:
         p = dest / rel
         if not p.is_file() or _sha256(p) != sha:
             return False
-    return (dest / MANIFEST_NAME).is_file()
+    dest_manifest = dest / MANIFEST_NAME
+    if not dest_manifest.is_file():
+        return False
+    return dest_manifest.read_bytes() == (source / MANIFEST_NAME).read_bytes()
 
 
 def sync(source: Path, dest: Path, entries: list[tuple[str, str]]) -> None:
@@ -152,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     entries = plan_entries(source, manifest)
     version = manifest.get("version", "?")
 
-    if files_up_to_date(dest, entries):
+    if files_up_to_date(dest, entries, source):
         print(f"✅ Design System à jour ({version}) — {dest}")
         return 0
 

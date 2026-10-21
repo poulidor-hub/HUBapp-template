@@ -129,13 +129,49 @@ def test_idempotent_no_write(tmp_path, dest):
         p.relative_to(dest): p.stat().st_mtime_ns
         for p in dest.rglob("*") if p.is_file()
     }
-    assert uds.files_up_to_date(dest, uds.plan_entries(src, uds.load_manifest(src))) is True
+    assert uds.files_up_to_date(dest, uds.plan_entries(src, uds.load_manifest(src)), src) is True
     assert uds.main(["--from", str(src)]) == 0
     mtimes_after = {
         p.relative_to(dest): p.stat().st_mtime_ns
         for p in dest.rglob("*") if p.is_file()
     }
     assert mtimes == mtimes_after, "second run ne doit rien réécrire"
+
+
+# --- 6bis. F1 (revue) : path traversal via manifest hostile refusé -----------
+
+def test_rejects_path_traversal_in_manifest(tmp_path, dest, capsys):
+    src = _fake_hubcss(tmp_path)
+    manifest = json.loads((src / "manifest.json").read_text(encoding="utf-8"))
+    outside = src / "outside.txt"
+    outside.write_bytes(b"secret")
+    manifest["files"].append({"path": "../outside.txt", "size": 6, "sha256": hashlib.sha256(b"secret").hexdigest()})
+    (src / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc:
+        uds.main(["--from", str(src)])
+    assert exc.value.code == 1
+    capsys.readouterr()
+    assert not (dest / "outside.txt").exists()
+    assert not (dest.parent / "outside.txt").exists()
+    assert outside.read_bytes() == b"secret"
+
+
+# --- 4bis. F2 (revue) : bump de version seule → manifest réécrit -------------
+
+def test_version_bump_rewrites_manifest(tmp_path, dest):
+    src = _fake_hubcss(tmp_path, version="0.3.1-test")
+    assert uds.main(["--from", str(src)]) == 0
+    m1 = (dest / "manifest.json").read_text(encoding="utf-8")
+
+    (src / "manifest.json").write_text(
+        (src / "manifest.json").read_text(encoding="utf-8").replace("0.3.1-test", "0.3.2-test"),
+        encoding="utf-8",
+    )
+    assert uds.files_up_to_date(dest, uds.plan_entries(src, uds.load_manifest(src)), src) is False
+    assert uds.main(["--from", str(src)]) == 0
+    m2 = (dest / "manifest.json").read_text(encoding="utf-8")
+    assert "0.3.2-test" in m2 and m2 != m1
 
 
 # --- 5. Exclusion par préfixe : react/ listé mais absent de dist/ = ignoré ---

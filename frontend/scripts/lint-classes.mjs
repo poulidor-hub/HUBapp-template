@@ -87,7 +87,7 @@ const seedPath = join(root, 'public', 'design-system', 'current', 'global.css')
 if (!existsSync(seedPath)) {
   console.error(
     `❌ Seed design system introuvable : ${relative(process.cwd(), seedPath)}\n` +
-      `   Lancez « make refresh-design-seed » (ou build HUBCSS) puis réessayez.`
+      `   Lancez « make update-ds » (ou build HUBCSS) puis réessayez.`
   )
   process.exit(2)
 }
