@@ -45,6 +45,10 @@ RUN useradd -m -u 1000 appuser
 # la source unique de vérité ; .dockerignore l'exclut aussi par précaution)
 COPY backend/ .
 
+# Scripts d'exploitation de l'app (update_design_system, sync_socle_version…)
+# — importés par backend/tests (parents[2]/scripts) dans le conteneur.
+COPY scripts/ /app/scripts/
+
 # Copier le fichier VERSION (source unique de vérité)
 COPY VERSION /app/VERSION
 

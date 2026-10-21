@@ -52,8 +52,5 @@ docs/
 *.md
 !README.md
 
-# ==== Scripts (not needed in images) ====
-scripts/
-
 # ==== SSL certs (mounted as volume) ====
 ssl/

@@ -16,7 +16,12 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+# Local : <repo>/scripts ; conteneur : /app/scripts (COPY scripts/ de l'image api).
+_HERE = Path(__file__).resolve()
+for _candidate in (_HERE.parents[2] / "scripts", _HERE.parents[1] / "scripts"):
+    if (_candidate / "update_design_system.py").is_file():
+        sys.path.insert(0, str(_candidate))
+        break
 
 import update_design_system as uds  # noqa: E402
 
@@ -161,3 +166,19 @@ def test_hubcss_dir_env_override(tmp_path, dest, monkeypatch):
 
     assert uds.main([]) == 0
     assert (dest / "global.css").is_file()
+
+
+# --- 8. Source par défaut résolue par recherche du stack (worktree inclus) ---
+
+def test_default_source_resolves_stack_root(tmp_path, monkeypatch):
+    """APPS/<app> OU worktree profond → remonter les parents jusqu'au
+    premier <racine>/HUBCSS porteur d'un manifest.json (bug worktree)."""
+    stack = tmp_path / "stack"
+    hubcss = stack / "HUBCSS"
+    hubcss.mkdir(parents=True)
+    (hubcss / "manifest.json").write_text("{}", encoding="utf-8")
+    app = stack / "APPS" / "mon-app" / "scripts"
+    app.mkdir(parents=True)
+
+    monkeypatch.setattr(uds, "APP_DIR", app.parent)
+    assert uds.resolve_source(None) == hubcss

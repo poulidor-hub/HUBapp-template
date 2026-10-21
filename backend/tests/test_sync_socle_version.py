@@ -9,7 +9,12 @@ toute app fraîchement scaffoldée sur une station sans image socle.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+# Local : <repo>/scripts ; conteneur : /app/scripts (COPY scripts/ de l'image api).
+_HERE = Path(__file__).resolve()
+for _candidate in (_HERE.parents[2] / "scripts", _HERE.parents[1] / "scripts"):
+    if (_candidate / "sync_socle_version.py").is_file():
+        sys.path.insert(0, str(_candidate))
+        break
 
 import sync_socle_version as svs  # noqa: E402
 
