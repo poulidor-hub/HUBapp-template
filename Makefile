@@ -22,7 +22,7 @@ endif
         ensure-api-fresh test test-seq test-cov test-docker test-docker-cov \
         health health-detailed version \
         db-shell clean clean-all init ai-index bump-patch bump-minor bump-major \
-        refresh-design-seed sync-hub-tooling sync-hub-tooling-check
+        update-ds sync-hub-tooling sync-hub-tooling-check
 
 COMPOSE      = docker compose -f docker-compose.yml
 COMPOSE_DEV  = docker compose -f docker-compose.yml -f docker-compose.dev.yml
@@ -218,19 +218,8 @@ bump-major: ## Incrémenter la version major (X.0.0)
 
 # === DESIGN SYSTEM (HUBCSS seed) ===
 
-HUBCSS_DIR ?= ../HUBCSS
-DESIGN_SEED := frontend/public/design-system/current
-
-refresh-design-seed: ## Régénérer le seed HUBCSS local depuis $(HUBCSS_DIR)/dist
-	@test -f "$(HUBCSS_DIR)/dist/global.css" || { echo "❌ $(HUBCSS_DIR)/dist introuvable. Lancez 'npm run build' dans HUBCSS."; exit 1; }
-	@mkdir -p "$(DESIGN_SEED)/bootstrap-icons/fonts" "$(DESIGN_SEED)/icons"
-	@cp "$(HUBCSS_DIR)/dist/global.css" "$(DESIGN_SEED)/global.css"
-	@cp "$(HUBCSS_DIR)/dist/fonts.css" "$(DESIGN_SEED)/fonts.css"
-	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/bootstrap-icons.css" "$(DESIGN_SEED)/bootstrap-icons/bootstrap-icons.css"
-	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/fonts/bootstrap-icons.woff" "$(DESIGN_SEED)/bootstrap-icons/fonts/bootstrap-icons.woff"
-	@cp "$(HUBCSS_DIR)/dist/bootstrap-icons/fonts/bootstrap-icons.woff2" "$(DESIGN_SEED)/bootstrap-icons/fonts/bootstrap-icons.woff2"
-	@cp "$(HUBCSS_DIR)/dist/icons/lucide.svg" "$(DESIGN_SEED)/icons/lucide.svg"
-	@echo "✅ Seed HUBCSS rafraîchi dans $(DESIGN_SEED)"
+update-ds: ## Synchroniser le seed HUBCSS (vendor, sha256 vérifiés) — source : ../../HUBCSS, HUBCSS_DIR ou --from
+	@python3 scripts/update_design_system.py
 
 # === OUTILLAGE HUB (MCP + plugin opencode) ===
 # Sources de vérité : MCP = dépôt dédié $(HUB_MCP_SRC) ; plugin = $(HUB_STACK_DIR)

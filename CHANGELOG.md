@@ -1,3 +1,30 @@
+## [2.32.0] - 21 octobre 2026
+
+### ⚡ Vendor HUBCSS officiel + scaffold cohérent
+
+- **feat(ds)** — `scripts/update_design_system.py` : vendor HUBCSS depuis le checkout
+  du stack (recherche parents — app scaffoldée, repo template, worktree agent ;
+  surcharges `HUBCSS_DIR` / `--from`), sha256 vérifiés **tout-ou-rien** d'après
+  `manifest.json`, manifest embarqué dans `current/` pour traçabilité, idempotent.
+  Cible `make update-ds` **remplace** `refresh-design-seed` (cp brut sans
+  vérification). Surcharge app : uniquement `frontend/src/app.css`, jamais `current/`.
+- **fix(initialise)** — `--clean` cohérent : la page d'accueil scaffoldée devient un
+  squelette canonique (PageHeader + hub-panel + hub-empty-state, zéro appel API).
+  Fin des 404 `/api/items` et des boutons morts sur toute app fraîchement créée
+  (le backend démo était nettoyé, pas le frontend). `ExampleList` retiré de l'app
+  scaffoldée (référence copiable conservée dans le template). `App.jsx` mort
+  (vieux squelette pré-router) plus réécrit.
+- **fix(socle)** — `sync_socle_version.py` : no-op si `APP_SOCLE_VERSION` absent du
+  `.env` (app non liée au socle). `make dev/build/up` ne bloque plus les nouvelles
+  apps sur une station sans image `poulidor/socle-api`.
+- **fix(docker)** — `scripts/` embarqué dans l'image api (tests conteneur +
+  exploitation), `.dockerignore` aligné ; tests DS/socle importables repo ET conteneur.
+- **test** — +11 tests (vendor sha256/idempotence/exclusions/stack-root, socle
+  no-op/échec conditionné) ; scaffold d'intégration vérifié : boot dégradé propre
+  sans Hub, UI squelette, assets design-system 200, zéro 404 réseau.
+- **docs** — `HUBCSS/docs/HOW2USE.md` (repo HUBCSS) : mode vendor = contrat canonique
+  des apps du parc ; sync Hub = extension future non implémentée.
+
 ## [2.30.3] - 14 octobre 2026
 
 ### ⚡ Cinq correctifs socle — migrations fresh-install, shutdown, suite de tests, tooling

@@ -30,7 +30,7 @@ const root = process.argv[2] ? String(process.argv[2]) : dirname(scriptDir)
 // ── setup : chemins ──
 const seedPath = join(root, 'public', 'design-system', 'current', 'global.css')
 if (!existsSync(seedPath)) {
-  console.error(`❌ Seed design system introuvable : ${seedPath}\n   Lancez « make refresh-design-seed ».`)
+  console.error(`❌ Seed design system introuvable : ${seedPath}\n   Lancez « make update-ds ».`)
   process.exit(2)
 }
 const assetsDir = join(root, 'dist', 'assets')
