@@ -1,3 +1,17 @@
+## [2.32.2] - 21 octobre 2026
+
+### ⚡ deploy-troubleshoot : diagnostic buildx >= 0.37.2 (network.host)
+
+- Skill deploy-troubleshoot, Common Diagnostics : nouvelle entrée pour
+  l'échec « additional privileges requested: pass --allow=network.host » —
+  durcissement bake (GHSA-gwr2-q96m-6682), compose ne transmet pas --allow,
+  correctif compose (PR #14325) non publié au 21/10/2026.
+- Remède documenté : APP_BUILD_NETWORK=default dans .env pour les apps qui
+  interpolent build.network: ${APP_BUILD_NETWORK:-host} (référence :
+  exemple-app >= 1.24.1), sinon pin buildx 0.37.1 en attendant la release
+  compose corrigée. Le template lui-même n'épingle pas build.network
+  (non concerné).
+
 ## [2.32.1] - 21 octobre 2026
 
 ### ⚡ --clean cohérent côté tests + migration items clean-safe
