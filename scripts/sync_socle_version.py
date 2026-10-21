@@ -80,6 +80,19 @@ def main() -> int:
         # Pas de socle dans ce stack (app standalone) — pas notre rôle.
         return 0
 
+    # App réellement liée au socle = clé présente dans le .env. Sans clé,
+    # l'image ne sert à rien : no-op (sinon make dev/build/up échoue pour
+    # toute app fraîchement scaffoldée sur une station sans image socle).
+    if not ENV_PATH.exists():
+        return 0
+    has_env_key = any(
+        line.startswith(f"{ENV_KEY}=")
+        for line in ENV_PATH.read_text(encoding="utf-8").splitlines()
+    )
+    if not has_env_key:
+        print(f"ℹ️  {ENV_KEY} absent du .env — app non liée au socle, no-op.")
+        return 0
+
     exists = image_exists(version)
     if exists is False:
         print(
@@ -90,9 +103,6 @@ def main() -> int:
         )
         return 1
 
-    if not ENV_PATH.exists():
-        return 0
-
     current = None
     for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
         if line.startswith(f"{ENV_KEY}="):
@@ -100,10 +110,6 @@ def main() -> int:
             break
 
     if current == version:
-        return 0
-
-    if current is None:
-        # Clé absente du .env : update_env la gérera (cas premier boot).
         return 0
 
     if set_env_value(ENV_KEY, version):
