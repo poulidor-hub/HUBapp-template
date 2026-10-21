@@ -26,9 +26,26 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
 DEST_DIR = APP_DIR / "frontend" / "public" / "design-system" / "current"
-DEFAULT_SOURCE = APP_DIR.parent.parent / "HUBCSS"
 RUNTIME_EXCLUDED = ("react", "python")
 MANIFEST_NAME = "manifest.json"
+
+
+def resolve_source(from_dir: str | None) -> Path:
+    """Source du vendor : --from > HUBCSS_DIR > premier <parent>/HUBCSS
+    porteur d'un manifest.json (couvre app scaffoldée, repo template et
+    worktree agent). Exit 1 actionnable si introuvable."""
+    if from_dir:
+        return Path(from_dir).resolve()
+    if os.environ.get("HUBCSS_DIR"):
+        return Path(os.environ["HUBCSS_DIR"]).resolve()
+    for parent in APP_DIR.parents:
+        candidate = parent / "HUBCSS"
+        if (candidate / MANIFEST_NAME).is_file():
+            return candidate
+    _fail(
+        f"Checkout HUBCSS introuvable au-dessus de {APP_DIR}\n"
+        f"   → Renseignez HUBCSS_DIR=<chemin> ou --from <dir>"
+    )
 
 
 def _fail(msg: str) -> None:
@@ -128,12 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.from_dir:
-        source = Path(args.from_dir).resolve()
-    elif os.environ.get("HUBCSS_DIR"):
-        source = Path(os.environ["HUBCSS_DIR"]).resolve()
-    else:
-        source = DEFAULT_SOURCE
+    source = resolve_source(args.from_dir)
     dest = DEST_DIR
 
     manifest = load_manifest(source)
