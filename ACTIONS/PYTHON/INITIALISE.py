@@ -786,8 +786,8 @@ def clean_demo_content(root: Path, config: dict) -> bool:
     success &= _clean_service_test_route(root)
     print(f"  {Colors.CYAN}Nettoyage composants frontend...{Colors.ENDC}")
     success &= _clean_frontend_components(root)
-    print(f"  {Colors.CYAN}Réécriture App.jsx (squelette minimal)...{Colors.ENDC}")
-    success &= _clean_app_jsx(root)
+    print(f"  {Colors.CYAN}Réécriture page d'accueil (squelette minimal)...{Colors.ENDC}")
+    success &= _clean_home_page(root)
     print(f"  {Colors.CYAN}Nettoyage tests de démo...{Colors.ENDC}")
     success &= _clean_demo_tests(root)
     if success:
@@ -1139,7 +1139,7 @@ def _clean_service_test_route(root: Path) -> bool:
 
 
 def _clean_frontend_components(root: Path) -> bool:
-    demo_components = ['EndpointTests.jsx', 'M2MTests.jsx', 'DataTable.jsx', 'TokenCard.jsx', 'UserCard.jsx']
+    demo_components = ['EndpointTests.jsx', 'M2MTests.jsx', 'DataTable.jsx', 'TokenCard.jsx', 'UserCard.jsx', 'ExampleList.jsx']
     components_dir = root / 'frontend' / 'src' / 'components'
     success = True
     for component in demo_components:
@@ -1154,64 +1154,45 @@ def _clean_frontend_components(root: Path) -> bool:
     return success
 
 
-def _clean_app_jsx(root: Path) -> bool:
-    filepath = root / 'frontend' / 'src' / 'App.jsx'
-    content = """import React, { useState, useEffect } from 'react'
-import { useConfig } from './context/ConfigContext'
-import { useAuth } from './context/AuthContext'
-import Header from './components/Header'
-import LoginPrompt from './components/LoginPrompt'
+def _clean_home_page(root: Path) -> bool:
+    """--clean : remplace la page d'accueil démo (ExampleList → /api/items,
+    supprimés du backend) par un squelette canonique sans appel API — sinon
+    l'app scaffoldée affiche des 404 et des boutons sans effet."""
+    filepath = root / 'frontend' / 'src' / 'routes' / 'index.jsx'
+    content = """import { useAuth } from '../context/AuthContext'
+import LoginPrompt from '../components/LoginPrompt'
+import PageHeader from '../components/PageHeader'
 
-function App() {
-  const [theme, setTheme] = useState(() => 
-    localStorage.getItem('theme') || 'light'
-  )
-  const config = useConfig()
-  const { isAuthenticated, user } = useAuth()
+export default function HomePage() {
+  const { isAuthenticated } = useAuth()
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
-  }
-
-  if (!config.loaded) {
-    return (
-      <div className="loading">
-        <p>Chargement de la configuration...</p>
-      </div>
-    )
+  if (!isAuthenticated) {
+    return <LoginPrompt />
   }
 
   return (
-    <div className="app">
-      <Header theme={theme} toggleTheme={toggleTheme} />
-      
-      <div className="container">
-        {!isAuthenticated ? (
-          <LoginPrompt />
-        ) : (
-          <div className="card">
-            <h2>Bienvenue {user?.username || user?.sub} !</h2>
-            <p>Votre application est prête. Commencez à développer ici.</p>
-          </div>
-        )}
-      </div>
-    </div>
+    <>
+      <PageHeader title="Accueil" meta="structure canonique" />
+      <section className="hub-panel">
+        <div className="hub-empty-state">
+          <div className="hub-empty-state-icon">◆</div>
+          <h2 className="hub-empty-state-title">Prêt à démarrer</h2>
+          <p className="hub-empty-state-description">
+            Créez votre première page dans src/routes/ — référence copiable :
+            ExampleList dans le template HUBapp_TEMPLATE_base.
+          </p>
+        </div>
+      </section>
+    </>
   )
 }
-
-export default App
 """
     try:
         filepath.write_text(content, encoding='utf-8')
-        print(f"    {Colors.GREEN}✓ App.jsx réécrit{Colors.ENDC}")
+        print(f"    {Colors.GREEN}✓ Page d'accueil squelette écrite (sans démo){Colors.ENDC}")
         return True
     except Exception as e:
-        print(f"    {Colors.RED}✗ Erreur App.jsx: {e}{Colors.ENDC}")
+        print(f"    {Colors.RED}✗ Erreur page d'accueil : {e}{Colors.ENDC}")
         return False
 
 
