@@ -53,6 +53,8 @@ coverage.xml
 # Environments
 .env
 .env.pre-*
+# Allowlist de partage IA (copiée depuis backend/m2m_share.yaml.example, par-app)
+backend/m2m_share.yaml
 .venv
 env/
 venv/
