@@ -1,0 +1,42 @@
+# ============================================================
+# Allowlist de partage IA — m2m_share.yaml
+# ============================================================
+# Déclare les endpoints que cette application autorise explicitement
+# à exposer aux IA via le catalogue M2M (GET /api/m2m/catalog).
+#
+# Copier ce fichier vers m2m_share.yaml (racine du dépôt ou backend/)
+# et adapter. Sans ce fichier, aucun endpoint n'est partagé.
+#
+# Garanties :
+#   - une entrée invalide est IGNORÉE avec un warning au démarrage
+#     (l'app ne crashe jamais sur une allowlist cassée) ;
+#   - le bloc "ia" est transmis tel quel dans le catalogue, avec
+#     "klass" résolu côté catalogue (GET -> "read", sinon "write") ;
+#   - l'authentification des routes n'est JAMAIS modifiée par ce
+#     fichier : il ne fait qu'ajouter une annotation "shared".
+#
+# Champs d'une entrée :
+#   path                  (requis) chemin exact de la route, ex. /api/items
+#   method                (requis) GET | POST | PUT | PATCH | DELETE (casse libre)
+#   ia.description        (requis) ce que fait l'endpoint, en langage naturel
+#   ia.example            (requis) exemple d'appel copiable
+#   ia.name               (optionnel) nom court de l'outil pour l'IA
+#   ia.klass              (optionnel) catégorie fonctionnelle, ex. "read" / "write"
+# ============================================================
+- path: /api/items
+  method: GET
+  ia:
+    description: "Liste paginée des items (filtrage par statut via ?status=)"
+    example: "GET /api/items?page=1&size=20&status=active"
+    name: "Lister les items"
+    klass: "read"
+
+- path: /api/items
+  method: POST
+  ia:
+    description: "Crée un item à partir d'un libellé et d'un statut"
+    example: |
+      POST /api/items
+      {"label": "Nouvel item", "status": "active"}
+    name: "Créer un item"
+    klass: "write"
