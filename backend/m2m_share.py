@@ -29,6 +29,40 @@ ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 _YAML_CANDIDATES = ("m2m_share.yaml", "backend/m2m_share.yaml")
 
 
+def _contains_share_yaml(directory: Path) -> bool:
+    """True si directory contient m2m_share.yaml directement ou sous backend/."""
+    return (directory / "m2m_share.yaml").is_file() or (
+        directory / "backend" / "m2m_share.yaml"
+    ).is_file()
+
+
+def resolve_base_dir(module_file: str) -> Optional[Path]:
+    """
+    Résout le base_dir de l'allowlist depuis l'emplacement du module appelant.
+
+    Deux layouts runtime :
+    - repo (dev/tests) : <root>/backend/routes/m2m.py → parents[2] = <root>,
+      allowlist à <root>/m2m_share.yaml ou <root>/backend/m2m_share.yaml ;
+    - conteneur aplati (Dockerfile : COPY backend/ . → /app) :
+      /app/routes/m2m.py → parents[2] = / (invalide) → parents[1] = /app,
+      allowlist à /app/m2m_share.yaml.
+
+    Retourne le PREMIER candidat parmi parents[2], parents[1], parents[0]
+    contenant m2m_share.yaml (directement ou sous backend/) — parents[2]
+    d'abord pour qu'en layout repo, la racine gagne sur backend/.
+    Aucun candidat valable → None (défaut fermé, aucun endpoint partagé).
+    Ne lève jamais d'exception.
+    """
+    try:
+        parents = Path(module_file).resolve().parents
+        for i in (2, 1, 0):
+            if i < len(parents) and _contains_share_yaml(parents[i]):
+                return parents[i]
+    except Exception:  # noqa: BLE001 — résilience : jamais bloquer le catalogue
+        return None
+    return None
+
+
 def _non_empty_str(value: Any) -> Optional[str]:
     """Retourne la chaîne épurée si value est un str non blanc, sinon None."""
     if isinstance(value, str) and value.strip():

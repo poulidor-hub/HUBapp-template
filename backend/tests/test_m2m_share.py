@@ -9,7 +9,7 @@ et continue.
 import logging
 import textwrap
 
-from m2m_share import load_share_decl
+from m2m_share import load_share_decl, resolve_base_dir
 
 
 def _write_yaml(tmp_path, content, subdir=None):
@@ -257,3 +257,50 @@ class TestLoadShareDeclResilience:
         """m2m_share.yaml vide → liste vide, sans exception ni bruit."""
         (tmp_path / "m2m_share.yaml").write_text("", encoding="utf-8")
         assert load_share_decl(tmp_path) == []
+
+
+class TestResolveBaseDir:
+    """resolve_base_dir résout le base_dir de l'allowlist depuis le module appelant.
+
+    Deux layouts runtime :
+    - repo (dev/tests)      : <root>/backend/routes/m2m.py → parents[2] = <root> ;
+    - conteneur aplati      : COPY backend/ . → /app/routes/m2m.py,
+      parents[2] = / (invalide) → il faut retomber sur parents[1] = /app.
+    Le premier candidat (parents[2], parents[1], parents[0]) contenant
+    m2m_share.yaml — directement ou sous backend/ — gagne ; aucun → None.
+    """
+
+    def _make_route(self, root, rel):
+        """Crée un faux module appelant (le fichier doit juste exister)."""
+        route = root / rel
+        route.parent.mkdir(parents=True, exist_ok=True)
+        route.write_text("# module\n", encoding="utf-8")
+        return route
+
+    def test_repo_layout_yaml_at_root(self, tmp_path):
+        """(a) repo : <root>/backend/routes/m2m.py + <root>/m2m_share.yaml → <root>."""
+        route = self._make_route(tmp_path, "backend/routes/m2m.py")
+        (tmp_path / "m2m_share.yaml").write_text("share: []\n", encoding="utf-8")
+        assert resolve_base_dir(str(route)) == tmp_path
+
+    def test_repo_layout_yaml_in_backend(self, tmp_path):
+        """repo : YAML uniquement sous backend/ → <root> quand même (fallback load_share_decl)."""
+        route = self._make_route(tmp_path, "backend/routes/m2m.py")
+        (tmp_path / "backend" / "m2m_share.yaml").write_text("share: []\n", encoding="utf-8")
+        assert resolve_base_dir(str(route)) == tmp_path
+
+    def test_flat_container_layout(self, tmp_path):
+        """(b) conteneur aplati : <app>/routes/m2m.py + <app>/m2m_share.yaml → <app>."""
+        route = self._make_route(tmp_path, "routes/m2m.py")
+        (tmp_path / "m2m_share.yaml").write_text("share: []\n", encoding="utf-8")
+        assert resolve_base_dir(str(route)) == tmp_path
+
+    def test_no_yaml_anywhere_returns_none(self, tmp_path):
+        """(c) aucun m2m_share.yaml chez les candidats → None (défaut fermé)."""
+        route = self._make_route(tmp_path, "backend/routes/m2m.py")
+        assert resolve_base_dir(str(route)) is None
+
+    def test_never_raises_on_degenerate_paths(self):
+        """Path sans assez de parents ('/') ou inexistant → None, jamais d'exception."""
+        assert resolve_base_dir("/") is None
+        assert resolve_base_dir("/nowhere/nothing/m2m.py") is None
