@@ -8,8 +8,14 @@ Fournit :
 
 Aucune dépendance réseau : l'app ne se décrit qu'elle-même.
 """
+import logging
+import re
 from typing import Any, Iterator
+
 from hub_auth import get_current_user
+from m2m_share import load_share_decl
+
+logger = logging.getLogger(__name__)
 
 
 def _walk_deps(dependant: Any) -> Iterator[Any]:
@@ -138,12 +144,94 @@ def _extract_params(op: dict):
     return path_params, query_params
 
 
+# Garde anti-fuite : un path d'allowlist matchant ces motifs ne reçoit
+# JAMAIS `shared` (ex. /api/assets/{asset_id}/password).
+FORBIDDEN_PATH_RE = re.compile(r"(?i)password|secret|credential|token")
+
+# klasses déclarés valides (spec pilotage inter-apps) : toute autre valeur
+# retombe sur le klass dérivé du verbe.
+VALID_KLASSES = {"read", "write", "irreversible"}
+
+# klass effectif dérivé du verbe — le verbe seul ne produit jamais autre chose.
+KLASS_BY_VERB = {
+    "GET": "read",
+    "POST": "write",
+    "PUT": "write",
+    "PATCH": "write",
+    "DELETE": "irreversible",
+}
+
+
+def _annotate_shared(endpoints: list, decl: list) -> None:
+    """
+    Annote les endpoints du catalogue avec la déclaration de partage IA.
+
+    Pour chaque entrée de l'allowlist (m2m_share.yaml, parsée par
+    load_share_decl) :
+
+    - match exact (path, method) — pas de motif/glob ;
+    - endpoint trouvé → pose `shared: True` + bloc `ia` (description,
+      example, klass_effective, name éventuel) sur le dict existant,
+      sans restructuration ;
+    - `klass_effective` : klass déclaré valide (read|write|irreversible)
+      → tel quel ; invalide ou absent → dérivé du verbe (GET→read,
+      POST/PUT/PATCH→write, DELETE→irreversible) ;
+    - path sensible (password|secret|credential|token, insensible à la
+      casse) → `shared` NON posé + warning (garde anti-fuite) ;
+    - endpoint déclaré absent du catalogue → ignoré + warning (orphelin).
+
+    Ne touche jamais à `auth_level` : la déclaration ne fait que publier.
+    """
+    by_key = {(e["path"], e["method"]): e for e in endpoints}
+
+    for entry in decl:
+        path, method, ia = entry["path"], entry["method"], entry["ia"]
+
+        if FORBIDDEN_PATH_RE.search(path):
+            logger.warning(
+                "m2m_share: %s %s refusé au partage IA (motif sensible dans le "
+                "path), shared non posé", method, path,
+            )
+            continue
+
+        endpoint = by_key.get((path, method))
+        if endpoint is None:
+            logger.warning(
+                "m2m_share: endpoint déclaré absent du catalogue : %s %s (ignoré)",
+                method, path,
+            )
+            continue
+
+        klass = ia.get("klass")
+        if klass in VALID_KLASSES:
+            klass_effective = klass
+        else:
+            if klass is not None:
+                logger.warning(
+                    "m2m_share: %s %s : klass %r invalide (attendu "
+                    "read|write|irreversible), dérivé du verbe", method, path, klass,
+                )
+            klass_effective = KLASS_BY_VERB[method]
+
+        ia_block = {
+            "description": ia["description"],
+            "example": ia["example"],
+            "klass_effective": klass_effective,
+        }
+        if ia.get("name"):
+            ia_block["name"] = ia["name"]
+
+        endpoint["shared"] = True
+        endpoint["ia"] = ia_block
+
+
 def build_app_catalog(
     app,
     slug: str | None = None,
     name: str | None = None,
     description: str | None = None,
     version: str | None = None,
+    base_dir=None,
 ) -> dict:
     """
     Construit le catalogue M2M d'une app FastAPI.
@@ -151,7 +239,11 @@ def build_app_catalog(
     1. Génère l'OpenAPI (paths, méthodes, summaries, schémas).
     2. Mappe chaque (path, method) -> auth_level via introspection des Depends.
     3. Résout les $ref (inlining).
-    4. Retourne un dict structuré.
+    4. Annote les endpoints déclarés partageables (allowlist m2m_share.yaml
+       cherché dans base_dir puis base_dir/backend, cf. m2m_share) avec
+       `shared: True` + bloc `ia` — défaut fermé : sans allowlist, aucun
+       endpoint n'est partagé.
+    5. Retourne un dict structuré.
     """
     spec = app.openapi()
     resolved = resolve_refs(spec)
@@ -187,6 +279,10 @@ def build_app_catalog(
                 "request_body": _extract_request_body(op),
                 "responses": _extract_responses(op),
             })
+
+    # Défaut fermé : sans base_dir (ou sans m2m_share.yaml) → aucun partage.
+    decl = load_share_decl(base_dir) if base_dir is not None else []
+    _annotate_shared(endpoints, decl)
 
     return {
         "slug": slug,

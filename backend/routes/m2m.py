@@ -3,6 +3,7 @@ Routes M2M (Machine-to-Machine) et découverte de services.
 Gère les communications inter-services via le Hub.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pathlib import Path
 from typing import Optional
 import logging
 
@@ -235,4 +236,7 @@ async def m2m_catalog(
         name=settings.APP_NAME,
         description=getattr(settings, "APP_DESCRIPTION", None),
         version=getattr(settings, "APP_VERSION", None),
+        # Racine du dépôt de l'app : l'allowlist m2m_share.yaml est cherchée
+        # à la racine puis dans backend/ (cf. m2m_share.load_share_decl).
+        base_dir=Path(__file__).resolve().parents[2],
     )
