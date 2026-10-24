@@ -1,9 +1,10 @@
 """
 Tests du parsing/validation de l'allowlist de partage IA (m2m_share.yaml).
 
-load_share_decl doit être totale : aucun cas (YAML absent, malformé, entrée
-invalide) ne lève d'exception — l'app qui démarre ne crashe jamais sur une
-allowlist cassée, elle journalise et continue.
+Format : {share: [...]} (spec §3.1). load_share_decl doit être totale :
+aucun cas (YAML absent, malformé, entrée invalide) ne lève d'exception —
+l'app qui démarre ne crashe jamais sur une allowlist cassée, elle journalise
+et continue.
 """
 import logging
 import textwrap
@@ -12,12 +13,14 @@ from m2m_share import load_share_decl
 
 
 def _write_yaml(tmp_path, content, subdir=None):
-    """Écrit un m2m_share.yaml (à la racine de tmp_path ou dans un sous-dossier)."""
+    """
+    Écrit un m2m_share.yaml au format spec §3.1 ({share: [...]}) — à la racine
+    de tmp_path ou dans un sous-dossier. `content` = entrées non indentées.
+    """
     target = tmp_path / subdir if subdir else tmp_path
     target.mkdir(parents=True, exist_ok=True)
-    (target / "m2m_share.yaml").write_text(
-        textwrap.dedent(content), encoding="utf-8"
-    )
+    entries = textwrap.indent(textwrap.dedent(content), "  ")
+    (target / "m2m_share.yaml").write_text(f"share:\n{entries}", encoding="utf-8")
 
 
 FULL_ENTRY_YAML = """\
@@ -232,14 +235,23 @@ class TestLoadShareDeclResilience:
             assert load_share_decl(tmp_path) == []
         assert any(r.levelno == logging.ERROR for r in caplog.records)
 
-    def test_non_list_root_returns_empty(self, tmp_path, caplog):
-        """Racine YAML valide mais non-liste (mapping, scalaire, fichier vide) → [] + warning."""
+    def test_missing_share_key_returns_empty(self, tmp_path, caplog):
+        """Mapping racine sans clé 'share' → [] + warning (format spec §3.1 non respecté)."""
         (tmp_path / "m2m_share.yaml").write_text(
-            "share: ce fichier n'a pas le bon format\n", encoding="utf-8"
+            "endpoints:\n  - path: /api/items\n", encoding="utf-8"
         )
         with caplog.at_level(logging.WARNING, logger="m2m_share"):
             assert load_share_decl(tmp_path) == []
-        assert len(caplog.records) == 1
+        assert any("share" in r.message for r in caplog.records)
+
+    def test_non_list_share_returns_empty(self, tmp_path, caplog):
+        """Clé 'share' non-liste (scalaire, mapping, null) → [] + warning."""
+        (tmp_path / "m2m_share.yaml").write_text(
+            "share: pas une liste\n", encoding="utf-8"
+        )
+        with caplog.at_level(logging.WARNING, logger="m2m_share"):
+            assert load_share_decl(tmp_path) == []
+        assert any("share" in r.message for r in caplog.records)
 
     def test_empty_file_returns_empty_list(self, tmp_path):
         """m2m_share.yaml vide → liste vide, sans exception ni bruit."""

@@ -104,11 +104,16 @@ def load_share_decl(base_dir: Path) -> list:
     Retourne une liste d'entrées :
       [{"path": str, "method": "GET", "ia": {description, example, name, klass}}]
 
+    Format attendu (spec §3.1) :
+      share:
+        - path: /api/items
+          method: GET
+          ia: {...}
+
     Résilience (jamais d'exception) :
     - fichier absent -> [] ;
     - YAML malformé  -> [] + logging.error ;
-    - racine non-liste (mapping, scalaire, fichier vide) -> [] ou entrées
-      ignorées + logging.warning ;
+    - clé racine 'share' absente ou non-liste -> [] + logging.warning ;
     - entrée invalide -> ignorée + logging.warning, les entrées valides
       sont conservées.
     """
@@ -132,13 +137,19 @@ def load_share_decl(base_dir: Path) -> list:
 
     if data is None:  # fichier vide
         return []
-    if not isinstance(data, list):
-        logger.warning("%s : racine invalide (liste d'entrées attendue), allowlist ignorée",
+    if not isinstance(data, dict) or "share" not in data:
+        logger.warning("%s : clé racine 'share' manquante "
+                       "(format attendu : mapping {share: [...]}), allowlist ignorée",
                        yaml_path)
+        return []
+    raw_entries = data["share"]
+    if not isinstance(raw_entries, list):
+        logger.warning("%s : 'share' doit être une liste d'entrées (reçu %s), allowlist ignorée",
+                       yaml_path, type(raw_entries).__name__)
         return []
 
     entries = []
-    for index, raw in enumerate(data):
+    for index, raw in enumerate(raw_entries):
         entry = _parse_entry(index, raw)
         if entry is not None:
             entries.append(entry)
