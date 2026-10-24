@@ -43,6 +43,11 @@ RUN useradd -m -u 1000 appuser
 # (AVANT le VERSION : un backend/VERSION parasite — mountpoint créé par le
 # montage ./VERSION:/app/VERSION:ro du compose dev — ne doit jamais écraser
 # la source unique de vérité ; .dockerignore l'exclut aussi par précaution)
+# NOTE allowlist IA (m2m_share.yaml) : ce COPY aplatit le layout (backend/x →
+# /app/x), donc m2m_share.resolve_base_dir cherche le YAML sous /app. Les apps
+# DOIVENT copier leur m2m_share.yaml racine dans l'image (ex.
+# `COPY m2m_share.yaml /app/m2m_share.yaml`) pour que leurs endpoints
+# `shared` apparaissent au runtime ; à défaut, défaut fermé (aucun partagé).
 COPY backend/ .
 
 # Scripts d'exploitation de l'app (update_design_system, sync_socle_version…)

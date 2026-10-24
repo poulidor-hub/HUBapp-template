@@ -465,9 +465,16 @@ class TestAppCatalogEndpoint:
 
     @pytest.mark.asyncio
     async def test_endpoint_wires_base_dir(self, m2m_client: AsyncClient, monkeypatch):
-        """L'endpoint passe la racine du dépôt comme base_dir au hook d'annotation."""
-        import m2m_catalog as m2m_catalog_module
+        """L'endpoint passe le base_dir résolu (resolve_base_dir) au hook d'annotation.
+
+        resolve_base_dir gère le layout repo (racine) comme le layout conteneur
+        aplati (/app, COPY backend/ .) ; None (aucun YAML) → défaut fermé.
+        """
+        import routes.m2m as m2m_routes
         from pathlib import Path
+
+        app_root = Path("/fake-app-root")
+        monkeypatch.setattr(m2m_routes, "resolve_base_dir", lambda _file: app_root)
 
         captured = {}
 
@@ -475,14 +482,11 @@ class TestAppCatalogEndpoint:
             captured["base_dir"] = base_dir
             return []
 
-        monkeypatch.setattr(m2m_catalog_module, "load_share_decl", fake_load_share_decl)
+        monkeypatch.setattr("m2m_catalog.load_share_decl", fake_load_share_decl)
 
         response = await m2m_client.get("/api/m2m/catalog")
         assert response.status_code == 200
-        base_dir = captured.get("base_dir")
-        assert base_dir is not None
-        # Racine du dépôt : backend/ (fallback allowlist) existe dessous.
-        assert (Path(base_dir) / "backend").is_dir()
+        assert captured.get("base_dir") == app_root
 
     @pytest.mark.asyncio
     async def test_user_cannot_access(self, authenticated_client: AsyncClient):
