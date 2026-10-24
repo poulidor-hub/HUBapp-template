@@ -1,3 +1,13 @@
+## [2.33.0] - 24 octobre 2026
+
+### ⚡ Allowlist IA : `m2m_share.yaml` + champ `shared` dans le catalogue M2M
+
+- **`backend/m2m_share.py` (nouveau)** — parsing/validation de l'allowlist de partage IA : `load_share_decl(base_dir)` lit `m2m_share.yaml` (racine puis `backend/`, premier trouvé), format `{share: [{path, method, ia:{description, example, name?, klass?}}]}` ; défaut fermé (YAML absent → `[]`, comportement inchangé) ; `description`/`example` requis ; méthodes normalisées majuscules, hors {GET,POST,PUT,PATCH,DELETE} → ignorées ; YAML malformé → `[]` + `logging.error` (l'app démarre toujours, jamais d'exception)
+- **`backend/m2m_catalog.py`** — `build_app_catalog` annote les endpoints matchés (exact `(path, method)`) avec `shared: true` + bloc `ia` (`klass_effective` résolu : déclaré valide → tel quel, sinon dérivé du verbe GET→read / POST-PUT-PATCH→write / DELETE→irreversible, fail-safe `write`) ; **garde anti-fuite** : path matchant `(?i)password|secret|credential|token` → jamais partagé + warning ; `auth_level` jamais modifié ; orphelins (déclarés absents du catalogue) → warning
+- **`backend/routes/m2m.py`** — `/api/m2m/catalog` passe la racine du dépôt au hook (annotation active)
+- **`m2m_share.yaml.example`** — exemple commenté (5 entrées GET) ; `.gitignore` ignore `backend/m2m_share.yaml` (pattern `.env`/`.example`)
+- **Tests** : 29 nouveaux (parsing 18, annotation 11 + garde anti-fuite en casse) — suite template verte
+
 ## [2.32.2] - 21 octobre 2026
 
 ### ⚡ deploy-troubleshoot : diagnostic buildx >= 0.37.2 (network.host)
