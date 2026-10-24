@@ -1,3 +1,11 @@
+## [2.33.1] - 24 octobre 2026
+
+### ⚡ Fix : allowlist trouvée en conteneur aplati (`resolve_base_dir`)
+
+- `routes/m2m.py` passait `base_dir = parents[2]` — valable en layout repo, mais `/` en conteneur (backend/ copié à plat dans /app) → allowlist jamais trouvée au runtime (catalogue sans `shared`, défaut fermé silencieux)
+- **`resolve_base_dir(module_file)`** (`backend/m2m_share.py`) : candidats parents[2], parents[1], parents[0] — premier dossier contenant `m2m_share.yaml` (direct ou sous `backend/`) ; None sinon, jamais d'exception ; tests des 2 layouts + chemins dégénérés
+- `Dockerfile.backend` : commentaire d'intégration pour les apps — `COPY m2m_share.yaml /app/m2m_share.yaml` pour exposer l'allowlist en conteneur
+
 ## [2.33.0] - 24 octobre 2026
 
 ### ⚡ Allowlist IA : `m2m_share.yaml` + champ `shared` dans le catalogue M2M
