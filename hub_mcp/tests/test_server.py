@@ -1,3 +1,4 @@
+import json
 import pytest
 import sys
 import os
@@ -71,14 +72,14 @@ class TestMCPHubTools:
         register_all_tools(server)
 
         with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = {"debug": False}
+            mock_call.return_value = {"host": "192.0.2.10", "configured": True}
             req = CallToolRequest(
                 method="tools/call",
                 params=CallToolRequestParams(name="hub_config", arguments={}),
             )
             result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/config", method="GET")
-            assert "debug" in result.root.content[0].text
+            mock_call.assert_called_once_with("/api/config/hub-host", method="GET")
+            assert "host" in result.root.content[0].text
 
     @pytest.mark.asyncio
     async def test_hub_system_time(self, server):
@@ -256,27 +257,6 @@ class TestMCPHubTools:
             )
             result = await server.request_handlers[CallToolRequest](req)
             mock_fetch.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_hub_auth_create_bootstrap_token(self, server):
-        from hub_mcp.tools import register_all_tools
-        register_all_tools(server)
-
-        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = {"token": "bt-xxx", "id": 1}
-            req = CallToolRequest(
-                method="tools/call",
-                params=CallToolRequestParams(
-                    name="hub_auth_create_bootstrap_token",
-                    arguments={"app_slug": "myapp", "scope": "register"}
-                ),
-            )
-            result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with(
-                "/api/apps/bootstrap-tokens", method="POST",
-                json={"app_slug": "myapp", "scope": "register"}
-            )
-
     # --- Backup & Restore ---
 
     @pytest.mark.asyncio
@@ -306,20 +286,6 @@ class TestMCPHubTools:
             )
             result = await server.request_handlers[CallToolRequest](req)
             mock_call.assert_called_once_with("/api/admin/backups/stats", method="GET")
-
-    @pytest.mark.asyncio
-    async def test_hub_backup_export_env(self, server):
-        from hub_mcp.tools import register_all_tools
-        register_all_tools(server)
-
-        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = {"users": [], "apps": [], "settings": {}}
-            req = CallToolRequest(
-                method="tools/call",
-                params=CallToolRequestParams(name="hub_backup_export_env", arguments={}),
-            )
-            result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/admin/backup/export", method="GET")
 
     @pytest.mark.asyncio
     async def test_hub_message_send(self, server):
@@ -380,30 +346,43 @@ class TestMCPHubTools:
             mock_disc.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_hub_design_manifest(self, server):
+    async def test_hub_admin_settings(self, server):
         from hub_mcp.tools import register_all_tools
         register_all_tools(server)
         with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = {"version": "1.0.0", "sha256": "abc"}
+            mock_call.return_value = {"key": "site_name", "value": "HUB"}
             req = CallToolRequest(
                 method="tools/call",
-                params=CallToolRequestParams(name="hub_design_manifest", arguments={}),
+                params=CallToolRequestParams(name="hub_admin_settings", arguments={"key": "site_name"}),
             )
             result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/design-system/manifest", method="GET")
+            mock_call.assert_called_once_with("/api/settings/site_name", method="GET")
 
     @pytest.mark.asyncio
-    async def test_hub_admin_info(self, server):
+    async def test_hub_admin_ports_status(self, server):
         from hub_mcp.tools import register_all_tools
         register_all_tools(server)
         with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = {"hostname": "hub", "version": "2.2.0"}
+            mock_call.return_value = {"allocations": []}
             req = CallToolRequest(
                 method="tools/call",
-                params=CallToolRequestParams(name="hub_admin_info", arguments={}),
+                params=CallToolRequestParams(name="hub_admin_ports_status", arguments={}),
             )
             result = await server.request_handlers[CallToolRequest](req)
-            mock_call.assert_called_once_with("/api/admin/hub-info", method="GET")
+            mock_call.assert_called_once_with("/api/apps/admin/ports/status", method="GET")
+
+    @pytest.mark.asyncio
+    async def test_hub_backup_trigger(self, server):
+        from hub_mcp.tools import register_all_tools
+        register_all_tools(server)
+        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = {"status": "triggered"}
+            req = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name="hub_backup_trigger", arguments={"app_slug": "canari"}),
+            )
+            result = await server.request_handlers[CallToolRequest](req)
+            mock_call.assert_called_once_with("/api/apps/canari/backup/trigger", method="POST")
 
     @pytest.mark.asyncio
     async def test_hub_raw_call(self, server):
@@ -417,3 +396,44 @@ class TestMCPHubTools:
             )
             result = await server.request_handlers[CallToolRequest](req)
             mock_call.assert_called_once_with("/api/test", method="POST", json={"key": "value"})
+
+    # --- Outils destructeurs ---
+
+    @pytest.mark.asyncio
+    async def test_hub_app_delete(self, server):
+        from hub_mcp.tools import register_all_tools
+        register_all_tools(server)
+        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = {"ok": True}
+            req = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name="hub_app_delete", arguments={"app_id": 5}),
+            )
+            result = await server.request_handlers[CallToolRequest](req)
+            mock_call.assert_called_once_with("/api/apps/5", method="DELETE")
+
+    @pytest.mark.asyncio
+    async def test_hub_user_delete_destructive(self, server):
+        from hub_mcp.tools import register_all_tools
+        register_all_tools(server)
+        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = {"ok": True}
+            req = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name="hub_user_delete", arguments={"user_id": 42}),
+            )
+            result = await server.request_handlers[CallToolRequest](req)
+            mock_call.assert_called_once_with("/api/users/42", method="DELETE")
+
+    @pytest.mark.asyncio
+    async def test_hub_backup_restore(self, server):
+        from hub_mcp.tools import register_all_tools
+        register_all_tools(server)
+        with patch("hub_mcp.tools.hub_client.call_hub_endpoint", new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = {"ok": True}
+            req = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name="hub_backup_restore", arguments={"app_slug": "myapp", "backup_id": 7}),
+            )
+            result = await server.request_handlers[CallToolRequest](req)
+            mock_call.assert_called_once_with("/api/apps/myapp/backup/7/restore", method="POST")
