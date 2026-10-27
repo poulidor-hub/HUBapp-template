@@ -13,12 +13,19 @@ from mcp.types import Tool, TextContent
 
 
 class _LazyHubClient:
-    """Proxy a resolution paresseuse vers backend.hub_client.
+    """Proxy a resolution paresseuse vers un client Hub.
 
-    Le MCP `hub` est concu pour tourner depuis une app generee depuis
-    HUBapp_TEMPLATE_base, qui expose le paquet `backend`. L'import est differe :
-    le serveur MCP demarre (et liste ses tools) meme hors app ; seuls les
-    appels d'outils echouent alors, avec un message explicite.
+    Deux modes, résolus au premier appel d'outil :
+
+    1. **Mode app** : ``backend.hub_client`` (depuis une app générée par
+       ``HUBapp_TEMPLATE_base``, qui expose le paquet ``backend``).
+    2. **Mode standalone** : ``hub_mcp.standalone_client.StandaloneHubClient``
+       (client HTTP direct via httpx). Utilisé hors app — typiquement depuis le
+       méta-repo POULIDOR — configuré par ``HUB_BASE_URL`` /
+       ``HUB_ADMIN_USERNAME`` / ``HUB_ADMIN_PASSWORD``.
+
+    Le serveur MCP démarre (et liste ses tools) même si aucun backend n'est
+    joignable ; seuls les appels d'outils échouent alors, avec un message clair.
     """
 
     _client = None
@@ -26,15 +33,22 @@ class _LazyHubClient:
     @classmethod
     def _resolve(cls):
         if cls._client is None:
+            # 1. Mode app : backend.hub_client (depuis une app HUBapp_TEMPLATE_base)
             try:
                 from backend.hub_client import hub_client as real
-            except Exception as exc:
-                raise RuntimeError(
-                    "hub_mcp: paquet `backend` introuvable. Le MCP `hub` doit etre "
-                    "lance depuis une app generee depuis HUBapp_TEMPLATE_base (ou un "
-                    "repo exposant `backend.hub_client`)."
-                ) from exc
-            cls._client = real
+                cls._client = real
+            except Exception:
+                # 2. Mode standalone : client HTTP direct (depuis le méta-repo, via env)
+                try:
+                    from hub_mcp.standalone_client import StandaloneHubClient
+                    cls._client = StandaloneHubClient()
+                except Exception as exc2:
+                    raise RuntimeError(
+                        "hub_mcp: aucun backend utilisable. Soit lancer depuis une app "
+                        "HUBapp_TEMPLATE_base (expose `backend.hub_client`), soit définir "
+                        "les variables d'env HUB_BASE_URL / HUB_ADMIN_USERNAME / "
+                        "HUB_ADMIN_PASSWORD pour le mode standalone (ex: méta-repo, dans .secrets)."
+                    ) from exc2
         return cls._client
 
     def __getattr__(self, name):
@@ -66,7 +80,7 @@ TOOLS = [
     ),
     Tool(
         name="hub_config",
-        description="Recupere la configuration runtime du HUB (feature flags).",
+        description="Recupere l'hote public du HUB (GET /api/config/hub-host).",
         inputSchema={
             "type": "object",
             "properties": {},
@@ -304,18 +318,6 @@ TOOLS = [
         },
     ),
     Tool(
-        name="hub_user_reset_password",
-        description="Force la reinitialisation du mot de passe d'un utilisateur (admin requis).",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "user_id": {"type": "integer"},
-                "new_password": {"type": "string", "description": "Nouveau mot de passe"},
-            },
-            "required": ["user_id", "new_password"],
-        },
-    ),
-    Tool(
         name="hub_user_set_app_roles",
         description="Assigne des roles d'application a un utilisateur (admin requis).",
         inputSchema={
@@ -398,30 +400,7 @@ TOOLS = [
             "required": ["token"],
         },
     ),
-    Tool(
-        name="hub_auth_create_bootstrap_token",
-        description="Cree un token bootstrap pour une application (admin requis).",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "app_slug": {"type": "string", "description": "Slug de l'application cible"},
-                "scope": {"type": "string", "description": "Scope du token (ex: register)"},
-            },
-            "required": ["app_slug", "scope"],
-        },
-    ),
-    Tool(
-        name="hub_auth_list_bootstrap_tokens",
-        description="Liste les tokens bootstrap existants (admin requis, sans la valeur brute).",
-        inputSchema={
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    ),
     # --- Backup & Restore ---
-    Tool(name="hub_backup_export_env", description="Exporte l'environnement complet du HUB (admin requis).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_backup_import_env", description="Importe un environnement dans le HUB (admin requis).", inputSchema={"type": "object", "properties": {"data": {"type": "object"}}, "required": ["data"]}),
     Tool(name="hub_backup_list", description="Liste les backups d'une application (SA ou admin).", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}}, "required": ["app_slug"]}),
     Tool(name="hub_backup_get_latest", description="Dernier backup d'une application.", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}}, "required": ["app_slug"]}),
     Tool(name="hub_backup_download", description="Telecharge un backup ZIP (SA ou admin).", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}, "backup_id": {"type": "integer"}}, "required": ["app_slug", "backup_id"]}),
@@ -431,7 +410,7 @@ TOOLS = [
     Tool(name="hub_backup_restore", description="Restaure depuis un backup (admin).", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}, "backup_id": {"type": "integer"}}, "required": ["app_slug", "backup_id"]}),
     Tool(name="hub_backup_stats", description="Statistiques globales des backups (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
     Tool(name="hub_backup_orphans_list", description="Liste les backups orphelins (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_backup_trigger", description="Declenche un backup manuel (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="hub_backup_trigger", description="Declenche un backup manuel pour une application (POST /api/apps/{slug}/backup/trigger, admin).", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string", "description": "Slug de l'application a backuper"}}, "required": ["app_slug"]}),
     # --- Messages ---
     Tool(name="hub_message_send", description="Envoie un message (cible ou broadcast, admin).", inputSchema={"type": "object", "properties": {"title": {"type": "string"}, "target_usernames": {"type": "array", "items": {"type": "string"}}, "body": {"type": "string"}, "priority": {"type": "string", "enum": ["info", "warning", "urgent"]}}, "required": ["title", "target_usernames"]}),
     Tool(name="hub_message_list", description="Liste les messages (admin, pagine).", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -457,19 +436,9 @@ TOOLS = [
     # --- Discovery ---
     Tool(name="hub_discover_services", description="Decouvre les services partages via le Hub.", inputSchema={"type": "object", "properties": {}, "required": []}),
     Tool(name="hub_call_service", description="Appelle un endpoint d'un service decouvert.", inputSchema={"type": "object", "properties": {"service_slug": {"type": "string"}, "endpoint": {"type": "string"}, "method": {"type": "string", "default": "GET"}, "body": {"type": "object", "description": "Corps JSON pour POST/PATCH"}}, "required": ["service_slug", "endpoint"]}),
-    Tool(name="hub_discovery_proxy", description="Proxy admin vers une app.", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}, "endpoint": {"type": "string"}}, "required": ["app_slug", "endpoint"]}),
-    # --- Design ---
-    Tool(name="hub_design_manifest", description="Manifeste courant du design system.", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_design_status", description="Statut de deploiement du design system (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_design_upload", description="Uploader un tarball design system (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
     # --- Admin ---
-    Tool(name="hub_admin_info", description="Dashboard info HUB (hostname, version, uptime).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_admin_settings", description="Lister les settings (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="hub_admin_settings", description="Lit un parametre du HUB par sa cle (GET /api/settings/{key}). Seule la cle 'account_requests_enabled' est publique ; les autres necessitent un token admin.", inputSchema={"type": "object", "properties": {"key": {"type": "string", "description": "Cle du parametre (ex: account_requests_enabled)"}}, "required": ["key"]}),
     Tool(name="hub_admin_ports_status", description="Statut du pool de ports (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_admin_dns_status", description="Resolution DNS des apps (admin).", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_pki_ca_info", description="Infos de la CA interne.", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="hub_pki_list_certs", description="Certificats d'une app.", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}}, "required": ["app_slug"]}),
-    Tool(name="hub_pki_revoke_cert", description="Revoquer un certificat (admin).", inputSchema={"type": "object", "properties": {"app_slug": {"type": "string"}, "cert_id": {"type": "integer"}}, "required": ["app_slug", "cert_id"]}),
 ]
 
 # ============================================================
@@ -478,7 +447,7 @@ TOOLS = [
 
 HANDLERS = {
     "hub_health": lambda args: hub_client.call_hub_endpoint("/api/health", method="GET"),
-    "hub_config": lambda args: hub_client.call_hub_endpoint("/api/config", method="GET"),
+    "hub_config": lambda args: hub_client.call_hub_endpoint("/api/config/hub-host", method="GET"),
     "hub_system_time": lambda args: hub_client.call_hub_endpoint("/api/system/time", method="GET"),
     "hub_raw_call": lambda args: hub_client.call_hub_endpoint(
         args.get("path", args.get("endpoint", "/api/health")),
@@ -511,21 +480,16 @@ HANDLERS = {
     "hub_user_create": lambda args: hub_client.call_hub_endpoint("/api/users/", method="POST", json={k: v for k, v in args.items()}),
     "hub_user_update": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}", method="PATCH", json={k: v for k, v in args.items() if k != "user_id"}),
     "hub_user_delete": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}", method="DELETE"),
-    "hub_user_reset_password": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}/admin/reset-password", method="POST", json={"new_password": args["new_password"]}),
-    "hub_user_set_app_roles": lambda args: hub_client.call_hub_endpoint(f"/api/users/{args['user_id']}/apps", method="POST", json=args["app_roles"]),
-    "hub_user_bulk_create": lambda args: hub_client.call_hub_endpoint("/api/users/bulk/create", method="POST", json=args["users"]),
+    "hub_user_set_app_roles": lambda args: _handle_user_set_app_roles(args),
+    "hub_user_bulk_create": lambda args: hub_client.call_hub_endpoint("/api/users/bulk/create", method="POST", json={"users": args["users"]}),
     "hub_user_bulk_roles": lambda args: hub_client.call_hub_endpoint("/api/users/bulk/roles", method="POST", json=args["updates"]),
     # --- Auth & Tokens ---
     "hub_auth_login": lambda args: hub_client.call_hub_endpoint("/api/auth/token", method="POST", data={"grant_type": "password", "username": args["username"], "password": args["password"]}),
     "hub_auth_me": lambda args: hub_client.call_hub_endpoint("/api/auth/me", method="GET"),
     "hub_auth_get_m2m_token": lambda args: _handle_get_m2m_token(args),
     "hub_auth_get_jwks": lambda args: _handle_get_jwks(args),
-    "hub_auth_token_introspect": lambda args: hub_client.call_hub_endpoint("/api/auth/token/introspect", method="POST", json={"token": args["token"]}),
-    "hub_auth_create_bootstrap_token": lambda args: hub_client.call_hub_endpoint("/api/apps/bootstrap-tokens", method="POST", json={"app_slug": args["app_slug"], "scope": args["scope"]}),
-    "hub_auth_list_bootstrap_tokens": lambda args: hub_client.call_hub_endpoint("/api/apps/bootstrap-tokens", method="GET"),
+    "hub_auth_token_introspect": lambda args: hub_client.call_hub_endpoint("/api/auth/token/introspect", method="POST", data={"token": args["token"]}),
     # --- Backup & Restore ---
-    "hub_backup_export_env": lambda args: hub_client.call_hub_endpoint("/api/admin/backup/export", method="GET"),
-    "hub_backup_import_env": lambda args: hub_client.call_hub_endpoint("/api/admin/backup/import", method="POST", json=args["data"]),
     "hub_backup_list": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/backup", method="GET"),
     "hub_backup_get_latest": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/backup/latest", method="GET"),
     "hub_backup_download": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/backup/{args['backup_id']}/export", method="GET"),
@@ -535,7 +499,7 @@ HANDLERS = {
     "hub_backup_restore": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/backup/{args['backup_id']}/restore", method="POST"),
     "hub_backup_stats": lambda args: hub_client.call_hub_endpoint("/api/admin/backups/stats", method="GET"),
     "hub_backup_orphans_list": lambda args: hub_client.call_hub_endpoint("/api/admin/backups/orphans", method="GET"),
-    "hub_backup_trigger": lambda args: hub_client.call_hub_endpoint("/api/apps/backup/trigger", method="POST"),
+    "hub_backup_trigger": lambda args: hub_client.call_hub_endpoint(f"/api/apps/{args['app_slug']}/backup/trigger", method="POST"),
     # --- Messages ---
     "hub_message_send": lambda args: hub_client.call_hub_endpoint("/api/messages/send", method="POST", json={k: v for k, v in args.items()}),
     "hub_message_list": lambda args: hub_client.call_hub_endpoint("/api/messages/", method="GET"),
@@ -561,25 +525,9 @@ HANDLERS = {
     # --- Discovery ---
     "hub_discover_services": lambda args: _handle_discover_services(args),
     "hub_call_service": lambda args: hub_client.call_discovered_service(args["service_slug"], args["endpoint"], method=args.get("method", "GET"), json=args.get("body")),
-    "hub_discovery_proxy": lambda args: hub_client.call_hub_endpoint("/api/discovery/proxy", method="POST", json={"app_slug": args["app_slug"], "endpoint": args["endpoint"]}),
-    # --- Design ---
-    "hub_design_manifest": lambda args: hub_client.call_hub_endpoint("/api/design-system/manifest", method="GET"),
-    "hub_design_status": lambda args: hub_client.call_hub_endpoint("/api/admin/design-system/status", method="GET"),
-    # L'upload multipart de tarball design system n'est pas supporté via le proxy
-    # HTTP de hub_client (pas de support `files=`). L'utilisateur doit utiliser
-    # hub_raw_call ou curl directement.
-    "hub_design_upload": lambda args: {
-        "status": "not_implemented",
-        "message": "L'upload multipart design system necessite curl en ligne de commande. Utiliser hub_raw_call vers /api/admin/design-system/upload avec --data-binary @design.tar.gz ou contacter le support.",
-    },
     # --- Admin ---
-    "hub_admin_info": lambda args: hub_client.call_hub_endpoint("/api/admin/hub-info", method="GET"),
-    "hub_admin_settings": lambda args: hub_client.call_hub_endpoint("/api/admin/settings", method="GET"),
-    "hub_admin_ports_status": lambda args: hub_client.call_hub_endpoint("/api/admin/ports/status", method="GET"),
-    "hub_admin_dns_status": lambda args: hub_client.call_hub_endpoint("/api/admin/dns/status", method="GET"),
-    "hub_pki_ca_info": lambda args: hub_client.call_hub_endpoint("/api/pki/ca/info", method="GET"),
-    "hub_pki_list_certs": lambda args: hub_client.call_hub_endpoint(f"/api/pki/apps/{args['app_slug']}/certificates", method="GET"),
-    "hub_pki_revoke_cert": lambda args: hub_client.call_hub_endpoint(f"/api/pki/apps/{args['app_slug']}/certificates/{args['cert_id']}/revoke", method="POST"),
+    "hub_admin_settings": lambda args: hub_client.call_hub_endpoint(f"/api/settings/{args['key']}", method="GET"),
+    "hub_admin_ports_status": lambda args: hub_client.call_hub_endpoint("/api/apps/admin/ports/status", method="GET"),
 }
 
 
@@ -634,6 +582,33 @@ async def _handle_discover_services(args):
     for slug, svc in services.items():
         result[slug] = {"name": svc.name, "api_url": svc.api_url, "is_healthy": svc.is_healthy}
     return result
+
+
+async def _handle_user_set_app_roles(args):
+    """Convertit un dict {app_slug: role} en format API assignments [{app_id, role}]."""
+    app_roles = args.get("app_roles", {})
+    # Charger toutes les apps pour résoudre slug → id
+    try:
+        apps = await hub_client.call_hub_endpoint("/api/apps/", method="GET", params={"per_page": 100})
+    except Exception:
+        apps = []
+    slug_to_id = {a["slug"]: a["id"] for a in apps if "slug" in a}
+    assignments = []
+    for slug, role in app_roles.items():
+        app_id = slug_to_id.get(slug)
+        if app_id is None:
+            try:
+                app_id = int(slug)
+            except ValueError:
+                return {"error": f"Application '{slug}' introuvable"}
+        assignments.append({"app_id": app_id, "role": role})
+    if not assignments:
+        return {"error": "Aucune application valide dans app_roles"}
+    return await hub_client.call_hub_endpoint(
+        f"/api/users/{args['user_id']}/apps", method="POST",
+        json={"assignments": assignments}
+    )
+
 
 
 # ============================================================
