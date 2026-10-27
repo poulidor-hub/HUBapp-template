@@ -222,10 +222,23 @@ update-ds: ## Synchroniser le seed HUBCSS (vendor, sha256 vérifiés) — source
 	@python3 scripts/update_design_system.py
 
 # === OUTILLAGE HUB (MCP + plugin opencode) ===
-# Sources de vérité : MCP = dépôt dédié $(HUB_MCP_SRC) ; plugin = $(HUB_STACK_DIR)
-
-HUB_STACK_DIR ?= ..
-HUB_MCP_SRC ?= ../hub-mcp/hub_mcp
+# Sources de vérité : MCP = dépôt dédié hub-mcp/ (canonique, resync fichier à
+# fichier — jamais un clone) ; plugin = CE dépôt (le hub.ts du template est la
+# référence : les apps le reçoivent au scaffold/migration — la copie du
+# méta-repo est en retard et ne doit JAMAIS écraser celle du template).
+#
+# Résolution robuste des chemins : racine du template, APPS/<slug> ou
+# worktree (.worktrees/_agents/<branche>) — premier existant, sinon défaut.
+HUB_MCP_SRC ?= $(shell for d in ../hub-mcp ../../hub-mcp ../../../hub-mcp ../../../../hub-mcp ../../../../../hub-mcp; do [ -f "$$d/hub_mcp/server.py" ] && echo "$$d/hub_mcp" && break; done)
+ifeq ($(strip $(HUB_MCP_SRC)),)
+HUB_MCP_SRC := ../hub-mcp/hub_mcp
+endif
+# hub.ts : soi-même d'abord ; une app garde le sien, sinon l'ancêtre le plus
+# proche qui en a un.
+HUB_STACK_DIR ?= $(shell for d in . .. ../.. ../../.. ../../../..; do [ -f "$$d/.opencode/plugins/hub.ts" ] && echo "$$d" && break; done)
+ifeq ($(strip $(HUB_STACK_DIR)),)
+HUB_STACK_DIR := .
+endif
 
 sync-hub-tooling: ## Resynchroniser hub_mcp (depuis $(HUB_MCP_SRC)) + plugin opencode (depuis $(HUB_STACK_DIR))
 	@test -f "$(HUB_MCP_SRC)/server.py" || { echo "❌ $(HUB_MCP_SRC) introuvable (dépôt hub-mcp)"; exit 1; }
