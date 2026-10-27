@@ -1,3 +1,11 @@
+## [2.33.2] - 26 octobre 2026
+
+### ⚡ Resync hub_mcp sur hub-mcp v0.4.2 + sync-hub-tooling robuste
+
+- **`hub_mcp/` resynchronisé sur le canonique hub-mcp v0.4.2 (77 → 63 outils)** : l'artefact du template était resté en pré-v0.3.0 — chaque app scaffoldée héritait d'un `hub_backup_trigger` cassé (`/api/apps/backup/trigger` sans slug → 404, cf. incident exemple-app du 25/10). 4 remappages upstream (hub_config → /api/config/hub-host, hub_admin_settings → /api/settings/{key}, hub_admin_ports_status, hub_backup_trigger), 14 outils sans route Hub réelle retirés, `standalone_client.py` ajouté, tests alignés (29/29)
+- **`sync-hub-tooling` réparé** : `HUB_MCP_SRC`/`HUB_STACK_DIR` résolus par recherche ascendante — les défauts ne résolvaient que depuis la racine du template ; depuis APPS/<slug>, l'unique voie de mise à jour de `hub_mcp/` échouait en silence (aucune app resynchronisée depuis le scaffold)
+- **hub.ts du template protégé** : la copie du plugin depuis le méta-repo (en retard sur le fix V2 PermissionSupervisor du 05/10) ne peut plus écraser la référence — `HUB_STACK_DIR` se résout soi-même d'abord
+
 ## [2.33.1] - 24 octobre 2026
 
 ### ⚡ Fix : allowlist trouvée en conteneur aplati (`resolve_base_dir`)
