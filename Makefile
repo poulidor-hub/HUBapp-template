@@ -17,7 +17,7 @@ ifneq (,$(wildcard ./.env))
 	export
 endif
 
-.PHONY: help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
+.PHONY: pull help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
         restart restart-api restart-frontend logs logs-api logs-db \
         ensure-api-fresh test test-seq test-cov test-docker test-docker-cov \
         health health-detailed version \
@@ -43,6 +43,27 @@ help: ## Afficher cette aide
 
 update-env: ## Fusionner les nouvelles clés du .env.example dans .env (sauvegarde auto, valeurs existantes préservées)
 	@python3 scripts/update_env.py
+
+pull: ## git pull sûr (manuel dev/banc) : stash auto → pull --ff-only → stash pop ; conflit = stash conservé
+	@stashed=0; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		git stash push -u -m "make pull auto ($$(date '+%F %T'))" && stashed=1; \
+	fi; \
+	if ! git pull --ff-only; then \
+		echo "❌ git pull --ff-only impossible (divergence ou commits locaux) — réalignez d'abord (git fetch, git status). Aucun merge automatique."; \
+		if [ "$$stashed" -eq 1 ]; then git stash pop && echo "↩ Modifications locales restaurées (stash dépilé)."; fi; \
+		exit 1; \
+	fi; \
+	if [ "$$stashed" -eq 1 ]; then \
+		if git stash pop; then \
+			echo "✅ À jour ; modifications locales réappliquées."; \
+		else \
+			echo "⚠️ Conflit en dépilant le stash : stash conservé (voir git stash list) — résolvez puis git stash drop manuellement."; \
+			exit 1; \
+		fi; \
+	else \
+		echo "✅ À jour."; \
+	fi
 
 sync-env: ## Allouer les ports via le Hub si absents, puis synchroniser FRONTEND_HTTPS_PORT et APP_VERSION
 	@if [ ! -f .env ]; then cp .env.example .env && echo "🆕 Premier démarrage : .env créé depuis .env.example — adaptez APP_SLUG, HUB_HOST et les secrets (POSTGRES_PASSWORD) si besoin."; fi
