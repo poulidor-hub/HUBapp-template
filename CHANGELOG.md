@@ -1,3 +1,11 @@
+## [2.34.0] - 28 octobre 2026
+
+### ⚡ Cible `make pull` — mise à jour git sûre en une commande
+
+- **Ajouté** : cible `pull` (`.PHONY`) — stash auto (`-u`, message daté) → `git pull --ff-only` (jamais de merge auto) → `stash pop` ; divergence = échec propre avec remède, conflit de pop = stash conservé + message explicite ; ne build pas, ne démarre rien (usage : `make pull` puis `make build && make up`)
+- **Doc** : ligne `make pull` dans la table « Référence rapide » du README
+- Tests : scénarios sur clones jetables (arbre propre / sale / divergence / conflit de stash pop) — 4/4 ; les apps instanciées recevront la cible via migrate-app-template
+
 ## [2.33.3] - 28 octobre 2026
 
 ### ⚡ Conseil de recréation — make up au lieu de compose brut
