@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             set_env_var(ENV_PATH, "HUB_INSTANCE_ID", instance)
         if mismatches:
             print(f"⚠️ Mismatch de ports corrigé ({'; '.join(mismatches)}) — "
-                  f"RECRÉEZ les conteneurs de l'app (docker compose up -d --force-recreate) "
+                  f"RECRÉEZ les conteneurs de l'app (make up, ou ACTION UPDATE) "
                   f"pour que le proxy nginx et le backend prennent le nouveau port.")
         elif not args.quiet:
             print("✅ Ports et instance du Hub alignés")
