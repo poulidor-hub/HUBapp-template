@@ -1,3 +1,11 @@
+## [2.33.3] - 28 octobre 2026
+
+### ⚡ Conseil de recréation — make up au lieu de compose brut
+
+- **Corrigé** : le message de mismatch de ports de `sync_hub_host.py` recommandait `docker compose up -d --force-recreate` — un compose brut recrée les conteneurs **sans l'overlay HTTPS** de l'app (incident exemple-app 27-28/10/2026 : port 4231 perdu, app injoignable). Le conseil pointe désormais vers `make up` / ACTION UPDATE, qui chargent les overlays
+- **Nota test** : `test_main_quiet_updates_when_changed` échoue sur une station où un Hub est joignable (le script adopte l'IP joignable réelle au lieu de l'IP de test) — pré-existant, qualifié A/B sur main, hors périmètre de ce fix
+- Les apps instanciées portent leur propre copie du fichier (catégorie A.3 du skill migrate-app-template) — propagation aux apps existantes par patch ciblé, cf. releases APPS du jour
+
 ## [2.33.2] - 26 octobre 2026
 
 ### ⚡ Resync hub_mcp sur hub-mcp v0.4.2 + sync-hub-tooling robuste
