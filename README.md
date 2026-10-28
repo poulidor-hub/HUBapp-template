@@ -194,6 +194,7 @@ Référence rapide (détail : `make help`) :
 | `make health`, `make health-detailed` | Health check de l'app |
 | `make version`, `make bump-patch/minor/major` | Version (cf. 🏷️ Gestion des versions) |
 | `make sync-env`, `make sync-hub-host` | Sync ports/.env · redécouverte `HUB_HOST` |
+| `make pull` | Mise à jour git sûre (stash auto → `--ff-only` → stash pop) — manuel, ne build pas |
 | `make sync-hub-tooling`, `sync-hub-tooling-check` | Sync serveur MCP (`hub-mcp/`) + vérif diff |
 | `make ssl` | Certificats HTTPS locaux |
 | `make db-shell` | psql dans le conteneur DB |
