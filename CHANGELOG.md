@@ -1,3 +1,35 @@
+## [2.35.0] - 30 octobre 2026
+
+### ⚡ Conversion en app fine — le template consomme HUBsocle (fin de la duplication)
+
+Le template n'embarque plus AUCUN module transverse : il est construit sur
+l'image socle `poulidor/socle-api` et n'ajoute que son squelette de démo.
+Chaque app créée depuis ce template naît synchronisée au socle (pin
+`APP_SOCLE_VERSION` dans le `.env`, aligné par `make sync-env`).
+
+- **Ajouté** : `Dockerfile.backend` = `FROM poulidor/socle-api:${SOCLE_VERSION}`
+  (4 lignes, fin du build 2-stages autonome) ; `main.py` = `create_app()` du
+  socle (fin des 597 lignes de monolithe) ; dépendance frontend
+  `@poulidor/hub-socle` (contexte compose `socle:`, `preserveSymlinks`,
+  `COPY --from=socle` avant npm install)
+- **Supprimé** : 15 modules backend devenus socle (config, database,
+  hub_auth, hub_client, storage, outbox, m2m_catalog, m2m_share, models,
+  schemas, cert_sync, hub_transfert, logging_config, utils, entrypoint.sh)
+  + `routes/` (backup/docs/hub_data/items/m2m/preferences/tests montés par
+  le socle) + `requirements.txt` (deps runtime portées par l'image socle)
+- **Migrations** : plage app 001-08x (001/010 conservées) ; `002_create_outbox`
+  retiré (le socle 090 le crée)
+- **Tests** : conftest hermétique (REFERENCE-APP-FINE §4, env écrasé avant
+  imports, vrai lifespan ASGI, auth mockée au niveau socle) + jeu minimal
+  canari 7 tests (§7 : socle_version, visibilité 2-sessions, CRUD items,
+  cloisonnement owner, 422, 404) — les tests des briques transverses
+  vivent dans le dépôt HUBsocle (suite 323)
+- **Validation** : boot complet vert (api healthy sur socle 2.28.0,
+  frontend HTTPS 200) + smoke create_app : une app neuve scaffoldée depuis
+  ce template boote du premier coup (ports alloués par le Hub, health OK)
+
+---
+
 ## [2.34.0] - 28 octobre 2026
 
 ### ⚡ Cible `make pull` — mise à jour git sûre en une commande
