@@ -55,7 +55,7 @@ Consequences importantes :
 
 | Zone | Fichier | Role | Necessaire pour un retrofit legacy |
 |------|---------|------|------------------------------------|
-| Backend | `backend/hub_client.py` | Obtention du token M2M, appel direct au Hub, helper `send_user_message` | Oui |
+| Backend | `hub_socle.hub_client` (fourni par le socle) | Obtention du token M2M, appel direct au Hub, helper `send_user_message` | Oui |
 | Backend | `backend/main.py` | Expose `/api/config` avec `hub_api_url` et `hub_frontend_url` | Oui |
 | Backend | `backend/routes/tests.py` | Endpoint smoke test `POST /api/tests/messages/send` | Optionnel |
 | Backend | `backend/routes/m2m.py` | Diagnostics admin M2M (`status`, `discover`, `call`) | Optionnel |
@@ -77,7 +77,7 @@ Consequences importantes :
 
 ### Helper deja present dans le template
 
-Le template fournit cette methode dans `backend/hub_client.py` :
+Le template fournit cette methode dans `hub_socle.hub_client` (fourni par le socle) :
 
 ```python
 async def send_user_message(
