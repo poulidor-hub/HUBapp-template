@@ -1,75 +1,8 @@
-# === Stage 1: Builder — Installation des dépendances ===
-FROM python:3.11-slim AS builder
-
-WORKDIR /build
-
-# Dépendances système pour compiler psycopg2
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Installer les dépendances Python dans un wheel cache
-COPY backend/requirements.txt .
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
-
-
-# === Stage 2: Runtime — Image finale légère ===
-FROM python:3.11-slim
-
-# Version de l'application (passée au build)
-ARG APP_VERSION=0.0.0
-LABEL version="${APP_VERSION}"
-LABEL maintainer="HUBapp Template"
-
-WORKDIR /app
-
-# Dépendances runtime uniquement (pas gcc)
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    curl \
-    gosu \
-    && rm -rf /var/lib/apt/lists/*
-
-# Installer les wheels pré-compilés
-COPY --from=builder /build/wheels /tmp/wheels/
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir /tmp/wheels/* && rm -rf /tmp/wheels/
-
-# Créer un utilisateur non-root (aligné avec le HUB)
-RUN useradd -m -u 1000 appuser
-
-# Copier le code source
-# (AVANT le VERSION : un backend/VERSION parasite — mountpoint créé par le
-# montage ./VERSION:/app/VERSION:ro du compose dev — ne doit jamais écraser
-# la source unique de vérité ; .dockerignore l'exclut aussi par précaution)
-# NOTE allowlist IA (m2m_share.yaml) : ce COPY aplatit le layout (backend/x →
-# /app/x), donc m2m_share.resolve_base_dir cherche le YAML sous /app. Les apps
-# DOIVENT copier leur m2m_share.yaml racine dans l'image (ex.
-# `COPY m2m_share.yaml /app/m2m_share.yaml`) pour que leurs endpoints
-# `shared` apparaissent au runtime ; à défaut, défaut fermé (aucun partagé).
-COPY backend/ .
-
-# Scripts d'exploitation de l'app (update_design_system, sync_socle_version…)
-# — importés par backend/tests (parents[2]/scripts) dans le conteneur.
-COPY scripts/ /app/scripts/
-
-# Copier le fichier VERSION (source unique de vérité)
+# HUBapp Template — app fine de démonstration sur socle POULIDOR
+# Le socle (poulidor/socle-api) fournit tout le transverse : auth, config,
+# database, hub_client, backup, outbox, routes core/items/preferences…
+# L'app n'ajoute QUE son métier (ici : rien — c'est la démo du socle).
+ARG SOCLE_VERSION
+FROM poulidor/socle-api:${SOCLE_VERSION}
+COPY backend/ /app/
 COPY VERSION /app/VERSION
-
-# Rendre l'entrypoint exécutable
-RUN chmod +x /app/entrypoint.sh
-
-# Créer les répertoires nécessaires et donner les permissions
-RUN mkdir -p /app/uploads /app/storage && chown -R appuser:appuser /app
-
-# NOTE : pas de USER ici — l'entrypoint démarre en root, répare la propriété
-# des volumes de données (storage/uploads/certs/data, cas : volumes root
-# créés par un ancien conteneur), puis bascule en appuser via gosu.
-# Le process applicatif tourne donc TOUJOURS en non-root au runtime.
-
-# Port exposé (HTTP)
-EXPOSE 8000
-
-# Utiliser l'entrypoint pour installer le certificat CA avant de lancer l'app
-ENTRYPOINT ["/app/entrypoint.sh"]

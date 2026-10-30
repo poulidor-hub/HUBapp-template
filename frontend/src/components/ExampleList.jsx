@@ -6,9 +6,9 @@
  * Écritures : useApiMutation POST /api/items + DELETE /api/items/{id}, invalidation ['items'].
  */
 import { useEffect, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { useApiQuery } from '../hooks/useApiQuery'
-import { useApiMutation } from '../hooks/useApiMutation'
+import { useAuth } from '@poulidor/hub-socle/context/AuthContext.jsx'
+import { useApiQuery } from '@poulidor/hub-socle/hooks/useApiQuery.js'
+import { useApiMutation } from '@poulidor/hub-socle/hooks/useApiMutation.js'
 
 const SPRITE = '/design-system/current/icons/lucide.svg'
 const PER_PAGE = 5

@@ -4,6 +4,12 @@
 
 Template d'application avec authentification Hub pour le développement rapide d'applications connectées.
 
+> ⚡ **App fine (2.35.0)** : le template est une application fine construite sur
+> l'image socle `poulidor/socle-api` (HUBsocle) — tout le transverse (auth,
+> config, database, hub_client, backup, outbox, CRUD démo) vient du socle,
+> versionné par `APP_SOCLE_VERSION` dans le `.env` (aligné automatiquement par
+> `make sync-env`). Contrat d'extension : `HUBsocle/docs/REFERENCE-APP-FINE.md`.
+
 ## 🗺️ Place dans le parc
 
 ```mermaid
@@ -17,7 +23,7 @@ flowchart LR
 Chaque application du parc naît de ce template (fork via `INITIALISE.*`), s'enregistre
 auprès du [Hub](https://github.com/POULIDOR-Audit-Developpement/HUB_base) et consomme le
 design system [HUBCSS](https://github.com/POULIDOR-Audit-Developpement/HUBCSS) servi par
-le Hub. Les nouvelles apps pourront naître « fines » sur le socle versionné
+le Hub. Les nouvelles apps naissent « fines » sur le socle versionné
 [HUBsocle](https://github.com/POULIDOR-Audit-Developpement/HUBsocle) (INITIALISE v2).
 
 ## 📋 Canevas de cahier des charges
@@ -56,19 +62,13 @@ HUBapp_TEMPLATE/
 ├── INITIALISE.sh       # Lanceur Linux / macOS
 ├── INITIALISE.bat      # Lanceur Windows / drag-and-drop
 ├── backend/
-│   ├── main.py           # Application FastAPI
-│   ├── config.py         # Configuration avec auto-détection IP
-│   ├── hub_client.py     # Client Hub (M2M, enregistrement)
-│   ├── hub_auth.py       # Authentification JWT + rôles
-│   ├── database.py       # Configuration PostgreSQL
-│   ├── models.py         # Modèles SQLAlchemy
-│   ├── schemas.py        # Schémas Pydantic
-│   ├── requirements.txt  # Dépendances Python
-│   └── tests/            # Tests pytest
+│   ├── main.py           # App fine : create_app() du socle (+ routers métier)
+│   ├── migrations/       # Migrations SQL de l'app (001-08x ; socle = 090+)
+│   └── tests/            # Tests pytest (app fine + canari 7 tests)
 ├── frontend/
 │   ├── index.html        # Point d'entrée HTML
-│   ├── package.json      # Dépendances npm
-│   ├── vite.config.js    # Configuration Vite
+│   ├── package.json      # Dépendances npm (dont @poulidor/hub-socle)
+│   ├── vite.config.js    # Configuration Vite (preserveSymlinks)
 │   └── src/              # Code source React
 │       ├── App.jsx       # Composant principal
 │       ├── config.js     # Configuration frontend
@@ -374,15 +374,24 @@ Surcharges locales : **uniquement dans `frontend/src/app.css`** — ne jamais
 
 ### Ajouter un nouveau modèle
 
-1. Créer le modèle dans `backend/models.py`
-2. Ajouter les schémas dans `backend/schemas.py`
-3. Créer les endpoints dans `backend/main.py`
-4. Ajouter les tests dans `backend/tests/`
+1. Créer le modèle métier dans `backend/models.py` (hériter du `Base` du
+   socle : `from hub_socle.database import Base`) et le déclarer à
+   `create_app(models=[...])` dans `main.py`
+2. Ajouter les schémas dans `backend/schemas.py` (app-side)
+3. Créer les endpoints dans `backend/routes/` et les passer à
+   `create_app(routers=[...])`
+4. Déclarer les settings métier via `register_settings_extra(...)` AVANT
+   d'importer les routes
+5. Ajouter les tests dans `backend/tests/`
+
+> **Contrat app fine complet** (extension models/routes/settings/storage,
+> pièges connus, jeu de tests minimal) :
+> `HUBsocle/docs/REFERENCE-APP-FINE.md`
 
 ### Utiliser la communication M2M
 
 ```python
-from hub_client import hub_client
+from hub_socle.hub_client import hub_client
 
 # Appeler un autre service
 result = await hub_client.call_service(

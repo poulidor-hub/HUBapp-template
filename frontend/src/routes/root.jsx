@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
-import { useConfig } from '../context/ConfigContext'
-import Header from '../components/Header'
-import MessageBanner from '../components/MessageBanner'
-import MessageArchive from '../components/MessageArchive'
+import { useConfig } from '@poulidor/hub-socle/context/ConfigContext.jsx'
+import Header from '@poulidor/hub-socle/components/Header.jsx'
+import MessageBanner from '@poulidor/hub-socle/components/MessageBanner.jsx'
+import MessageArchive from '@poulidor/hub-socle/components/MessageArchive.jsx'
 
 export function RootLayout() {
   const [theme, setTheme] = useState(() =>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useAuth } from '../context/AuthContext'
-import LoginPrompt from '../components/LoginPrompt'
+import { useAuth } from '@poulidor/hub-socle/context/AuthContext.jsx'
+import LoginPrompt from '@poulidor/hub-socle/components/LoginPrompt.jsx'
 import PageHeader from '../components/PageHeader'
 import ExampleList from '../components/ExampleList'
 
