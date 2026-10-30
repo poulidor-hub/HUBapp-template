@@ -12,6 +12,9 @@ COPY VERSION /tmp/VERSION
 # Copier les fichiers de dépendances
 COPY frontend/package.json frontend/package-lock.json* ./
 
+# Socle frontend (contexte additionnel compose) : résout file:../socle/frontend
+COPY --from=socle /frontend /socle/frontend
+
 # Installer les dépendances
 RUN npm install
 

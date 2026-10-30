@@ -10,7 +10,7 @@
  * Composition d'une page : <PageHeader /> → toolbar unique → hub-panel de contenu.
  * Le h1 de la page vient d'ici — ne jamais le doubler. Composant pur, sans état.
  */
-import { APP_VERSION } from '../config'
+import { APP_VERSION } from '@poulidor/hub-socle/config'
 
 function PageHeader({ title, back, badge, version = APP_VERSION, meta, actions }) {
   return (

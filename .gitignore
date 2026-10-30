@@ -117,3 +117,4 @@ backups/
 
 # Cache runtime JWKS (écrit par hub_auth — jamais versionné)
 backend/storage/
+socle
