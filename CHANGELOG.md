@@ -1,3 +1,12 @@
+## [2.35.1] - 31 octobre 2026
+
+### ⚡ Accueil à un seul en-tête + état de connexion au boot d'auth
+- La page d'accueil n'affiche plus de PageHeader (« Accueil » + pill de version + meta) qui doublait la barre app juste au-dessus : un seul en-tête, un seul h1, toolbar + tableau directs. Les pages de détail/formulaires gardent leur PageHeader canonique.
+- RootLayout : pendant le boot d'auth du socle (restauration silencieuse / auto-SSO), affichage « Connexion au Hub... » au lieu du flash de l'écran « Se connecter via le Hub ».
+- Requiert HUBsocle 2.29.3 (états restoring/ssoChecking exposés par AuthContext, refresh silencieux + auto-SSO au boot).
+- Corrigé au passage : badge de version du README resté en 2.32.1 (dérive constatée), aligné sur la version courante.
+- Banc : build vite + ESLint OK, rendu vérifié navigateur (barre app + toolbar + tableau).
+
 ## [2.35.0] - 30 octobre 2026
 
 ### ⚡ Conversion en app fine — le template consomme HUBsocle (fin de la duplication)
