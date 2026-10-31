@@ -1,31 +1,16 @@
-import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { useAuth } from '@poulidor/hub-socle/context/AuthContext.jsx'
 import LoginPrompt from '@poulidor/hub-socle/components/LoginPrompt.jsx'
-import PageHeader from '../components/PageHeader'
 import ExampleList from '../components/ExampleList'
 
+// Accueil : la barre app (Header du socle) porte déjà le titre, la version
+// et l'état Hub — pas de PageHeader ici (un seul en-tête, un seul h1).
+// Les pages de détail/formulaires gardent leur PageHeader canonique.
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
-  // Total remonté par ExampleList (même requête ['items', page]) pour la meta.
-  const [total, setTotal] = useState(null)
 
   if (!isAuthenticated) {
     return <LoginPrompt />
   }
 
-  return (
-    <>
-      <PageHeader
-        title="Accueil"
-        meta={total != null ? `${total} éléments · structure canonique` : 'structure canonique'}
-        actions={import.meta.env.DEV && (
-          <Link to="/demo/form" className="hub-button">
-            Démo Form
-          </Link>
-        )}
-      />
-      <ExampleList onTotal={setTotal} />
-    </>
-  )
+  return <ExampleList />
 }
