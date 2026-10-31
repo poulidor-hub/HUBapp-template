@@ -1,3 +1,11 @@
+## [2.35.2] - 31 octobre 2026
+
+### 🔧 Hygiène de version — package-lock synchronisé
+- `frontend/package-lock.json` était resté en **2.34.0** (champs `version` non
+  suivis par `bump_version.py`) alors que `package.json` était passé à 2.35.0.
+  Lock aligné sur la version courante ; un `npm install` ne provoquera plus de
+  diff parasite sur ce fichier.
+
 ## [2.35.1] - 31 octobre 2026
 
 ### ⚡ Accueil à un seul en-tête + état de connexion au boot d'auth
