@@ -1,3 +1,16 @@
+## [2.35.5] - 4 novembre 2026
+
+### ⚡ Scrub open source (IPs, noms, fiche client neutre) + community files
+
+| Élément | Détail |
+|---------|--------|
+| **IPs** | `192.0.2.11/.200` → plages RFC 5737 (README, .env.example, INITIALISE.py + tests, docs/) |
+| **Fiche client** | terminologie cabinet neutralisée (organisation-exemple, PROJET-EXEMPLE-*) — mécanique client-profile intacte |
+| **skills .opencode** | noms d'apps privées → génériques (APP_EXEMPLE*, hub_exemple) |
+| **docs/HUB_MCP.md** | note catalogue : copie embarquée 63 outils vs hub-mcp v0.16.x (66) |
+| **Community files** | SECURITY.md + CONTRIBUTING.md ajoutés |
+| **Tests** | 28 passed (test_init_auto, test_allocate_ports) |
+
 ## [2.35.4] - 4 novembre 2026
 
 ### ⚡ Scrub docs avant open source (docs/API.md)
