@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Tests unitaires de sync_hub_host.py — stdlib uniquement (pas de dépendance pytest externe)."""
 import json
 import socket

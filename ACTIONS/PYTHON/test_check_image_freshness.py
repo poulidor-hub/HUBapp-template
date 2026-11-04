@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Tests unitaires de check_image_freshness.py — stdlib + pytest, docker mocké."""
 import os
 from datetime import datetime, timezone

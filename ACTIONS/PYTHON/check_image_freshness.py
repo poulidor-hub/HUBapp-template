@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Garde de fraîcheur de l'image Docker api pour `make test-docker`.
 
 Appelé par la cible Makefile `ensure-api-fresh` (avant test-docker /

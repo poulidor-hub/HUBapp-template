@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Tests sync_socle_version : l'échec « image socle absente » ne doit frapper
 que les apps réellement liées au socle (clé APP_SOCLE_VERSION dans .env).

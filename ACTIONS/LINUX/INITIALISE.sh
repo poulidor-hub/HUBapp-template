@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 # ============================================================
 # Wrapper Linux/macOS — délègue à ACTIONS/PYTHON/INITIALISE.py
 # Ce fichier (et son équivalent Windows) sera supprimé par INITIALISE.py

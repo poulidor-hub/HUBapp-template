@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Jeu de tests minimal d'une app fine (REFERENCE-APP-FINE.md §7) — miroir canari.
 

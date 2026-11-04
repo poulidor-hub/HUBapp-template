@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """HUBapp Template — app fine de démonstration sur socle POULIDOR.
 
 Le socle (hub_socle) fournit tout le transverse : auth JWT/JWKS, config,

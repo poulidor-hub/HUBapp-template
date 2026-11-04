@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Pré-vol : demande les ports au Hub si absents du .env, puis les y écrit.
 
 Appelé par `make sync-env` AVANT `docker compose up`. Idempotent côté Hub :

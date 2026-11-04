@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Vendor HUBCSS : synchronise frontend/public/design-system/current/ depuis le
 checkout HUBCSS du stack — offline, sha256 vérifiés, tout-ou-rien.

@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 -- Convertit les colonnes timestamps applicatives en TIMESTAMPTZ.
 -- Les valeurs existantes sont interpretees comme UTC.
 -- NB : les tables de démonstration `items` et `test_data` (retirées par

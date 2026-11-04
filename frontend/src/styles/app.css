@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor) */
+
 /* HUBCSS is the single theming source. These aliases forward the template's
    legacy variable names to HUBCSS tokens so existing rules keep working and
    dark mode is handled entirely by HUBCSS ([data-theme="dark"] flips --hub-*). */
