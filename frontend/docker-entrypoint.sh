@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 # =============================================================================
 # Entrypoint Nginx - Démarrage HTTP ou HTTPS
 # =============================================================================

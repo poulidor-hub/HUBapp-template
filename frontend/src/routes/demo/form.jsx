@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 import FormDemo from '../../components/demo/FormDemo'
 import PageHeader from '../../components/PageHeader'
 import { FormDevtoolsPanel } from '@tanstack/react-form-devtools'

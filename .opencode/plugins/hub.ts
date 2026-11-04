@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 /**
  * Plugin Hub - outillage opencode pour le Hub et les apps generees depuis
  * HUBapp_TEMPLATE_base. Accompagne le MCP `hub` (hub_mcp/server.py).

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 /**
  * PageHeader — en-tête de page canonique (CSS-first, classes HUBCSS 0.3.0, zéro dépendance DS).
  *

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Client HTTP standalone pour hub-mcp (sans dépendance au ``backend`` d'une app).
 
 Utilisé quand hub-mcp tourne hors d'une app HUBapp_TEMPLATE_base — typiquement

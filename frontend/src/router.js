@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 import { createRouter, createRootRoute, createRoute } from '@tanstack/react-router'
 import { RootLayout } from './routes/root'
 import HomePage from './routes/index'

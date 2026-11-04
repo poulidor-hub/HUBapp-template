@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 import { useAuth } from '@poulidor/hub-socle/context/AuthContext.jsx'
 import LoginPrompt from '@poulidor/hub-socle/components/LoginPrompt.jsx'
 import ExampleList from '../components/ExampleList'

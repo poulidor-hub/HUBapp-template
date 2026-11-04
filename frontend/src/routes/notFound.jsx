@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 import { Link } from '@tanstack/react-router'
 
 const SPRITE = '/design-system/current/icons/lucide.svg'

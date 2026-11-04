@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Cohérence du mode --clean d'INITIALISE (suite directe du lot 2.32.0).
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Registre des tools MCP exposes par le serveur Hub Tools.
 Chaque tool utilise hub_client.call_hub_endpoint() pour communiquer avec le HUB.

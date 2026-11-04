@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 /**
  * lint-classes.mjs — Lint anti-classes-fantômes (contrat HUBCSS/CASCADE).
  *

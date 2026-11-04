@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 /**
  * ExampleList — référence copiable de liste canonique CSS-first.
  * Structure : PageHeader (rendu par la page) → toolbar unique → hub-panel unique.

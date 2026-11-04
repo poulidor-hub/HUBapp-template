@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Tests des actions générées par INITIALISE.py.
 
 Les actions START et UPDATE doivent synchroniser le .env (sync-env :

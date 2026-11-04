@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """
 Serveur MCP stdio exposant les outils Hub.
 Point d'entrée: python -m hub_mcp.server

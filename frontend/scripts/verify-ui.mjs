@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 /**
  * verify-ui.mjs — Smoke UI par styles calculés (item 4, contrat HUBCSS/CASCADE).
  *

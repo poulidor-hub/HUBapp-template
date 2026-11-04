@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 import { useState, useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useConfig } from '@poulidor/hub-socle/context/ConfigContext.jsx'

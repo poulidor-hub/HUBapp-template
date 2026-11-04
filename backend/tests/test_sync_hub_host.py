@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Garde anti-IP-morte de sync_hub_host.py.
 
 Une IP Hub annoncée mais injoignable (config Hub obsolète, IP de conteneur)

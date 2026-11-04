@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Tests unitaires de allocate_ports.py — fallback localhost (CAS 1).
 
 L'endpoint Hub /api/apps/allocate-ports n'accepte que des IP réseaux Docker

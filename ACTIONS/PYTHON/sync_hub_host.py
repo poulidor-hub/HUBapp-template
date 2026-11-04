@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Découverte et synchronisation de l'IP du Hub.
 
 Appelé par `make sync-env` (mode --quiet, silencieux/non-bloquant) et par

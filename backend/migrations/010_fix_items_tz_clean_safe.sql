@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 -- Convertit les tables de démonstration `items` et `test_data` en TIMESTAMPTZ.
 -- Séparé de 001 : en mode --clean (INITIALISE), ces tables n'existent jamais —
 -- ALTER TABLE IF EXISTS évite le warning « relation does not exist » au boot.

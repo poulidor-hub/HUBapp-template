@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
+
 """Tests du fallback subnet local dans allocate_ports.py (hub legacy exemple-app).
 
 Le Hub neuf répond à POST /api/apps/allocate-ports (avec subnet) : comportement
