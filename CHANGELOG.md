@@ -1,3 +1,16 @@
+## [2.35.5] - 4 novembre 2026
+
+### ⚡ Scrub open source (IPs, noms, fiche client neutre) + community files
+
+| Élément | Détail |
+|---------|--------|
+| **IPs** | `192.0.2.11/.200` → plages RFC 5737 (README, .env.example, INITIALISE.py + tests, docs/) |
+| **Fiche client** | terminologie cabinet neutralisée (organisation-exemple, PROJET-EXEMPLE-*) — mécanique client-profile intacte |
+| **skills .opencode** | noms d'apps privées → génériques (APP_EXEMPLE*, hub_exemple) |
+| **docs/HUB_MCP.md** | note catalogue : copie embarquée 63 outils vs hub-mcp v0.16.x (66) |
+| **Community files** | SECURITY.md + CONTRIBUTING.md ajoutés |
+| **Tests** | 28 passed (test_init_auto, test_allocate_ports) |
+
 ## [2.35.4] - 4 novembre 2026
 
 ### ⚡ Scrub docs avant open source (docs/API.md)
@@ -235,7 +248,7 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
   IP **réseaux Docker** (whitelist anti-abus 172.17–31). Depuis l'hôte via
   `HUB_HOST=<IP LAN>`, la source vue par `hub-api` est hors whitelist →
   `HTTP 403` → `make sync-env` échouait sur un `.env` frais (premier boot),
-  et le fallback legacy allouait un subnet `10.220.x` (plage exemple-app)
+  et le fallback legacy allouait un subnet `10.220.x` (plage hub_exemple)
   inadapté au parc avant de sortir en erreur.
 - Désormais : quand `APP_HOST` est vide (app sur le même serveur que le Hub),
   nouvel essai via `http://localhost:{port}` — la source devient la gateway
@@ -429,7 +442,7 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
 
 ### ⚡ sync_hub_host : garde compat hub legacy sur HUB_HOST
 
-- **Fix** : le hub legacy hub-legacy (3.9.x) annonce dans
+- **Fix** : le hub legacy HUB_EXEMPLE (3.9.x) annonce dans
   `GET /api/config/hub-host` l'IP docker **interne** de son conteneur
   (ex. 172.26.0.3), injoignable depuis le réseau dédié de l'app —
   `make sync-env`/`make up` écrasaient `HUB_HOST` par cette IP morte à
@@ -441,19 +454,19 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
 - **Tests** : garde legacy (quiet + interactif), cas déménagement précisé
   (ancienne IP morte). 32 (sync_hub_host) + 86 (ACTIONS) verts.
 
-Découvert par le pilote `test-socle-228` sur le banc exemple-app.
+Découvert par le pilote `test-socle-228` sur le banc hub_exemple.
 
 ## [2.28.0] - 23 septembre 2026
 
-### ⚡ Sous-réseau exemple-app : script manuel + fallback `sync-env` (hub legacy sans allocate-ports)
+### ⚡ Sous-réseau hub_exemple : script manuel + fallback `sync-env` (hub legacy sans allocate-ports)
 
-Le Hub legacy hub-legacy (3.9.x, pré-H9) n'expose pas `POST /api/apps/allocate-ports` :
+Le Hub legacy HUB_EXEMPLE (3.9.x, pré-H9) n'expose pas `POST /api/apps/allocate-ports` :
 `make sync-env` échouait bloquant et `docker compose up` refusait de démarrer
-(`${APP_SUBNET:?}`). Deux apports pour déployer les apps socle sur exemple-app
+(`${APP_SUBNET:?}`). Deux apports pour déployer les apps socle sur hub_exemple
 pendant la période pré-migration :
 
 - **Ajouté** : `scripts/set_app_subnet.py` — écriture MANUELLE de `APP_SUBNET`
-  dans le `.env` existant. Plage dédiée exemple-app `10.220.0.0/16` (un /24 par
+  dans le `.env` existant. Plage dédiée hub_exemple `10.220.0.0/16` (un /24 par
   app, disjointe de 10.50/16 hub neuf, 10.210.x ateliers, plages prod
   usuelles). `--subnet CIDR` imposé, sinon auto (premier /24 libre) ;
   `--check` diagnostic sans écriture ; `--force` écrasement explicite.

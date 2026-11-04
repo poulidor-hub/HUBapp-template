@@ -128,9 +128,9 @@ response = await hub_client.call_discovered_service(
 5. En cas de 401 : retente avec un token rafraîchi.
 6. En cas de 5xx ou `RequestError` après épuisement des retries : écrit dans l'outbox pour livraison garantie.
 
-### Exemple réel — exemple-app-16_API_v3
+### Exemple réel — APP_EXEMPLE_F_API
 
-Appel au service de géocoding Nominatim (exemple réel : `APPS/exemple-app-16_API_v3/backend/routes/secteurs.py`) :
+Appel au service de géocoding Nominatim (exemple réel : `APPS/APP_EXEMPLE_F_API/backend/routes/secteurs.py`) :
 
 ```python
 services = await hub_client.discover_services()
@@ -218,5 +218,5 @@ L'export ne contient **aucun secret**. L'IA n'attaque jamais la prod.
 | hub_auth | `backend/hub_auth.py` |
 | outbox | `backend/outbox.py` (worker de retry avec backoff exponentiel) |
 | Intégration Hub (section M2M) | `../../HUB_base/INTEGRATION.md` (dépôt HUB_base du parc) |
-| Exemple réel M2M | `../../APPS/exemple-app-16_API_v3/backend/routes/secteurs.py` (dépôt APPS du parc) |
+| Exemple réel M2M | `../../APPS/APP_EXEMPLE_F_API/backend/routes/secteurs.py` (dépôt APPS du parc) |
 | Services partagés | `../../HUB_base/INTEGRATION.md` (dépôt HUB_base du parc) |

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
 
-"""Tests du fallback subnet local dans allocate_ports.py (hub legacy exemple-app).
+"""Tests du fallback subnet local dans allocate_ports.py (hub legacy hub_exemple).
 
 Le Hub neuf répond à POST /api/apps/allocate-ports (avec subnet) : comportement
-inchangé. Le Hub legacy (hub-legacy 3.9.x) ne connaît pas cet endpoint ou les
+inchangé. Le Hub legacy (HUB_EXEMPLE 3.9.x) ne connaît pas cet endpoint ou les
 ports sont déjà figés manuellement : APP_SUBNET est alors alloué LOCALEMENT via
-scripts/set_app_subnet.py (plage exemple-app 10.220.0.0/16), sans jamais masquer
+scripts/set_app_subnet.py (plage hub_exemple 10.220.0.0/16), sans jamais masquer
 l'erreur bloquante sur les ports manquants.
 """
 import json

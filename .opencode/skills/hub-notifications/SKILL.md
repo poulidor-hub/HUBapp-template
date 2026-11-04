@@ -64,10 +64,10 @@ async def send_user_message(
 
 Une URL relative (ex: `/factures/1234`) est **automatiquement préfixée** par le `frontend_url` de l'app expéditrice (ex: `http://192.0.2.11:4250/factures/1234`). Une URL absolue est conservée telle quelle. Le résultat est tronqué à 500 caractères.
 
-### Exemple réel — exemple-app
+### Exemple réel — APP_EXEMPLE_I
 
 ```python
-# Exemple réel — APPS/exemple-app/backend/routes/transfers.py
+# Exemple réel — APPS/APP_EXEMPLE_I/backend/routes/transfers.py
 await hub_client.send_user_message(
     target_usernames=[transfer.owner],
     title="Document récupéré",
@@ -232,7 +232,7 @@ Après la requête, faire `make logs-api` pour vérifier l'absence d'erreurs dan
 | MessageArchive | `frontend/src/components/MessageArchive.jsx` |
 | AuthContext (SSE) | `frontend/src/context/AuthContext.jsx` |
 | Smoke test route | `backend/routes/tests.py` (`send_test_message_endpoint`) |
-| Exemple notifs | `../../APPS/exemple-app/backend/routes/transfers.py` |
+| Exemple notifs | `../../APPS/APP_EXEMPLE_I/backend/routes/transfers.py` |
 
 ## Annexe — Rétrofit d'une app pré-template
 

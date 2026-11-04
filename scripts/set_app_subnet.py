@@ -7,17 +7,17 @@
 
 Contexte : le Hub neuf (HUB_base) alloue ports + sous-réseau via
 `POST /api/apps/allocate-ports` (pool APP_SUBNET_POOL, 10.50.0.0/16), appelé par
-`make sync-env` → ACTIONS/PYTHON/allocate_ports.py. Le Hub legacy hub-legacy
-(3.9.x, pré-H9) ne connaît PAS cet endpoint : sur un déploiement exemple-app,
+`make sync-env` → ACTIONS/PYTHON/allocate_ports.py. Le Hub legacy HUB_EXEMPLE
+(3.9.x, pré-H9) ne connaît PAS cet endpoint : sur un déploiement hub_exemple,
 APP_SUBNET reste vide et `docker compose up` échoue
 (${APP_SUBNET:?APP_SUBNET manquant}).
 
 Ce script comble le trou SANS toucher au socle ni au Hub : l'opérateur le lance
-une fois par app, il choisit (ou vérifie) un /24 de la plage dédiée exemple-app
+une fois par app, il choisit (ou vérifie) un /24 de la plage dédiée hub_exemple
 (10.220.0.0/16) et l'écrit dans le .env. Action 100 % manuelle, par convention :
 le flux automatique `make sync-env` reste inchangé.
 
-Plage dédiée exemple-app : 10.220.0.0/16 (un /24 par app) — disjointe par
+Plage dédiée hub_exemple : 10.220.0.0/16 (un /24 par app) — disjointe par
 convention du pool du Hub neuf (10.50.0.0/16), des ateliers hubctl
 (10.210.0-63.0/24) et des plages prod usuelles (10.42/10.44/10.90).
 
@@ -52,7 +52,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ENV_LINE = re.compile(r'^([A-Z_][A-Z0-9_]*)=(.*)$')
 
-# Plage dédiée exemple-app (voir docstring). Un /24 par app : 10.220.0.0/24 …
+# Plage dédiée hub_exemple (voir docstring). Un /24 par app : 10.220.0.0/24 …
 DEFAULT_BASE = "10.220"
 
 
@@ -175,7 +175,7 @@ def collect_taken(extra_env_path=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Écrit MANUELLEMENT APP_SUBNET (plage exemple-app 10.220.0.0/16) "
+        description="Écrit MANUELLEMENT APP_SUBNET (plage hub_exemple 10.220.0.0/16) "
                     "dans le .env de l'app.")
     parser.add_argument("--subnet", metavar="CIDR",
                         help="/24 à écrire (ex : 10.220.7.0/24). Absent → auto "

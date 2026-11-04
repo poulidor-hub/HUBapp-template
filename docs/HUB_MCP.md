@@ -1,8 +1,8 @@
-# Catalogue des outils MCP du Hub (63 outils)
+# Catalogue des outils MCP du Hub (copie embarquée : 63 outils)
 
 > Source de vérité : dépôt `hub-mcp` (plugin `hub.ts` / `hub_mcp/tools.py`). Ce document est un miroir de référence pour navigation rapide ; en cas de doute, la liste réelle est celle exposée par le serveur MCP actif. La copie `hub_mcp/` d'une app est un artefact de sync (`make sync-hub-tooling`) — toute modification des outils va dans le dépôt `hub-mcp`, pas dans la copie de l'app.
 
-Le serveur MCP `hub` expose **63 outils** (`hub_*`) pour piloter et observer le Hub depuis l'agent opencode. Déclaré dans `opencode.json`, il délègue 100% des appels à un client Hub via `call_hub_endpoint(path, method, json)`. Chaque outil mappe vers un endpoint Hub réel — pas besoin de construire des `curl` ou `fetch` manuels.
+Le serveur MCP `hub` embarqué avec ce template expose **63 outils** (`hub_*`) pour piloter et observer le Hub depuis l'agent opencode. Déclaré dans `opencode.json`, il délègue 100% des appels à un client Hub via `call_hub_endpoint(path, method, json)`. Chaque outil mappe vers un endpoint Hub réel — pas besoin de construire des `curl` ou `fetch` manuels.
 
 > Légende : 🔓 = public/SA-accessible en mode app · 🔒 = réservé aux utilisateurs (403 en mode app → mode standalone requis). ⚠️ = opération destructive (rétrogradée en `ask` par le plugin de sécurité, voir le skill `hub-mcp-usage`).
 
@@ -151,3 +151,5 @@ Agent → hub_backup_list app_slug=mon-app   # Quels backups existent ? (SA ok)
 Agent → hub_backup_stats                   # Taille, âge ? (standalone)
 Agent → hub_backup_trigger app_slug=mon-app # Déclencher un backup (standalone)
 ```
+
+> ℹ️ Copie vendue avec le template (63 outils). Le serveur [`hub-mcp`](https://github.com/POULIDOR-Audit-Developpement/hub-mcp) v0.16.x expose **66 outils** — pensez à resynchroniser la copie embarquée (`make sync-hub-tooling`) pour bénéficier du catalogue complet.

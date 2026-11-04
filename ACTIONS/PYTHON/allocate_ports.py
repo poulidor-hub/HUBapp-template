@@ -7,10 +7,10 @@
 Appelé par `make sync-env` AVANT `docker compose up`. Idempotent côté Hub :
 un même (slug, host) reçoit toujours les mêmes ports.
 
-Fallback hub legacy (ex. hub-legacy 3.9.x, pré-H9) : le Hub ne connaît pas
+Fallback hub legacy (ex. HUB_EXEMPLE 3.9.x, pré-H9) : le Hub ne connaît pas
 `POST /api/apps/allocate-ports`. Si l'appel échoue (404, hub injoignable)
 ou si les ports sont déjà figés dans le .env mais APP_SUBNET reste vide,
-le sous-réseau est alloué LOCALEMENT dans la plage dédiée exemple-app
+le sous-réseau est alloué LOCALEMENT dans la plage dédiée hub_exemple
 (10.220.0.0/16) via scripts/set_app_subnet.py (disjonction vérifiée contre
 les réseaux Docker actifs et les .env voisins). Sur un Hub neuf, l'allocation
 par le Hub a la priorité — comportement inchangé.
@@ -24,7 +24,7 @@ from pathlib import Path
 
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
-# Plage dédiée exemple-app (cf. scripts/set_app_subnet.py — même convention).
+# Plage dédiée hub_exemple (cf. scripts/set_app_subnet.py — même convention).
 SUBNET_BASE = "10.220"
 
 
@@ -93,7 +93,7 @@ def allocate_subnet_locally(env_path: Path, base: str = SUBNET_BASE,
         print("⚠️  Docker indisponible — disjonction vérifiée uniquement "
               "contre les .env voisins.")
     print(f"⚠️  Hub sans allocate-ports (legacy ?) → APP_SUBNET={subnet} "
-          f"alloué LOCALEMENT (plage exemple-app {base}.0.0/16).")
+          f"alloué LOCALEMENT (plage hub_exemple {base}.0.0/16).")
     return True
 
 
@@ -107,7 +107,7 @@ def main() -> int:
         print(f"✅ Ports et sous-réseau déjà définis (API={api_port}, FRONTEND={frontend_port}, SUBNET={subnet}) — pas d'allocation.")
         return 0
 
-    # Hub legacy (ex. exemple-app) : ports figés manuellement dans le .env, seul le
+    # Hub legacy (ex. hub_exemple) : ports figés manuellement dans le .env, seul le
     # sous-réseau manque — inutile d'interroger un Hub qui ne peut pas répondre.
     if api_port and frontend_port:
         if allocate_subnet_locally(ENV_PATH):
