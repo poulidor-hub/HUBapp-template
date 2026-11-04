@@ -128,15 +128,15 @@ Le format minimal attendu est :
 {
   "format_version": "1.0",
   "app": {
-    "slug": "mon-client",
-    "name": "Mon Client",
+    "slug": "organisation-exemple",
+    "name": "Organisation Exemple",
     "description": "Application métier HUB"
   },
   "client": {
-    "name": "Nom du client"
+    "name": "Nom de l'organisation"
   },
   "license": {
-    "quote_number": "DEVIS-2026-0001",
+    "quote_number": "PROJET-EXEMPLE-0001",
     "quote_date": "2026-05-10"
   },
   "hub": {
@@ -211,7 +211,7 @@ Pour gérer explicitement un changement d'IP :
 
 ```bash
 make sync-hub-host                       # découverte auto + prompt de secours si Hub injoignable
-make sync-hub-host HUB_HOST=192.168.1.200  # force une IP précise (CI/scripts, multi-serveur)
+make sync-hub-host HUB_HOST=192.0.2.200  # force une IP précise (CI/scripts, multi-serveur)
 make up                                  # redémarre avec la nouvelle IP
 ```
 

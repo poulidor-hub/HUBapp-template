@@ -1,19 +1,19 @@
 ---
 name: data-generate
-description: Use when a dev or test environment needs data — populating a list to try a feature, writing fixtures, load-testing pagination, building a demo dataset — and especially when the user offers or points at real production data (CSV export, DB dump, real clients, contracts, emails, phone numbers). Enforces the parc rule that real data never enters a dev/test environment without passing through exemple-app first. Triggers on: "générer des données", "données de test", "peupler la base", "seed", "jeu de démo", "fixtures", "charge l'export de prod", "use the real data".
+description: Use when a dev or test environment needs data — populating a list to try a feature, writing fixtures, load-testing pagination, building a demo dataset — and especially when the user offers or points at real production data (CSV export, DB dump, real clients, contracts, emails, phone numbers). Enforces the parc rule that real data never enters a dev/test environment without passing through app-exemple-d first. Triggers on: "générer des données", "données de test", "peupler la base", "seed", "jeu de démo", "fixtures", "charge l'export de prod", "use the real data".
 argument-hint: 'What data is needed (volume, realism, target environment) — or the real-data source that must be anonymized before use'
 ---
 
 # Data Generate (données de test — jamais de données réelles)
 
 Ce skill s'applique à **toute app du parc**, quelle qu'elle soit. Il ne dépend pas du
-fait que l'app courante soit exemple-app : c'est une règle de parc, invariante.
+fait que l'app courante soit app-exemple-d : c'est une règle de parc, invariante.
 
 ## Règle d'or
 
 > **Jamais de données réelles en dev/test.** Soit les données sont **générées
 > synthétiques** (voie A), soit elles dérivent du réel et ont **obligatoirement
-> passé par exemple-app** — anonymisation vérifiée — avant d'entrer dans un
+> passé par app-exemple-d** — anonymisation vérifiée — avant d'entrer dans un
 > environnement de développement ou de test (voie B).
 
 - **Donnée réelle** : tout enregistrement issu de production ou d'un système
@@ -21,7 +21,7 @@ fait que l'app courante soit exemple-app : c'est une règle de parc, invariante.
   y compris un extrait « juste pour voir ».
 - **Donnée synthétique** : inventée de toutes pièces, plausible, sans lien avec un
   individu ou un dossier réel.
-- **Donnée anonymisée** : donnée réelle transformée par exemple-app (masquage
+- **Donnée anonymisée** : donnée réelle transformée par app-exemple-d (masquage
   fake/stat par colonne) au point de ne plus être ré-identifiable.
 
 **Violier la règle « juste un peu », « juste en local », « juste pour la démo »,
@@ -34,10 +34,10 @@ c'est la violer tout court.**
 | « C'est juste ma base de dev locale » | Une base de dev finit dans des dumps, des logs, des captures d'écran, des partages. « Locale » n'est pas « privé ». |
 | « Les données sont déjà en base, autant travailler avec » | Le fait accompli ne légitime rien. On **stoppe** la feature, on assainit (purge ou voie B), ensuite seulement on code. |
 | « C'est pour une démo, c'est temporaire » | « Temporaire » = jamais supprimé. Et une démo projette des données devant des tiers. |
-| « Je varie juste les noms/IDs à la main » | Pseudo-anonymisation artisanale : ré-identifiable par recombinaison (CP + date + montant). Interdit — passer par exemple-app. |
+| « Je varie juste les noms/IDs à la main » | Pseudo-anonymisation artisanale : ré-identifiable par recombinaison (CP + date + montant). Interdit — passer par app-exemple-d. |
 | « C'est plus rapide avec le vrai fichier » | La chaîne d'anonymisation prend des minutes. Une fuite de données clients coûte des semaines et engage la responsabilité du parc. |
 | « Les tests pytest tournent sur SQLite en mémoire » | Vrai, et sans rapport : le problème est la donnée réelle **dans l'environnement**, pas dans les tests. |
-| « L'app courante n'est pas exemple-app » | La règle est une règle de parc. exemple-app est l'outil, pas le périmètre. |
+| « L'app courante n'est pas app-exemple-d » | La règle est une règle de parc. app-exemple-d est l'outil, pas le périmètre. |
 
 ## Red Flags — STOP et reviens à la règle
 
@@ -56,7 +56,7 @@ Besoin de données ──▶ Le réalisme doit-il dériver du réel ?
         non ────────────┴──────────── oui
         │                              │
    VOIE A                        VOIE B (obligatoire)
-   synthétique                   anonymisation exemple-app
+   synthétique                   anonymisation app-exemple-d
    (défaut)                      AVANT tout usage
 ```
 
@@ -116,9 +116,9 @@ volume adapté au test visé, **aucune ligne copiée du réel**. Alternative san
 `data.json` au format backup puis `POST /api/admin/restore` — cf. skill
 `backup-restore-ops` (⚠️ `clear_existing=true` est destructif).
 
-## Voie B — réalisme dérivé du réel : exemple-app obligatoire
+## Voie B — réalisme dérivé du réel : app-exemple-d obligatoire
 
-Chaîne exacte (API exemple-app, auth JWT Hub utilisateur — owner du workspace ou
+Chaîne exacte (API app-exemple-d, auth JWT Hub utilisateur — owner du workspace ou
 admin ; pas de route M2M pour ce pipeline en v1) :
 
 1. **Minimisation** : exporter depuis la source le strict nécessaire (colonnes
@@ -151,10 +151,10 @@ le résultat reste attribuable au dossier source. En cas de doute → voie A.
 - **Seed enregistré** dans la conversation/le commit → reproductibilité.
 - **Nettoyage** après le test (purge des données générées) sauf env dédiée jetable.
 - **Jamais** de données réelles dans git (fixtures comprises), dans `/tmp`, ni
-  dans `uploads/` d'une app autre qu'exemple-app.
+  dans `uploads/` d'une app autre qu'app-exemple-d.
 - **Jamais** cibler la base de prod depuis un script — vérifier `DATABASE_URL`
   avant exécution.
-- Volumes bornés : exemple-app plafonne `generate` à `GENERATE_MAX_ROWS` ; un
+- Volumes bornés : app-exemple-d plafonne `generate` à `GENERATE_MAX_ROWS` ; un
   script maison doit annoncer son volume avant de s'exécuter.
 
 ## Implementation References
@@ -164,7 +164,7 @@ le résultat reste attribuable au dossier source. En cas de doute → voie A.
 | Patron CRUD backend (rôles, pagination) | `backend/routes/items.py` |
 | Données de test partagées (backup/restore) | `backend/routes/test_data.py` |
 | Hooks API frontend | `frontend/src/hooks/useApiQuery.js`, `useApiMutation.js` |
-| Chaîne d'anonymisation (upload/jobs/download) | app exemple-app : `backend/routes/datasets.py`, `backend/routes/jobs.py`, `backend/services/masking.py` (`generate_rows`), `backend/seed/referentials/` |
+| Chaîne d'anonymisation (upload/jobs/download) | app app-exemple-d : `backend/routes/datasets.py`, `backend/routes/jobs.py`, `backend/services/masking.py` (`generate_rows`), `backend/seed/referentials/` |
 | Format backup/restore | `docs/BACKUP_RESTORE.md` de l'app + skill `backup-restore-ops` |
 | Skills liés | `frontend-crud-page`, `bulk-operations`, `backup-restore-ops`, `hub-m2m-communication` |
 
@@ -174,6 +174,6 @@ le résultat reste attribuable au dossier source. En cas de doute → voie A.
 |---|---|---|
 | Importer l'export prod dans la base de dev « pour la démo » | Données personnelles réelles hors de leur finalité ; fiable jusqu'à la fuite | Voie B (anonymisation) puis import du produit anonymisé |
 | Travailler sur des données réelles déjà en base | Sunk cost : la feature se construit sur une violation | Stop → purge ou anonymisation → reprise |
-| Pseudo-anonymisation artisanale (noms changés à la main) | Ré-identification par recombinaison | exemple-app avec règles fake/stat par colonne |
+| Pseudo-anonymisation artisanale (noms changés à la main) | Ré-identification par recombinaison | app-exemple-d avec règles fake/stat par colonne |
 | Centaines d'appels API un à un | Lent, brûle le contexte, partiellement échoué sans rollback | Script one-shot seedé (A.2) ou restore backup |
 | Script de seed sans seed ou sans volume annoncé | Non reproductible, effet de bord imprévisible | seed + n_rows en arguments, affichés avant exécution |

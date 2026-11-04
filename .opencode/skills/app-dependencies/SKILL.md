@@ -21,9 +21,9 @@ argument-hint: 'What dependency operation is needed (write depends.yaml, instrum
 
 ```yaml
 depends_on:
-  - slug: exemple-app-2
+  - slug: APP_EXEMPLE
     note: "Catalogue articles"
-  - slug: exemple-app
+  - slug: APP_EXEMPLE_E
 ```
 
 ### Règles
@@ -48,9 +48,9 @@ Met à jour `last_sync_at` dans la table hub `app_dependencies`.
 **Après** un M2M réussi, jamais avant. Pattern recommandé :
 
 ```python
-result = await hub_client.call_discovered_service("exemple-app-2", "/api/articles")
+result = await hub_client.call_discovered_service("APP_EXEMPLE", "/api/articles")
 if result.get("status_code") == 200:
-    await hub_client.report_sync("exemple-app-2")
+    await hub_client.report_sync("APP_EXEMPLE")
 ```
 
 ### Règles
