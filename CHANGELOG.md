@@ -1,3 +1,10 @@
+## [2.35.3] - 4 novembre 2026
+
+### ⚡ Licence open source MIT + en-têtes SPDX
+
+- `LICENSE.md` (propriétaire « usage interne ») remplacé par `LICENSE` (**MIT**, POULIDOR Audit & Développement - Valérian Poulidor) : les applications créées avec le gabarit restent la propriété totale du développeur, licence au choix (y compris propriétaire/fermé)
+- En-têtes SPDX (`MIT` + copyright POULIDOR Audit & Développement) sur les **67 fichiers** du gabarit (backend Python, frontend TS/TSX, scripts d'initialisation) — shebangs et encodages préservés
+
 ## [2.35.2] - 31 octobre 2026
 
 ### 🔧 Hygiène de version — package-lock synchronisé
