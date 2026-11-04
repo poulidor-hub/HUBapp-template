@@ -1,3 +1,10 @@
+## [2.35.4] - 4 novembre 2026
+
+### ⚡ Scrub docs avant open source (docs/API.md)
+
+- `docs/API.md` : `token_preview` de l'exemple de réponse JSON remplacé par une valeur factice générique dans tout l'historique (`git filter-repo`)
+- Préparation open source du gabarit — aucune donnée exploitable dans l'arbre ni l'historique
+
 ## [2.35.3] - 4 novembre 2026
 
 ### ⚡ Licence open source MIT + en-têtes SPDX
