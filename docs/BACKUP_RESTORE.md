@@ -95,7 +95,7 @@ Le système utilise des requêtes spécifiques PostgreSQL :
 | `HUB_URL` | URL du Hub central | `https://hub.hub.example.lan` |
 | `HUB_SERVICE_ACCOUNT_FILE` | Chemin du fichier credentials | `/app/secrets/service_account.json` |
 | `IS_SHARED` | Mode partagé (backup activé) | `true` |
-| `APP_SLUG` | Identifiant unique de l'app | `exemple-app` |
+| `APP_SLUG` | Identifiant unique de l'app | `exemple-apps` |
 
 ### Tables exclues automatiquement
 
@@ -176,7 +176,7 @@ curl -X POST "https://app.example.com/api/admin/backup" \
   "message": "Backup créé avec succès",
   "metadata": {
     "backup_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "app_slug": "exemple-app",
+    "app_slug": "exemple-apps",
     "app_version": "3.2.0",
     "created_at": "2026-02-01T10:30:00",
     "created_by": "admin",
@@ -265,7 +265,7 @@ backup_xxx.zip
 {
   "metadata": {
     "backup_id": "uuid",
-    "app_slug": "exemple-app",
+    "app_slug": "exemple-apps",
     "app_version": "3.2.0",
     "created_at": "2026-02-01T10:30:00",
     "created_by": "admin",
@@ -454,7 +454,7 @@ Les opérations de backup/restore génèrent des logs détaillés :
 
 ```
 🔄 Restauration générique démarrée par admin (clear_existing=false)
-📂 Backup abc123 - App: exemple-app, Version: 3.2.0, Format: 3.0
+📂 Backup abc123 - App: exemple-apps, Version: 3.2.0, Format: 3.0
 📊 Tables dans le backup: ['items', 'user_preferences', 'services']
 📊 Tables existantes dans la base: ['items', 'user_preferences', 'services', 'new_table']
   ✓ items: 150 importés, 0 mis à jour, 0 ignorés

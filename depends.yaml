@@ -1,0 +1,26 @@
+# ============================================================
+# Dépendances inter-apps de cette application
+# ============================================================
+# Déclaré au Hub à chaque register par le socle
+# (hub_client._push_deps_to_hub, best-effort) — alimente le
+# dashboard dépendances du Hub (table app_dependencies).
+#
+# ⚠️ Voyage avec git ET doit être dans l'image : le Dockerfile.backend
+# fait `COPY depends.yaml /app/depends.yaml` (le socle le cherche dans
+# backend/ puis à la racine /app).
+#
+# ⚠️ Slugs : TOUJOURS le slug RÉEL au registre du Hub (vérifier par
+# discovery dans le conteneur : hub_client.discover_services()).
+# La résolution par préfixe du socle (resolve_service_slug) ne retient
+# que les candidats « {base}- » tiret inclus — ex. « exemple-app » ne
+# peut jamais résoudre vers « exemple-apps ». Règle : le slug de base
+# déclaré ici = le slug exact partagé ; resolve_service_slug ne sert
+# qu'aux suffixes d'environnement (-ws en atelier).
+#
+# Format :
+# depends_on:
+#   - slug: exemple-apps        # slug exact partagé par l'app cible
+#     note: "Ce que l'app en fait (endpoint(s) appelé(s), usage)"
+#
+# Cette app démo n'appelle aucun autre service :
+depends_on: []

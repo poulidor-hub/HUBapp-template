@@ -1,3 +1,23 @@
+## [2.35.7] - 11 novembre 2026
+
+### 🧹 Template — depends.yaml embarqué dans l'image + doc backup alignée
+
+- **`depends.yaml`** (nouveau, racine) : scaffold documenté (`depends_on: []`)
+  — format slug/note, règle slug exact au registre (piège « exemple-app »
+  vs « exemple-apps », audit slugs 11/11/2026), rappel resolve_service_slug
+  ne sert qu'aux suffixes d'environnement.
+- **`Dockerfile.backend`** : `COPY depends.yaml /app/depends.yaml` — le
+  socle lit le fichier au register (`_load_depends_yaml` backend/ puis
+  racine /app) et pousse les dépendances au Hub (`_push_deps_to_hub`,
+  best-effort). Sans COPY, la déclaration n'atteint jamais le dashboard
+  Hub (gap constaté sur Transmission/exemple-app/exemple-app — corrections
+  parc du 11/11/2026 ; pattern exemple-V2 qui l'avait ajouté à la main).
+- **`docs/BACKUP_RESTORE.md`** : exemples `app_slug: exemple-app` →
+  `exemple-apps` (le mauvais exemple se propageait aux apps générées —
+  ~8 copies encore à aligner via migrate-app-template).
+- Apps existantes : ne PAS retro-porter à la main fichier par fichier —
+  passer par une vague `migrate-app-template`.
+
 ## [2.35.6] - 11 novembre 2026
 
 ### 🔒 Callback SSO hors des access logs nginx (app fines socle)
