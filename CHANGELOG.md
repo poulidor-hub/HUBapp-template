@@ -1,3 +1,22 @@
+## [2.35.6] - 11 novembre 2026
+
+### 🔒 Callback SSO hors des access logs nginx (app fines socle)
+
+- **Sécurité** : les app fines socle reçoivent le JWT **et** le refresh_token
+  en query param sur `/callback?token=…&refresh_token=…` (AuthContext socle) —
+  nginx les loggait en clair (`location /`, access_log par défaut) dans les
+  logs persistants du conteneur, à chaque login SSO en HTTPS.
+- **Fix** : nouvelle `location = /callback` avec `access_log off` et service
+  de la SPA par `rewrite ^ /index.html break`. ⚠️ **Pas de `try_files`** : son
+  fallback `/index.html` re-matche `location = /index.html` (sans le `off`) et
+  la requête serait loggée là — piège validé en conteneur (avant/après,
+  token factice).
+- **Télémétrie préservée** : seuls `/callback` est silencieux.
+- **Motif** : ticket I1 de la review de la migration exemple-app 0.26.0
+  (préexistant au fork ; exemple-app 0.26.1 corrige en prod, vérifié).
+- NB : le template lui-même n'a pas de route `/callback` (auth legacy) — le
+  fix protège les app fines générées, qui consomment l'AuthContext socle.
+
 ## [2.35.5] - 4 novembre 2026
 
 ### ⚡ Scrub open source (IPs, noms, fiche client neutre) + community files
