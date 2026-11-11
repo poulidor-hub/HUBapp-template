@@ -6,3 +6,10 @@ ARG SOCLE_VERSION
 FROM poulidor/socle-api:${SOCLE_VERSION}
 COPY backend/ /app/
 COPY VERSION /app/VERSION
+
+# depends.yaml — lu par le socle (_load_depends_yaml : backend/ puis racine
+# /app) et poussé au Hub à chaque register (_push_deps_to_hub, best-effort).
+# Sans COPY, la déclaration de dépendances n'atteint jamais le dashboard
+# Hub (parc : gap constaté et corrigé sur Transmission/exemple-app/exemple-app
+# le 11/11/2026 ; pattern exemple-V2).
+COPY depends.yaml /app/depends.yaml
