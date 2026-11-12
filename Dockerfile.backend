@@ -6,6 +6,13 @@ ARG SOCLE_VERSION
 FROM poulidor/socle-api:${SOCLE_VERSION}
 COPY backend/ /app/
 COPY VERSION /app/VERSION
+# Scripts host du template (sync_socle_version, update_design_system, env…) —
+# requis EN CONTENEUR par les tests backend qui les importent
+# (tests/test_sync_socle_version.py, tests/test_update_design_system.py :
+# chemin conteneur /app/scripts documenté dans leur docstring, mais jamais
+# copié → ModuleNotFoundError en collecte, make test-docker rouge depuis
+# l'introduction des tests). 144K, __pycache__ exclu par .dockerignore.
+COPY scripts/ /app/scripts/
 
 # depends.yaml — lu par le socle (_load_depends_yaml : backend/ puis racine
 # /app) et poussé au Hub à chaque register (_push_deps_to_hub, best-effort).
