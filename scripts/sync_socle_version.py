@@ -20,7 +20,11 @@ Sécurités :
 - image poulidor/socle-api:<V> absente localement → message ACTIONNABLE
   ("lancez ./hubctl socle build") et exit 1 — un échec explicite vaut
   mieux que le message buildkit obscur 30 s plus tard ;
-- idempotent : aucune écriture si déjà aligné.
+- idempotent : aucune écriture si déjà aligné ;
+- app héritée : compose exige APP_SOCLE_VERSION mais le .env (pré-socle)
+  ne l'a pas → détection par le compose (pas la seule clé du .env) et
+  ajout automatique de la clé — sinon no-op puis échec ${APP_SOCLE_VERSION:?}
+  au build (incident station 2026-11-11 : 5 apps legacy bloquées).
 """
 import os
 import subprocess
@@ -60,6 +64,23 @@ def image_exists(version: str) -> bool | None:
     return bool(result.stdout.strip())
 
 
+def compose_requires_socle() -> bool:
+    """True si un docker-compose*.yml de l'app référence APP_SOCLE_VERSION.
+
+    Signal de liaison socle indépendant du .env : une app migrée vers le
+    compose socle-based peut avoir un .env hérité (pré-socle) sans la clé —
+    la détection par la seule clé la faisait passer pour standalone (no-op),
+    et le build échouait ensuite sur ${APP_SOCLE_VERSION:?}.
+    """
+    for path in sorted(APP_DIR.glob("docker-compose*.yml")):
+        try:
+            if ENV_KEY in path.read_text(encoding="utf-8"):
+                return True
+        except (OSError, UnicodeDecodeError):
+            continue
+    return False
+
+
 def set_env_value(key: str, value: str) -> bool:
     """Remplace (ou ajoute en fin) la ligne key=value du .env. True si écrit."""
     if not ENV_PATH.exists():
@@ -83,17 +104,20 @@ def main() -> int:
         # Pas de socle dans ce stack (app standalone) — pas notre rôle.
         return 0
 
-    # App réellement liée au socle = clé présente dans le .env. Sans clé,
-    # l'image ne sert à rien : no-op (sinon make dev/build/up échoue pour
-    # toute app fraîchement scaffoldée sur une station sans image socle).
     if not ENV_PATH.exists():
         return 0
-    has_env_key = any(
-        line.startswith(f"{ENV_KEY}=")
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines()
-    )
-    if not has_env_key:
-        print(f"ℹ️  {ENV_KEY} absent du .env — app non liée au socle, no-op.")
+    env_lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
+    has_env_key = any(line.startswith(f"{ENV_KEY}=") for line in env_lines)
+    compose_needs_key = compose_requires_socle()
+
+    # App réellement liée au socle = clé présente dans le .env OU exigée par
+    # le compose. Sans l'un ni l'autre, l'image ne sert à rien : no-op (sinon
+    # make dev/build/up échoue pour toute app scaffoldée sans image socle).
+    # Cas .env sans la clé + compose qui l'exige (app héritée pré-socle) : on
+    # poursuit — la clé sera ajoutée plus bas (sinon no-op puis échec
+    # ${APP_SOCLE_VERSION:?} au build, cf. incident station 2026-11-11).
+    if not has_env_key and not compose_needs_key:
+        print(f"ℹ️  {ENV_KEY} absent du .env et du docker-compose — app non liée au socle, no-op.")
         return 0
 
     exists = image_exists(version)
@@ -107,7 +131,7 @@ def main() -> int:
         return 1
 
     current = None
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+    for line in env_lines:
         if line.startswith(f"{ENV_KEY}="):
             current = line.split("=", 1)[1].strip()
             break
@@ -117,6 +141,8 @@ def main() -> int:
 
     if set_env_value(ENV_KEY, version):
         print(f"🔄 {ENV_KEY}: {current} → {version} (socle construit localement)")
+    elif compose_needs_key:
+        print(f"➕ {ENV_KEY}={version} ajouté au .env (exigé par docker-compose.yml — app héritée pré-socle)")
     else:
         print(f"➕ {ENV_KEY}={version} ajouté au .env")
     print("ℹ️  Rebuild de l'image api requis pour appliquer le nouveau socle.")
