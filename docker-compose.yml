@@ -67,7 +67,7 @@ services:
         # : FROM poulidor/socle-api:${SOCLE_VERSION}). Version pilotée par le
         # .env — sync_socle_version.py (make sync-env) l'aligne sur le checkout
         # HUBsocle du parc.
-        - SOCLE_VERSION=${APP_SOCLE_VERSION:?APP_SOCLE_VERSION manquant — complète le .env (cf. .env.example, section socle)}
+        - SOCLE_VERSION=${APP_SOCLE_VERSION:?APP_SOCLE_VERSION manquant — lancez `make update-env` (fusionne .env.example dans .env)}
     container_name: ${APP_SLUG:-mon-app}-api
     environment:
       - APP_SLUG=${APP_SLUG}
