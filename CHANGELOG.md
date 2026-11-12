@@ -1,3 +1,18 @@
+## [2.35.10] - 12 novembre 2026
+
+### 🐛 Template — COPY scripts/ dans l'image api : make test-docker enfin vert
+
+- **`Dockerfile.backend`** : `COPY scripts/ /app/scripts/` — les tests
+  backend qui importent les scripts du template
+  (`test_sync_socle_version.py`, `test_update_design_system.py`) cherchent
+  le chemin conteneur `/app/scripts` (docstring : « COPY scripts/ de
+  l'image api »), mais ce COPY n'a jamais existé → `ModuleNotFoundError`
+  en collecte, `make test-docker` rouge depuis l'introduction des tests
+  (7 passed / 2 errors avant → **22 passed / 5 skipped / 0 error** après).
+- Hôte inchangé : les scripts restent exécutés depuis le checkout
+  (`make sync-env` etc.) ; la copie ne sert qu'à la parité test/image
+  (144K, `__pycache__` exclu par `.dockerignore`).
+
 ## [2.35.9] - 12 novembre 2026
 
 ### 📝 Template — hint APP_SOCLE_VERSION manquant → make update-env
