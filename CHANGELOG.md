@@ -1,3 +1,22 @@
+## [2.35.9] - 12 novembre 2026
+
+### 📝 Template — hint APP_SOCLE_VERSION manquant → make update-env
+
+- **`docker-compose.yml`** : le message d'échec d'interpolation
+  `${APP_SOCLE_VERSION:?}` pointe désormais vers `make update-env`
+  (fusion `.env.example` → `.env`, qui crée les clés manquantes) au lieu
+  du texte vague « complète le .env » — et à plus forte raison de l'ancien
+  hint des apps scaffoldées (« lancez `make sync-env` », trompeur :
+  sync-env n'aligne qu'une clé déjà présente, il n'en crée jamais ;
+  retour d'intégration station 2026-11-11, 9 apps bloquées au rebuild
+  post-socle 2.35.0). Les hints `APP_SUBNET` et `FRONTEND_HTTPS_PORT`
+  continuent de pointer `sync-env` à raison (allocation/recalcul réels).
+- **`.env.example`** : commentaire section socle précisé — clé absente du
+  `.env` (app héritée pré-socle) → `make update-env` la fusionne, le
+  compose l'exige.
+- Vérifié en conditions réelles : interpolation sans `.env` affiche le
+  nouveau hint ; compose YAML valide avec `.env` complet.
+
 ## [2.35.8] - 12 novembre 2026
 
 ### 🐛 Template — détection socle via compose dans sync_socle_version
