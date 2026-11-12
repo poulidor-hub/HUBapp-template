@@ -1,3 +1,24 @@
+## [2.35.8] - 12 novembre 2026
+
+### 🐛 Template — détection socle via compose dans sync_socle_version
+
+- **`scripts/sync_socle_version.py`** : l'app était jugée « liée au socle »
+  sur la seule clé `APP_SOCLE_VERSION` du `.env` — une app héritée migrée
+  vers le compose socle-based (compose exige la clé via
+  `${APP_SOCLE_VERSION:?}`, `.env` pré-socle sans la clé) passait pour
+  standalone → no-op silencieux → échec d'interpolation au build
+  (incident station 2026-11-11 : 5 apps legacy bloquées, pin ajouté à la main).
+- **`compose_requires_socle()`** : scan `docker-compose*.yml` — si le compose
+  exige la clé, l'app est liée au socle : clé ajoutée automatiquement au
+  `.env` quand l'image socle est construite localement, échec actionnable
+  (`./hubctl socle build`) sinon. No-op conservé si ni `.env` ni compose ne
+  référencent la clé (app standalone — spec lot 4 inchangée).
+- **Tests** : 2 nouveaux cas (compose exige + image construite → clé ajoutée ;
+  compose exige + image absente → exit 1 actionnable) — suite dédiée 5/5,
+  suite backend hôte 29/29.
+- **README** : badge de version réaligné (2.35.5 affiché pour 2.35.7 — dérive
+  manuelle connue, le badge n'est pas synchronisé par bump_version.py).
+
 ## [2.35.7] - 11 novembre 2026
 
 ### 🧹 Template — depends.yaml embarqué dans l'image + doc backup alignée
