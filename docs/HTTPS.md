@@ -162,7 +162,7 @@ restent en HTTP direct (réseau Docker interne).
 | `nginx.conf` | Config nginx HTTP (proxies /api/ et /hub/) |
 | `frontend/docker-entrypoint.sh` | Choix HTTP/HTTPS selon `HTTPS_ENABLED`, auto-génération certs |
 | `scripts/generate-ssl.sh` | Génération certificats (localhost + IP détectée) |
-| `ssl/openssl.cnf` | Template OpenSSL (placeholder `__IP__`) |
+| `ssl/openssl.cnf` | Config OpenSSL générée par station par `scripts/generate-ssl.sh` (IP LAN détectée) — non versionné, régénéré à chaque (re)génération des certificats |
 
 ## Troubleshooting
 
