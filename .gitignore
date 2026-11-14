@@ -101,6 +101,8 @@ secrets/
 
 # SSL certificats générés
 ssl/server.*
+# openssl.cnf : fichier généré par station (contient l'IP LAN locale) — jamais versionné
+ssl/openssl.cnf
 
 # Backups générés
 *.zip
