@@ -1,3 +1,22 @@
+## [2.35.11] - 14 novembre 2026
+
+### 🐛 Template — `ssl/openssl.cnf` généré par station, plus tracké : fin du re-sel de dépôt
+
+- **`ssl/openssl.cnf` détracké + gitigné** (`.gitignore` section SSL) : le fichier
+  contient l'IP LAN locale (`generate-ssl.sh:31` `hostname -I` → `IP.2`) — tracké,
+  il re-salait le dépôt à chaque régénération de certificats (premier boot,
+  migration, `--force`). Vécu : 28/31 apps trackaient le fichier ; exemple-app
+  et exemple-app sales en production.
+- **`generate-ssl.sh` inchangé** : le fichier continue d'être écrit à chaque
+  (re)génération des certs (garde existante sur `server.crt`/`server.key`) ;
+  seul le tracking git change.
+- **Doc alignée** : `ssl/.gitkeep` (« générée par station »), `docs/HTTPS.md`
+  (fin du faux placeholder `__IP__`), `.opencode/skills/deploy-troubleshoot/SKILL.md`
+  (lien relatif cassé en clone frais après détrack).
+- **Apps existantes** : la propagation se fait via `migrate-app-template`
+  (variante documentée dans le méta) ; les apps déjà affectées ont été patchées
+  en ciblé hors template.
+
 ## [2.35.10] - 12 novembre 2026
 
 ### 🐛 Template — COPY scripts/ dans l'image api : make test-docker enfin vert
