@@ -13,7 +13,7 @@ For SPA cache headers, stale frontend bundles, or production cache-busting rules
 ## What This Repository Uses
 
 - Orchestration: [docker-compose.yml](../../../docker-compose.yml), [Makefile](../../../Makefile).
-- HTTPS frontends: [nginx.conf](../../../nginx.conf), [nginx-ssl.conf](../../../nginx-ssl.conf), [scripts/generate-ssl.sh](../../../scripts/generate-ssl.sh), [ssl/openssl.cnf](../../../ssl/openssl.cnf).
+- HTTPS frontends: [nginx.conf](../../../nginx.conf), [nginx-ssl.conf](../../../nginx-ssl.conf), [scripts/generate-ssl.sh](../../../scripts/generate-ssl.sh) (génère aussi `ssl/openssl.cnf`, non versionné).
 - Frontend bootstrap: [frontend/docker-entrypoint.sh](../../../frontend/docker-entrypoint.sh), [frontend/src/config.js](../../../frontend/src/config.js).
 - Host and IP detection logic: [backend/config.py](../../../backend/config.py).
 - Health and registration state: `GET /api/health` and `GET /api/health/detailed` in [backend/main.py](../../../backend/main.py).

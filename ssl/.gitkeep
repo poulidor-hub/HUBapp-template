@@ -3,4 +3,4 @@
 # Fichiers générés (non versionnés):
 #   - server.crt : Certificat public
 #   - server.key : Clé privée
-#   - openssl.cnf : Configuration OpenSSL
+#   - openssl.cnf : Config OpenSSL générée par station (IP LAN détectée)
