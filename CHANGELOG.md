@@ -1,3 +1,11 @@
+## [2.35.12] - 15 novembre 2026
+
+### ⚡ Fix sécurité : headers de sécurité nginx effectivement envoyés (include factorisé)
+
+- **Bug latent** : une `location` nginx définissant le moindre `add_header` hérite d'AUCUN `add_header` du bloc `server` → les locations de cache perdaient les 5 headers de sécurité (CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy) sur toutes les réponses HTML/assets.
+- **Fix** : snippet factorisé `security-headers.conf` (COPY vers `/etc/nginx/templates/` dans `Dockerfile.frontend`) inclus au niveau `server` ET en tête de chaque location qui redéfinit `add_header`. Valeurs de headers inchangées (CSP sans `font-src` conservée telle quelle).
+- **Vérification** : conteneurs jetables HTTP+SSL — 5 headers + Cache-Control présents sur `/`, `/index.html`, asset `.js`. Origine : même fix que HUB_base 3.91.2 ; propagation aux apps via `migrate-app-template` (les apps déployées gardent leur conf cuite dans l'image).
+
 ## [2.35.11] - 14 novembre 2026
 
 ### 🐛 Template — `ssl/openssl.cnf` généré par station, plus tracké : fin du re-sel de dépôt
