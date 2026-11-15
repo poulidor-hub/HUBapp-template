@@ -1,6 +1,6 @@
 {
   "name": "hubapp-frontend",
-  "version": "2.35.12",
+  "version": "2.36.0",
   "private": true,
   "type": "module",
   "scripts": {
