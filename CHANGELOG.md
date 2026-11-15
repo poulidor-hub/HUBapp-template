@@ -1,3 +1,19 @@
+## [2.36.0] - 15 novembre 2026
+
+### ⚡ Socle 2.36.1 + volume /app/storage persistant
+
+- **Socle** : `APP_SOCLE_VERSION` 2.28.0 → **2.36.1** — toute nouvelle
+  application démarre sur le socle courant :
+  - register M2M authentifié (fin du legacy refusé en enforced) ;
+  - claims JWT `tags` / `tags_primary` (préférences utilisateur du
+    portail : secteurs gérés + principal) exposés via
+    `get_current_user_tags()`.
+- **Volume `/app/storage` persistant** dans docker-compose.yml
+  (credentials M2M + cache JWKS — fix gap déploiement exemple-app 0.5.9).
+- L'overlay `docker-compose.https.yml` (déjà présent) sert désormais des
+  certificats signés par la PKI du HUB via `cert_sync` du socle.
+
+---
 ## [2.35.12] - 15 novembre 2026
 
 ### ⚡ Fix sécurité : headers de sécurité nginx effectivement envoyés (include factorisé)

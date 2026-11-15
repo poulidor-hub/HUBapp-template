@@ -96,6 +96,7 @@ services:
       - SSL_DIR=/app/ssl
     volumes:
       - uploads_data:/app/uploads
+      - storage_data:/app/storage
       # Partagé avec le frontend (./ssl:/etc/nginx/ssl) — permet à cert_sync.py
       # de réécrire les certs HTTPS émis par la PKI du HUB, visibles de nginx.
       - ./ssl:/app/ssl
@@ -206,6 +207,8 @@ volumes:
     name: ${APP_SLUG:-mon-app}-postgres-data
   uploads_data:
     name: ${APP_SLUG:-mon-app}-uploads-data
+  storage_data:
+    name: ${APP_SLUG:-mon-app}-storage-data
 
 # === RÉSEAUX ===
 # L'application communique avec le Hub via son IP (HUB_HOST)
