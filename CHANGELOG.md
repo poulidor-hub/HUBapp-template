@@ -1,3 +1,18 @@
+## [2.36.1] - 15 novembre 2026
+
+### ⚡ CSP img-src https: — les tuiles Leaflet des apps à cartes étaient bloquées
+
+- Le snippet `security-headers.conf` 2.36.0 posait `img-src 'self' data:` :
+  les apps à cartes (Nominatim, exemple-app, exemple-app,
+  exemple-app-16_API_v3) perdaient leur fond de tuiles
+  `https://*.tile.openstreetmap.org` (et exemple-app-16 ses icônes unpkg,
+  plusieurs apps leurs avatars ui-avatars.com).
+- `img-src` passe à `'self' data: https:` + note anti-régression dans le
+  snippet (les tuiles/icônes/avatars sont des images externes légitimes).
+- Bump patch : correctif configuration nginx.
+
+---
+
 ## [2.36.0] - 15 novembre 2026
 
 ### ⚡ Socle 2.36.1 + volume /app/storage persistant
