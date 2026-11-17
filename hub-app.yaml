@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────
+# Certificat Hub — déclare ce projet comme application Hub.
+#
+# Ce fichier est requis pour apparaître dans le catalogue « Apps GitHub »
+# du Hub et pouvoir y être déployé (schéma hub.poulidor/v1, doc Hub 3.94).
+# INITIALISE.py personnalise automatiquement name/slug/type/description ;
+# le champ repository (optionnel) peut être décommenté et renseigné après
+# création du dépôt GitHub — il est alors cross-checké par le Hub.
+# ─────────────────────────────────────────────────────────────
+apiVersion: hub.poulidor/v1
+kind: HubApp
+metadata:
+  name: Mon Application
+  slug: mon-app
+  description: Template d'application avec authentification Hub
+  # repository: https://github.com/ORGANISATION/mon-app.git
+spec:
+  type: business
+  healthCheck: /api/health

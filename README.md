@@ -120,6 +120,11 @@ Une fois l'init réussie, `INITIALISE.{py,sh,bat}` à la racine et sous `ACTIONS
 les scripts d'action (START, STOP, LOGS, STATUS, BACKUP_DB, COMMIT, etc.) sont
 générés sous `ACTIONS/PYTHON/`, `ACTIONS/LINUX/`, `ACTIONS/WINDOWS/`.
 
+L'initialisation personnalise aussi le **certificat Hub** `hub-app.yaml` (racine du
+projet, schéma `hub.poulidor/v1`) : il déclare l'app auprès du catalogue « Apps GitHub »
+du Hub et conditionne son apparition/déploiement. Le champ optionnel `metadata.repository`
+peut être renseigné après création du dépôt GitHub (cross-checké par le Hub).
+
 ### 3. Format attendu pour une fiche client JSON
 
 Le format minimal attendu est :
