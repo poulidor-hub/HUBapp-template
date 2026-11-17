@@ -627,6 +627,26 @@ def update_docker_compose(root: Path, config: dict) -> bool:
     return update_file(filepath, replacements, "Configuration Docker mise à jour")
 
 
+def update_hub_app_manifest(root: Path, config: dict) -> bool:
+    """Certificat Hub (hub-app.yaml) : personnalise l'identité de l'app générée.
+
+    Le manifeste déclare le projet comme application Hub (catalogue « Apps
+    GitHub » du Hub, schéma hub.poulidor/v1). Même mécanique que les autres
+    fichiers : remplacement des valeurs par défaut du template. Les apps de
+    type « tool » déclarent spec.type: tool ; les autres gardent business.
+    """
+    filepath = root / 'hub-app.yaml'
+    replacements = [
+        ('name: Mon Application', f'name: {config["APP_NAME"]}'),
+        ('slug: mon-app', f'slug: {config["APP_SLUG"]}'),
+        ("description: Template d'application avec authentification Hub",
+         f"description: {config['APP_DESCRIPTION']}"),
+    ]
+    if config.get('APP_KIND') == APP_KIND_TOOL:
+        replacements.append(('type: business', 'type: tool'))
+    return update_file(filepath, replacements, "Certificat Hub mis à jour")
+
+
 def update_backend_config(root: Path, config: dict) -> bool:
     filepath = root / 'backend' / 'config.py'
     replacements = [
@@ -2372,34 +2392,36 @@ def main():
     print(f"\n{Colors.BOLD}🔄 Application des modifications...{Colors.ENDC}\n")
 
     success = True
-    print(f"{Colors.CYAN}[1/14] Création .env{Colors.ENDC}")
+    print(f"{Colors.CYAN}[1/15] Création .env{Colors.ENDC}")
     success &= create_env_file(root, config)
-    print(f"{Colors.CYAN}[2/14] Mise à jour .env.example{Colors.ENDC}")
+    print(f"{Colors.CYAN}[2/15] Mise à jour .env.example{Colors.ENDC}")
     success &= update_env_example(root, config)
-    print(f"{Colors.CYAN}[3/14] Mise à jour docker-compose.yml{Colors.ENDC}")
+    print(f"{Colors.CYAN}[3/15] Mise à jour docker-compose.yml{Colors.ENDC}")
     success &= update_docker_compose(root, config)
-    print(f"{Colors.CYAN}[4/14] Mise à jour backend/config.py{Colors.ENDC}")
+    print(f"{Colors.CYAN}[4/15] Mise à jour backend/config.py{Colors.ENDC}")
     success &= update_backend_config(root, config)
-    print(f"{Colors.CYAN}[5/14] Mise à jour Dockerfile.frontend{Colors.ENDC}")
+    print(f"{Colors.CYAN}[5/15] Mise à jour Dockerfile.frontend{Colors.ENDC}")
     success &= update_dockerfile_frontend(root, config)
-    print(f"{Colors.CYAN}[6/14] Mise à jour frontend/index.html{Colors.ENDC}")
+    print(f"{Colors.CYAN}[6/15] Mise à jour frontend/index.html{Colors.ENDC}")
     success &= update_frontend_index(root, config)
-    print(f"{Colors.CYAN}[7/14] Mise à jour frontend/Header.jsx{Colors.ENDC}")
+    print(f"{Colors.CYAN}[7/15] Mise à jour frontend/Header.jsx{Colors.ENDC}")
     success &= update_frontend_header(root, config)
-    print(f"{Colors.CYAN}[8/14] Mise à jour frontend/package.json{Colors.ENDC}")
+    print(f"{Colors.CYAN}[8/15] Mise à jour frontend/package.json{Colors.ENDC}")
     success &= update_frontend_package_json(root, config)
-    print(f"{Colors.CYAN}[9/14] Mise à jour frontend/src/config.js{Colors.ENDC}")
+    print(f"{Colors.CYAN}[9/15] Mise à jour frontend/src/config.js{Colors.ENDC}")
     success &= update_frontend_config_js(root, config)
-    print(f"{Colors.CYAN}[10/14] Mise à jour fixtures de test{Colors.ENDC}")
+    print(f"{Colors.CYAN}[10/15] Mise à jour fixtures de test{Colors.ENDC}")
     success &= update_test_fixtures(root, config)
-    print(f"{Colors.CYAN}[11/14] Réinitialisation VERSION{Colors.ENDC}")
+    print(f"{Colors.CYAN}[11/15] Réinitialisation VERSION{Colors.ENDC}")
     success &= create_version_file(root)
-    print(f"{Colors.CYAN}[12/14] Réinitialisation documentation{Colors.ENDC}")
+    print(f"{Colors.CYAN}[12/15] Réinitialisation documentation{Colors.ENDC}")
     success &= create_changelog(root, config)
     success &= create_readme(root, config)
-    print(f"{Colors.CYAN}[13/14] Nettoyage fichiers obsolètes{Colors.ENDC}")
+    print(f"{Colors.CYAN}[13/15] Nettoyage fichiers obsolètes{Colors.ENDC}")
     success &= cleanup_obsolete_files(root)
-    print(f"{Colors.CYAN}[14/14] Génération LICENSE.md{Colors.ENDC}")
+    print(f"{Colors.CYAN}[14/15] Personnalisation du certificat Hub (hub-app.yaml){Colors.ENDC}")
+    success &= update_hub_app_manifest(root, config)
+    print(f"{Colors.CYAN}[15/15] Génération LICENSE.md{Colors.ENDC}")
     success &= create_license_file(root, config)
 
     if clean_mode:

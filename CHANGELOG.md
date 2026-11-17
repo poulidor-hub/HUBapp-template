@@ -1,3 +1,23 @@
+## [2.37.0] - 17 novembre 2026
+
+### 🏷️ Certificat Hub `hub-app.yaml` — les apps générées naissent certifiées
+
+- **Ajouté** : un manifeste `hub-app.yaml` à la racine du template (schéma
+  `hub.poulidor/v1`) — il déclare le projet comme application Hub et conditionne
+  son apparition dans le catalogue « Apps GitHub » du Hub (feature Hub_base 3.94).
+- **INITIALISE.py** : nouvelle étape `[14/15]` — personnalisation du certificat
+  (name/slug/description substitués ; `spec.type` mappé sur le kind d'app :
+  `tool` → `tool`, `client`/`other` → `business`). L'échec de l'étape bloque
+  scripts d'action et auto-suppression, comme les autres. Séquence renumérotée
+  en 15 étapes.
+- **Tests** : `backend/tests/test_hub_app_yaml.py` (repo-only, skip en conteneur)
+  — validité du manifeste template, substitutions identité/kind, contrat
+  hub.poulidor/v1 re-assert après substitution, ordre de l'étape dans `main()`.
+- **Doc** : README « Démarrage rapide » — paragraphe sur le certificat et le
+  champ optionnel `metadata.repository`.
+
+---
+
 ## [2.36.1] - 15 novembre 2026
 
 ### ⚡ CSP img-src https: — les tuiles Leaflet des apps à cartes étaient bloquées
