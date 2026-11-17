@@ -647,23 +647,40 @@ def update_hub_app_manifest(root: Path, config: dict) -> bool:
     return update_file(filepath, replacements, "Certificat Hub mis à jour")
 
 
-def update_backend_config(root: Path, config: dict) -> bool:
-    filepath = root / 'backend' / 'config.py'
+def update_backend_tests_identity(root: Path, config: dict) -> bool:
+    """Identité de l'app dans les tests backend (arbre app fine).
+
+    Le gabarit app fine n'a plus de backend/config.py : l'identité vit dans
+    conftest.py (APP_SLUG d'environnement) et dans les tests qui l'assertent
+    (dont test_hub_app_yaml.py pour le certificat). On substitue les motifs
+    par défaut dans tous les backend/tests/*.py. Le kind « tool » déclare
+    spec.type: tool dans le certificat : le test de certification du gabarit
+    doit alors attendre le même type (constante EXPECTED_TYPE).
+    """
+    tests_dir = root / 'backend' / 'tests'
+    if not tests_dir.is_dir():
+        print(f"  {Colors.YELLOW}⚠ backend/tests absent — rien à personnaliser{Colors.ENDC}")
+        return True
     replacements = [
-        ('APP_SLUG: str = "mon-app"', f'APP_SLUG: str = "{config["APP_SLUG"]}"'),
-        ('APP_NAME: str = "Mon Application"', f'APP_NAME: str = "{config["APP_NAME"]}"'),
-        ("APP_DESCRIPTION: str = \"Template d'application avec authentification Hub\"",
-         f'APP_DESCRIPTION: str = "{config["APP_DESCRIPTION"]}"'),
-        ('HUB_API_PORT: int = 8000', f'HUB_API_PORT: int = {config["HUB_API_PORT"]}'),
-        ('HUB_FRONTEND_PORT: int = 80', f'HUB_FRONTEND_PORT: int = {config["HUB_FRONTEND_PORT"]}'),
+        ('mon-app', config['APP_SLUG']),
+        ('Mon Application', config['APP_NAME']),
     ]
-    # Ports : ne réécrire la valeur par défaut Python que si un port a été saisi.
-    # Vide = allocation dynamique → on garde 9045/4250 (surchargés au runtime par .env).
-    if config["API_PORT"].strip():
-        replacements.append(('API_PORT: int = 9045', f'API_PORT: int = {config["API_PORT"]}'))
-    if config["FRONTEND_PORT"].strip():
-        replacements.append(('FRONTEND_PORT: int = 4250', f'FRONTEND_PORT: int = {config["FRONTEND_PORT"]}'))
-    return update_file(filepath, replacements, "Config backend mise à jour")
+    if config.get('APP_KIND') == APP_KIND_TOOL:
+        replacements.append(('EXPECTED_TYPE = "business"', 'EXPECTED_TYPE = "tool"'))
+    success = True
+    for path in sorted(tests_dir.glob('*.py')):
+        try:
+            content = path.read_text(encoding='utf-8')
+            original = content
+            for old, new in replacements:
+                content = content.replace(old, new)
+            if content != original:
+                path.write_text(content, encoding='utf-8')
+                print(f"  {Colors.GREEN}✓ {path.name} personnalisé{Colors.ENDC}")
+        except Exception as e:
+            print(f"  {Colors.RED}✗ Erreur {path.name}: {e}{Colors.ENDC}")
+            success = False
+    return success
 
 
 def update_dockerfile_frontend(root: Path, config: dict) -> bool:
@@ -687,39 +704,6 @@ def update_frontend_index(root: Path, config: dict) -> bool:
     return update_file(filepath, replacements, "Titre HTML mis à jour")
 
 
-def update_frontend_header(root: Path, config: dict) -> bool:
-    filepath = root / 'frontend' / 'src' / 'components' / 'Header.jsx'
-    try:
-        if not filepath.exists():
-            print(f"  {Colors.YELLOW}⚠ Fichier non trouvé: {filepath.name}{Colors.ENDC}")
-            return False
-        content = filepath.read_text(encoding='utf-8')
-        # Cible le texte affiché : span imbriqué dans le h1 (icône préservée),
-        # avec repli sur un h1 texte simple. Lambda => APP_NAME jamais interprété.
-        replacement = lambda m: f"{m.group(1)}🔐 {config['APP_NAME']}{m.group(3)}"
-        # Passe 1 : h1 multiligne avec éléments imbriqués (structure réelle du Header).
-        # (?:(?!</h1>).)*? : ne franchit pas </h1> -> un span APRÈS le h1 ne peut pas
-        # être capturé par erreur (sinon la passe 2 ne servirait jamais).
-        new_content, n = re.subn(
-            r'(<h1\b[^>]*>(?:(?!</h1>).)*?<span[^>]*>)([^<]*)(</span>)',
-            replacement, content, flags=re.S)
-        if n == 0:
-            # Passe 2 : h1 texte simple (attributs optionnels). 3 groupes capturants
-            # (texte ancien = groupe 2) => même lambda que la passe 1.
-            new_content, n = re.subn(
-                r'(<h1\b[^>]*>)([^<]*)(</h1>)',
-                replacement, content, flags=re.S)
-        if n > 0:
-            filepath.write_text(new_content, encoding='utf-8')
-            print(f"  {Colors.GREEN}✓ Header frontend mis à jour: {filepath.name}{Colors.ENDC}")
-            return True
-        print(f"  {Colors.RED}❌ Aucun motif trouvé dans {filepath.name} — rebranding/migration raté{Colors.ENDC}")
-        return False
-    except Exception as e:
-        print(f"  {Colors.RED}✗ Erreur {filepath.name}: {e}{Colors.ENDC}")
-        return False
-
-
 def update_frontend_package_json(root: Path, config: dict) -> bool:
     filepath = root / 'frontend' / 'package.json'
     try:
@@ -732,43 +716,6 @@ def update_frontend_package_json(root: Path, config: dict) -> bool:
     except Exception as e:
         print(f"  {Colors.RED}✗ Erreur package.json: {e}{Colors.ENDC}")
         return False
-
-
-def update_frontend_config_js(root: Path, config: dict) -> bool:
-    filepath = root / 'frontend' / 'src' / 'config.js'
-    replacements = [
-        ("APP_SLUG: import.meta.env.VITE_APP_SLUG || 'mon-app'",
-         f"APP_SLUG: import.meta.env.VITE_APP_SLUG || '{config['APP_SLUG']}'"),
-    ]
-    return update_file(filepath, replacements, "Config frontend (src) mise à jour")
-
-
-def update_test_fixtures(root: Path, config: dict) -> bool:
-    success = True
-    conftest_path = root / 'backend' / 'tests' / 'conftest.py'
-    if conftest_path.exists():
-        try:
-            content = conftest_path.read_text(encoding='utf-8')
-            content = content.replace('{"mon-app": app_role}',
-                                      '{' + f'"{config["APP_SLUG"]}": app_role' + '}')
-            content = content.replace('{"mon-app": "service"}',
-                                      '{' + f'"{config["APP_SLUG"]}": "service"' + '}')
-            conftest_path.write_text(content, encoding='utf-8')
-            print(f"  {Colors.GREEN}✓ conftest.py mis à jour{Colors.ENDC}")
-        except Exception as e:
-            print(f"  {Colors.RED}✗ Erreur conftest.py: {e}{Colors.ENDC}")
-            success = False
-    test_m2m_path = root / 'backend' / 'tests' / 'test_m2m.py'
-    if test_m2m_path.exists():
-        try:
-            content = test_m2m_path.read_text(encoding='utf-8')
-            content = content.replace('"mon-app"', f'"{config["APP_SLUG"]}"')
-            test_m2m_path.write_text(content, encoding='utf-8')
-            print(f"  {Colors.GREEN}✓ test_m2m.py mis à jour{Colors.ENDC}")
-        except Exception as e:
-            print(f"  {Colors.RED}✗ Erreur test_m2m.py: {e}{Colors.ENDC}")
-            success = False
-    return success
 
 
 def cleanup_obsolete_files(root: Path) -> bool:
@@ -809,8 +756,14 @@ def clean_demo_content(root: Path, config: dict) -> bool:
     success &= _clean_service_test_route(root)
     print(f"  {Colors.CYAN}Nettoyage composants frontend...{Colors.ENDC}")
     success &= _clean_frontend_components(root)
+    print(f"  {Colors.CYAN}Nettoyage point d'entrée frontend...{Colors.ENDC}")
+    success &= _clean_frontend_main_jsx(root)
+    print(f"  {Colors.CYAN}Retrait des résidus MSW...{Colors.ENDC}")
+    success &= _clean_frontend_msw_deps(root)
     print(f"  {Colors.CYAN}Réécriture page d'accueil (squelette minimal)...{Colors.ENDC}")
     success &= _clean_home_page(root)
+    print(f"  {Colors.CYAN}Retrait de la route de démonstration...{Colors.ENDC}")
+    success &= _clean_frontend_demo_route(root)
     print(f"  {Colors.CYAN}Nettoyage tests de démo...{Colors.ENDC}")
     success &= _clean_demo_tests(root)
     if success:
@@ -822,6 +775,11 @@ def clean_demo_content(root: Path, config: dict) -> bool:
 
 def _clean_models(root: Path) -> bool:
     filepath = root / 'backend' / 'models.py'
+    if not filepath.exists():
+        # Arbre app fine : pas de models.py de démo dans le gabarit (les
+        # modèles métier sont déclarés par l'app sur la Base du socle).
+        print(f"    {Colors.YELLOW}— models.py absent (app fine) : rien à nettoyer{Colors.ENDC}")
+        return True
     try:
         content = filepath.read_text(encoding='utf-8')
         original = content
@@ -852,6 +810,10 @@ def _clean_models(root: Path) -> bool:
 
 def _clean_schemas(root: Path) -> bool:
     filepath = root / 'backend' / 'schemas.py'
+    if not filepath.exists():
+        # Arbre app fine : pas de schemas.py de démo dans le gabarit.
+        print(f"    {Colors.YELLOW}— schemas.py absent (app fine) : rien à nettoyer{Colors.ENDC}")
+        return True
     content = '''"""
 Schémas Pydantic pour la validation des données.
 """
@@ -1119,6 +1081,10 @@ def _clean_demo_routes(root: Path) -> bool:
 
 def _clean_service_test_route(root: Path) -> bool:
     filepath = root / 'backend' / 'routes' / 'tests.py'
+    if not filepath.exists():
+        # Arbre app fine : pas de routes/tests.py de diagnostic dans le gabarit.
+        print(f"    {Colors.YELLOW}— routes/tests.py absent (app fine) : rien à nettoyer{Colors.ENDC}")
+        return True
     try:
         content = filepath.read_text(encoding='utf-8')
         old = '''        # Test 3: Vérifier que les tables de backup existent localement
@@ -1174,18 +1140,147 @@ def _clean_frontend_components(root: Path) -> bool:
             except Exception as e:
                 print(f"    {Colors.RED}✗ Erreur {component}: {e}{Colors.ENDC}")
                 success = False
+    # Démo app fine : sous-dossier de démo + mocks MSW (dossier src/mocks).
+    import shutil
+    for extra in (components_dir / 'demo', root / 'frontend' / 'src' / 'mocks'):
+        if extra.exists():
+            try:
+                shutil.rmtree(extra)
+                print(f"    {Colors.GREEN}✓ Supprimé {extra.relative_to(root)}{Colors.ENDC}")
+            except Exception as e:
+                print(f"    {Colors.RED}✗ Erreur {extra.relative_to(root)}: {e}{Colors.ENDC}")
+                success = False
+    return success
+
+
+def _clean_frontend_main_jsx(root: Path) -> bool:
+    """--clean : débarrasse main.jsx du service de mocks MSW.
+
+    src/mocks est supprimé par _clean_frontend_components : l'import statique
+    de main.jsx (`startMockService`) casserait sinon le build frontend de
+    l'app scaffoldée. Tolérant : motifs absents → no-op (jamais d'échec)."""
+    entry_path = root / 'frontend' / 'src' / 'main.jsx'
+    if not entry_path.exists():
+        return True
+    try:
+        content = entry_path.read_text(encoding='utf-8')
+        original = content
+        content = content.replace("import { startMockService } from './mocks/browser'\n", '')
+        content = content.replace(
+            """async function bootstrap() {
+  await startMockService()
+
+  ReactDOM.createRoot(""",
+            "ReactDOM.createRoot(")
+        content = content.replace("  )\n}\n\nbootstrap()\n", "  )\n")
+        if content != original:
+            entry_path.write_text(content, encoding='utf-8')
+            print(f"    {Colors.GREEN}✓ main.jsx : mocks MSW retirés{Colors.ENDC}")
+        return True
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Erreur main.jsx: {e}{Colors.ENDC}")
+        return False
+
+
+def _clean_frontend_msw_deps(root: Path) -> bool:
+    """--clean : retire les résidus MSW (worker public + dep package.json)."""
+    success = True
+    worker = root / 'frontend' / 'public' / 'mockServiceWorker.js'
+    if worker.exists():
+        try:
+            worker.unlink()
+            print(f"    {Colors.GREEN}✓ Supprimé public/mockServiceWorker.js{Colors.ENDC}")
+        except Exception as e:
+            print(f"    {Colors.RED}✗ Erreur mockServiceWorker.js: {e}{Colors.ENDC}")
+            success = False
+    pkg_path = root / 'frontend' / 'package.json'
+    if pkg_path.exists():
+        try:
+            import json
+            pkg = json.loads(pkg_path.read_text(encoding='utf-8'))
+            changed = False
+            for section in ('dependencies', 'devDependencies'):
+                if isinstance(pkg.get(section), dict) and 'msw' in pkg[section]:
+                    del pkg[section]['msw']
+                    changed = True
+            if 'msw' in pkg:
+                del pkg['msw']
+                changed = True
+            if changed:
+                pkg_path.write_text(
+                    json.dumps(pkg, indent=2, ensure_ascii=False) + '\n',
+                    encoding='utf-8')
+                print(f"    {Colors.GREEN}✓ package.json : dep msw retirée{Colors.ENDC}")
+        except Exception as e:
+            print(f"    {Colors.RED}✗ Erreur package.json (msw): {e}{Colors.ENDC}")
+            success = False
+    return success
+
+
+def _clean_frontend_demo_route(root: Path) -> bool:
+    """--clean : retire la route de démonstration /demo/form (fichier +
+    câblage router.js). Le gabarit la garde derrière import.meta.env.DEV ;
+    une vraie app ne l'expose pas. Tolérant : cibles absentes → no-op."""
+    success = True
+    demo_file = root / 'frontend' / 'src' / 'routes' / 'demo' / 'form.jsx'
+    if demo_file.exists():
+        try:
+            demo_file.unlink()
+            print(f"    {Colors.GREEN}✓ Supprimé routes/demo/form.jsx{Colors.ENDC}")
+        except Exception as e:
+            print(f"    {Colors.RED}✗ Erreur routes/demo/form.jsx: {e}{Colors.ENDC}")
+            success = False
+    demo_dir = root / 'frontend' / 'src' / 'routes' / 'demo'
+    if demo_dir.is_dir():
+        try:
+            import shutil
+            shutil.rmtree(demo_dir)
+            print(f"    {Colors.GREEN}✓ Supprimé routes/demo/{Colors.ENDC}")
+        except Exception as e:
+            print(f"    {Colors.RED}✗ Erreur routes/demo/: {e}{Colors.ENDC}")
+            success = False
+    router_path = root / 'frontend' / 'src' / 'router.js'
+    if router_path.exists():
+        try:
+            content = router_path.read_text(encoding='utf-8')
+            original = content
+            content = content.replace("import DemoFormRoute from './routes/demo/form'\n", '')
+            content = content.replace(
+                """// Route de démonstration : DEV uniquement. En production, la route n'est
+// pas déclarée → /demo/form retombe sur le splat 404 (pas de démo exposée).
+const demoFormRoute = import.meta.env.DEV
+  ? createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/demo/form',
+      component: DemoFormRoute,
+    })
+  : null
+
+""", '')
+            content = content.replace(
+                '[indexRoute, demoFormRoute, notFoundRoute].filter(Boolean)',
+                '[indexRoute, notFoundRoute]')
+            if content != original:
+                router_path.write_text(content, encoding='utf-8')
+                print(f"    {Colors.GREEN}✓ router.js : route de démo retirée{Colors.ENDC}")
+        except Exception as e:
+            print(f"    {Colors.RED}✗ Erreur router.js: {e}{Colors.ENDC}")
+            success = False
     return success
 
 
 def _clean_home_page(root: Path) -> bool:
     """--clean : remplace la page d'accueil démo (ExampleList → /api/items,
-    supprimés du backend) par un squelette canonique sans appel API — sinon
-    l'app scaffoldée affiche des 404 et des boutons sans effet."""
+    retirée avec la démo) par un squelette canonique sans appel API — sinon
+    l'app scaffoldée affiche des 404 et des boutons sans effet. Les imports
+    d'auth viennent du socle (@poulidor/hub-socle), pas de l'app."""
     filepath = root / 'frontend' / 'src' / 'routes' / 'index.jsx'
-    content = """import { useAuth } from '../context/AuthContext'
-import LoginPrompt from '../components/LoginPrompt'
-import PageHeader from '../components/PageHeader'
+    content = """import { useAuth } from '@poulidor/hub-socle/context/AuthContext.jsx'
+import LoginPrompt from '@poulidor/hub-socle/components/LoginPrompt.jsx'
 
+// Accueil : la barre app (Header du socle) porte déjà le titre, la version
+// et l'état Hub — pas de PageHeader ici (un seul en-tête, un seul h1).
+// Les pages de détail/formulaires gardent leur PageHeader canonique.
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
 
@@ -1194,19 +1289,16 @@ export default function HomePage() {
   }
 
   return (
-    <>
-      <PageHeader title="Accueil" meta="structure canonique" />
-      <section className="hub-panel">
-        <div className="hub-empty-state">
-          <div className="hub-empty-state-icon">◆</div>
-          <h2 className="hub-empty-state-title">Prêt à démarrer</h2>
-          <p className="hub-empty-state-description">
-            Créez votre première page dans src/routes/ — référence copiable :
-            ExampleList dans le template HUBapp_TEMPLATE_base.
-          </p>
-        </div>
-      </section>
-    </>
+    <section className="hub-panel">
+      <div className="hub-empty-state">
+        <div className="hub-empty-state-icon">◆</div>
+        <h2 className="hub-empty-state-title">Prêt à démarrer</h2>
+        <p className="hub-empty-state-description">
+          Créez vos pages dans src/routes/ et vos routes dans src/router.js —
+          auth, layout et état Hub sont fournis par le socle.
+        </p>
+      </div>
+    </section>
   )
 }
 """
@@ -2392,36 +2484,30 @@ def main():
     print(f"\n{Colors.BOLD}🔄 Application des modifications...{Colors.ENDC}\n")
 
     success = True
-    print(f"{Colors.CYAN}[1/15] Création .env{Colors.ENDC}")
+    print(f"{Colors.CYAN}[1/12] Création .env{Colors.ENDC}")
     success &= create_env_file(root, config)
-    print(f"{Colors.CYAN}[2/15] Mise à jour .env.example{Colors.ENDC}")
+    print(f"{Colors.CYAN}[2/12] Mise à jour .env.example{Colors.ENDC}")
     success &= update_env_example(root, config)
-    print(f"{Colors.CYAN}[3/15] Mise à jour docker-compose.yml{Colors.ENDC}")
+    print(f"{Colors.CYAN}[3/12] Mise à jour docker-compose.yml{Colors.ENDC}")
     success &= update_docker_compose(root, config)
-    print(f"{Colors.CYAN}[4/15] Mise à jour backend/config.py{Colors.ENDC}")
-    success &= update_backend_config(root, config)
-    print(f"{Colors.CYAN}[5/15] Mise à jour Dockerfile.frontend{Colors.ENDC}")
+    print(f"{Colors.CYAN}[4/12] Mise à jour Dockerfile.frontend{Colors.ENDC}")
     success &= update_dockerfile_frontend(root, config)
-    print(f"{Colors.CYAN}[6/15] Mise à jour frontend/index.html{Colors.ENDC}")
+    print(f"{Colors.CYAN}[5/12] Mise à jour frontend/index.html{Colors.ENDC}")
     success &= update_frontend_index(root, config)
-    print(f"{Colors.CYAN}[7/15] Mise à jour frontend/Header.jsx{Colors.ENDC}")
-    success &= update_frontend_header(root, config)
-    print(f"{Colors.CYAN}[8/15] Mise à jour frontend/package.json{Colors.ENDC}")
+    print(f"{Colors.CYAN}[6/12] Mise à jour frontend/package.json{Colors.ENDC}")
     success &= update_frontend_package_json(root, config)
-    print(f"{Colors.CYAN}[9/15] Mise à jour frontend/src/config.js{Colors.ENDC}")
-    success &= update_frontend_config_js(root, config)
-    print(f"{Colors.CYAN}[10/15] Mise à jour fixtures de test{Colors.ENDC}")
-    success &= update_test_fixtures(root, config)
-    print(f"{Colors.CYAN}[11/15] Réinitialisation VERSION{Colors.ENDC}")
+    print(f"{Colors.CYAN}[7/12] Personnalisation des tests backend{Colors.ENDC}")
+    success &= update_backend_tests_identity(root, config)
+    print(f"{Colors.CYAN}[8/12] Réinitialisation VERSION{Colors.ENDC}")
     success &= create_version_file(root)
-    print(f"{Colors.CYAN}[12/15] Réinitialisation documentation{Colors.ENDC}")
+    print(f"{Colors.CYAN}[9/12] Réinitialisation documentation{Colors.ENDC}")
     success &= create_changelog(root, config)
     success &= create_readme(root, config)
-    print(f"{Colors.CYAN}[13/15] Nettoyage fichiers obsolètes{Colors.ENDC}")
+    print(f"{Colors.CYAN}[10/12] Nettoyage fichiers obsolètes{Colors.ENDC}")
     success &= cleanup_obsolete_files(root)
-    print(f"{Colors.CYAN}[14/15] Personnalisation du certificat Hub (hub-app.yaml){Colors.ENDC}")
+    print(f"{Colors.CYAN}[11/12] Personnalisation du certificat Hub (hub-app.yaml){Colors.ENDC}")
     success &= update_hub_app_manifest(root, config)
-    print(f"{Colors.CYAN}[15/15] Génération LICENSE.md{Colors.ENDC}")
+    print(f"{Colors.CYAN}[12/12] Génération LICENSE.md{Colors.ENDC}")
     success &= create_license_file(root, config)
 
     if clean_mode:

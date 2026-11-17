@@ -1,3 +1,35 @@
+## [2.38.0] - 17 novembre 2026
+
+### 🔧 INITIALISE porté sur l'arbre app fine — le scaffolding refonctionne
+
+**Le bug** : depuis la restructuration « app fine sur socle » (2.35.0, 30/10/2026),
+INITIALISE.py n'avait pas été porté — 3 étapes ciblaient des fichiers supprimés
+(`backend/config.py`, `frontend/src/components/Header.jsx`, `frontend/src/config.js`)
+et le nettoyage de démo visait l'ancien arbre (`models.py`, `schemas.py`,
+`routes/tests.py`). Tout scaffold sortait en **exit 1** (« Initialisation terminée
+avec des avertissements ») : scripts d'action jamais générés, self-destruct jamais
+exécuté, pendant 18 jours et 9 releases — sans qu'aucun test E2E ne le voie.
+
+- **Réparé** : séquence renumérotée en **12 étapes** — retrait des 3 étapes mortes ;
+  nouvelle étape 7 « Personnalisation des tests backend » (`APP_SLUG` du conftest +
+  substitution mon-app/Mon Application dans `backend/tests/*.py`, `EXPECTED_TYPE`
+  du test certificat mappé sur le kind `tool`) ; certificat en étape 11.
+- **Réparé** : `clean_demo_content` retargeté app fine — cleaners tolérants aux
+  fichiers absents (app fine : plus de `models.py`/`schemas.py`/`routes/tests.py`
+  de démo dans le gabarit) ; démo frontend retirée proprement (ExampleList,
+  `components/demo/`, mocks MSW, route `/demo/form` + câblage `router.js`) ;
+  `main.jsx` débarrassé de l'import/appel MSW statiques (sinon build frontend
+  cassé après suppression de `src/mocks`) ; worker `mockServiceWorker.js` et
+  dep `msw` retirés en mode clean ; squelette d'accueil régénéré avec les
+  imports socle (`@poulidor/hub-socle`).
+- **Tests** : nouveau filet E2E `backend/tests/test_initialise_e2e.py` (repo-only)
+  — export `git archive HEAD` → scaffold réel en subprocess → exit 0, zéro
+  « Fichier non trouvé », certificat/conftest substitués, scripts d'action générés,
+  self-destruct effectué, démo absente (mode clean) / conservée (mode `--demo`).
+  Le test qui aurait attrapé la casse 18 jours plus tôt.
+
+---
+
 ## [2.37.0] - 17 novembre 2026
 
 ### 🏷️ Certificat Hub `hub-app.yaml` — les apps générées naissent certifiées

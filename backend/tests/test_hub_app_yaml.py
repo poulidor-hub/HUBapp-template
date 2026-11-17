@@ -25,6 +25,11 @@ if not ACTIONS_INIT.is_file() or not TEMPLATE_MANIFEST.is_file():
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 VALID_TYPES = {"business", "infra", "tool"}
 
+# Type déclaré par le gabarit. INITIALISE (update_backend_tests_identity)
+# substitue cette constante en "tool" pour les apps générées en kind=tool —
+# garder la chaîne exacte `EXPECTED_TYPE = "business"` intacte.
+EXPECTED_TYPE = "business"
+
 
 def _load_init_module():
     spec = importlib.util.spec_from_file_location("initmod_certif", ACTIONS_INIT)
@@ -58,7 +63,7 @@ def test_template_manifest_is_valid_and_matches_initialise_defaults():
     # Valeurs par défaut = motifs de substitution attendus par INITIALISE.
     assert data["metadata"]["slug"] == "mon-app"
     assert data["metadata"]["name"] == "Mon Application"
-    assert data["spec"]["type"] == "business"
+    assert data["spec"]["type"] == EXPECTED_TYPE
 
 
 def _init_module():
@@ -109,4 +114,9 @@ def test_initialise_sequence_includes_certificate_step():
     assert step_certif != -1, "étape certificat absente de main()"
     assert step_license != -1
     assert step_certif < step_license, "le certificat doit être traité avant LICENSE.md"
-    assert "[15/15]" in src and "/14]" not in src, "séquence renumérotée en 15 étapes"
+    # Séquence app fine : 12 étapes, plus aucune cible de l'ancienne génération
+    # (backend/config.py, Header.jsx, src/config.js — retirés en 2.35.0).
+    assert "[12/12]" in src and "/15]" not in src and "/14]" not in src
+    for dead in ("update_backend_config", "update_frontend_header",
+                 "update_frontend_config_js", "update_test_fixtures"):
+        assert dead not in src, f"fonction morte résiduelle : {dead}"
