@@ -1,3 +1,16 @@
+## [2.39.1] - 18 novembre 2026
+
+### ⚡ Route `/callback` SSO déclarée — fin de la 404 « Page introuvable » au lancement Hub
+
+- `frontend/src/router.js` : nouvelle route `/callback` (`beforeLoad` →
+  `redirect({ to: '/', replace: true })`) déclarée avant le splat `$`.
+  Le dashboard Hub ouvre `{frontend_url}/callback?access_token=…` ; le token
+  est consommé synchro­nement par AuthContext (monté au-dessus du routeur)
+  mais le path restait sans route → splat → NotFoundPage alors que
+  l'utilisateur est connecté. Pattern déjà établi (exemple-app & co).
+- nginx `location = /callback` déjà en place (sans log des tokens) — inchangé.
+- Concerne toute app créée/migrée depuis ce template.
+
 ## [2.39.0] - 18 novembre 2026
 
 ### ⚡ PostgreSQL — profil mémoire explicite surchargeable via PG_*
