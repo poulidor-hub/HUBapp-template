@@ -24,6 +24,14 @@ services:
       # (psql, pg_dump, pg_isready du healthcheck).
       PGPORT: ${POSTGRES_PORT:-5432}
       TZ: UTC
+    # === Profil mémoire explicite (surchargeable via .env, clés PG_*) ===
+    # Défauts calibrés pour une station modeste (limite 512M ci-dessous).
+    # Station avec plus de RAM : surcharger via le .env (cf. .env.example,
+    # section « TUNING POSTGRESQL ») — aucun changement du compose nécessaire.
+    command: postgres -c shared_buffers=${PG_SHARED_BUFFERS:-128MB} -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-384MB} -c work_mem=${PG_WORK_MEM:-8MB} -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-64MB}
+    # Mémoire partagée POSIX (/dev/shm) du conteneur — PostgreSQL l'utilise
+    # pour ses buffers partagés ; défaut aligné sur shared_buffers.
+    shm_size: ${PG_SHM_SIZE:-128m}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
