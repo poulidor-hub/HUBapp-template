@@ -377,6 +377,18 @@ Surcharges locales : **uniquement dans `frontend/src/app.css`** — ne jamais
 1. Modifier `.env` : `APP_SLUG=mon-nouvelle-app`
 2. Redémarrer : `docker-compose up -d --build`
 
+### Tuner PostgreSQL (station RAM limitée)
+
+Le conteneur postgres démarre avec un profil mémoire explicite, surchargeable
+via le `.env` (clés commentées dans `.env.example`, section « TUNING
+POSTGRESQL ») : `PG_SHARED_BUFFERS` (cache partagé PG, défaut 128MB),
+`PG_EFFECTIVE_CACHE_SIZE` (cache PG + OS estimé, vu du planificateur, 384MB),
+`PG_WORK_MEM` (mémoire des tris/hachages, 8MB), `PG_MAINTENANCE_WORK_MEM`
+(VACUUM, création d'index, 64MB) et `PG_SHM_SIZE` (mémoire partagée du
+conteneur, 128m). Sur une station à RAM limitée, réduire d'abord
+`PG_SHARED_BUFFERS` puis `PG_WORK_MEM` ; redémarrer avec `make up` pour
+appliquer.
+
 ### Ajouter un nouveau modèle
 
 1. Créer le modèle métier dans `backend/models.py` (hériter du `Base` du
