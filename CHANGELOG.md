@@ -1,3 +1,12 @@
+## [2.39.0] - 18 novembre 2026
+
+### ⚡ PostgreSQL — profil mémoire explicite surchargeable via PG_*
+
+- **feat(db)** : service `postgres` du template — `command:` partagé calibré sur la limite 512m : `shared_buffers=${PG_SHARED_BUFFERS:-128MB}`, `effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-384MB}` (le défaut PG, 4GB, était aberrant dans un conteneur plafonné), `work_mem=${PG_WORK_MEM:-8MB}`, `maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-64MB}` ; `shm_size: ${PG_SHM_SIZE:-128m}` (défaut Docker 64m supprimé).
+- **feat(env)** : `.env.example` — 5 clés `PG_*` documentées (commentées, défauts portés par le compose) + exemple de réglage pour station RAM limitée (64MB/192MB/4MB/32MB/64m).
+- **docs** : README — section « Tuner PostgreSQL (station RAM limitée) ».
+- **Héritage** : le profil est repris tel quel par toute app scaffoldée (INITIALISE fork le compose sans réécrire le service postgres).
+
 ## [2.38.0] - 17 novembre 2026
 
 ### 🔧 INITIALISE porté sur l'arbre app fine — le scaffolding refonctionne
