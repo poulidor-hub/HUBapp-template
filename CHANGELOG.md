@@ -1,3 +1,27 @@
+## [2.39.2] - 21 novembre 2026
+
+### ⚡ Définitions des noms legacy émis par @poulidor/hub-socle — boutons de login stylés
+
+- La purge `715946f` (oct. 2026) avait retiré ces familles de `app.css`
+  en supposant les composants socle migrés vers `hub-*` — mais les
+  composants du **paquet** `@poulidor/hub-socle` (HUBsocle 2.38) émettent
+  encore les anciens noms, définis ni par le DS (`.hub-button`/
+  `.hub-badge`) ni par le template. `LoginPrompt` monté sur `/` rendait
+  son bouton non stylé dans toute app créée depuis le template (constaté
+  côté exemple-app 0.4.1 — même cause racine, portage identique).
+- `frontend/src/styles/app.css` : `.card` (+ `.card > h2:first-child`),
+  `.btn`/`.btn-primary`/`.btn-secondary`/`.btn-danger`/`.btn-small` +
+  combos « btn btn-small btn-* », `.role-badge`/`.role-*` (viewer/user/
+  manager/admin/service), `.category-badge`/`.category-*` (general/
+  infrastructure/stack/config/custom), `.empty-state`, alias
+  `.card-intro`/`.card-actions` sur `.app-intro`/`.app-actions`,
+  `.example-list-footer` (classe fantôme préexistante d'ExampleList —
+  `lint-classes` rouge sur main). Tokens `--hub-*` uniquement.
+- Concerne toute app créée/migrée depuis ce template — à retirer le jour
+  où le socle livre son propre CSS ou migre vers `hub-*`.
+- Vérifié : `lint-classes` vert (0 fantôme), parse esbuild OK, couverture
+  100 % des classes émises par le socle (app.css + build HUBCSS).
+
 ## [2.39.1] - 18 novembre 2026
 
 ### ⚡ Route `/callback` SSO déclarée — fin de la 404 « Page introuvable » au lancement Hub
