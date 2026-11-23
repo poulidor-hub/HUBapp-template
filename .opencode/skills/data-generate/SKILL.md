@@ -116,6 +116,12 @@ volume adapté au test visé, **aucune ligne copiée du réel**. Alternative san
 `data.json` au format backup puis `POST /api/admin/restore` — cf. skill
 `backup-restore-ops` (⚠️ `clear_existing=true` est destructif).
 
+**Volume — petit nombre d'abord.** Quel que soit le volume cible (perf, pagination,
+démo), exécuter d'abord le même script à petit nombre (ex. `python scripts/seed_test_data.py 5 42`)
+pour valider le workflow bout-en-bout (modèle, contraintes, rendu frontend), puis
+seulement le relancer au volume cible. Un gros run qui échoue sur une erreur
+détectable à n=5 est du temps perdu — et le debug est noyé dans le volume.
+
 ## Voie B — réalisme dérivé du réel : app-exemple-d obligatoire
 
 Chaîne exacte (API app-exemple-d, auth JWT Hub utilisateur — owner du workspace ou
@@ -177,3 +183,4 @@ le résultat reste attribuable au dossier source. En cas de doute → voie A.
 | Pseudo-anonymisation artisanale (noms changés à la main) | Ré-identification par recombinaison | app-exemple-d avec règles fake/stat par colonne |
 | Centaines d'appels API un à un | Lent, brûle le contexte, partiellement échoué sans rollback | Script one-shot seedé (A.2) ou restore backup |
 | Script de seed sans seed ou sans volume annoncé | Non reproductible, effet de bord imprévisible | seed + n_rows en arguments, affichés avant exécution |
+| Gros volume lancé d'emblée, échoue sur une erreur détectable à n=5 | Temps perdu, debug noyé dans le volume, reprise partielle à trier | Run réduit d'abord (`n=5`), corriger, puis montée au volume cible |
