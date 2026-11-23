@@ -1,3 +1,18 @@
+## [2.40.0] - 23 novembre 2026
+
+### ⚡ Règle « petit nombre d'abord » dans le skill data-generate (seeds gros volume)
+
+- Skill `data-generate` (voie A.2) : quel que soit le volume cible (perf,
+  pagination, démo), exécuter d'abord le même script de seed à **n=5** pour
+  valider le workflow bout-en-bout (modèle, contraintes, rendu frontend),
+  puis seulement le relancer au volume cible. Un gros run qui échoue sur une
+  erreur détectable à n=5 est du temps perdu — et le debug est noyé dans le
+  volume.
+- Anti-pattern ajouté : gros volume lancé d'emblée, échec détectable à n=5
+  → correction : run réduit d'abord, puis montée au volume cible.
+- Validé par micro-test subagents (contrôle sans règle : seed 200k lancé
+  directement ; avec règle : run réduit 5/5 inséré avant montée).
+
 ## [2.39.2] - 21 novembre 2026
 
 ### ⚡ Définitions des noms legacy émis par @poulidor/hub-socle — boutons de login stylés
