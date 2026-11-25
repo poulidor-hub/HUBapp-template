@@ -84,7 +84,7 @@
   Le dashboard Hub ouvre `{frontend_url}/callback?access_token=…` ; le token
   est consommé synchro­nement par AuthContext (monté au-dessus du routeur)
   mais le path restait sans route → splat → NotFoundPage alors que
-  l'utilisateur est connecté. Pattern déjà établi (exemple-app & co).
+  l'utilisateur est connecté. Pattern déjà établi (autres apps du parc).
 - nginx `location = /callback` déjà en place (sans log des tokens) — inchangé.
 - Concerne toute app créée/migrée depuis ce template.
 
@@ -154,9 +154,9 @@ exécuté, pendant 18 jours et 9 releases — sans qu'aucun test E2E ne le voie.
 ### ⚡ CSP img-src https: — les tuiles Leaflet des apps à cartes étaient bloquées
 
 - Le snippet `security-headers.conf` 2.36.0 posait `img-src 'self' data:` :
-  les apps à cartes (Nominatim, exemple-app, exemple-app,
-  exemple-app-16_API_v3) perdaient leur fond de tuiles
-  `https://*.tile.openstreetmap.org` (et exemple-app-16 ses icônes unpkg,
+  les apps à cartes (dont le service de géocodage Nominatim — quatre
+  applications du parc) perdaient leur fond de tuiles
+  `https://*.tile.openstreetmap.org` (et une autre ses icônes unpkg,
   plusieurs apps leurs avatars ui-avatars.com).
 - `img-src` passe à `'self' data: https:` + note anti-régression dans le
   snippet (les tuiles/icônes/avatars sont des images externes légitimes).
@@ -195,8 +195,8 @@ exécuté, pendant 18 jours et 9 releases — sans qu'aucun test E2E ne le voie.
 - **`ssl/openssl.cnf` détracké + gitigné** (`.gitignore` section SSL) : le fichier
   contient l'IP LAN locale (`generate-ssl.sh:31` `hostname -I` → `IP.2`) — tracké,
   il re-salait le dépôt à chaque régénération de certificats (premier boot,
-  migration, `--force`). Vécu : 28/31 apps trackaient le fichier ; exemple-app
-  et exemple-app sales en production.
+  migration, `--force`). Vécu : 28/31 apps trackaient le fichier ; deux d'entre elles
+  sales en production.
 - **`generate-ssl.sh` inchangé** : le fichier continue d'être écrit à chaque
   (re)génération des certs (garde existante sur `server.crt`/`server.key`) ;
   seul le tracking git change.
@@ -267,17 +267,17 @@ exécuté, pendant 18 jours et 9 releases — sans qu'aucun test E2E ne le voie.
 ### 🧹 Template — depends.yaml embarqué dans l'image + doc backup alignée
 
 - **`depends.yaml`** (nouveau, racine) : scaffold documenté (`depends_on: []`)
-  — format slug/note, règle slug exact au registre (piège « exemple-app »
-  vs « exemple-apps », audit slugs 11/11/2026), rappel resolve_service_slug
+  — format slug/note, règle slug exact au registre (piège d'un slug proche — singulier
+  vs pluriel —, audit slugs 11/11/2026), rappel resolve_service_slug
   ne sert qu'aux suffixes d'environnement.
 - **`Dockerfile.backend`** : `COPY depends.yaml /app/depends.yaml` — le
   socle lit le fichier au register (`_load_depends_yaml` backend/ puis
   racine /app) et pousse les dépendances au Hub (`_push_deps_to_hub`,
   best-effort). Sans COPY, la déclaration n'atteint jamais le dashboard
-  Hub (gap constaté sur Transmission/exemple-app/exemple-app — corrections
-  parc du 11/11/2026 ; pattern exemple-V2 qui l'avait ajouté à la main).
-- **`docs/BACKUP_RESTORE.md`** : exemples `app_slug: exemple-app` →
-  `exemple-apps` (le mauvais exemple se propageait aux apps générées —
+  Hub (gap constaté sur trois applications du parc — corrections
+  parc du 11/11/2026 ; l'une d'elles l'avait ajouté à la main).
+- **`docs/BACKUP_RESTORE.md`** : exemples `app_slug` alignés sur le slug exact
+  au registre (le mauvais exemple se propageait aux apps générées —
   ~8 copies encore à aligner via migrate-app-template).
 - Apps existantes : ne PAS retro-porter à la main fichier par fichier —
   passer par une vague `migrate-app-template`.
@@ -493,7 +493,7 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
   apostrophe dans un commentaire (« Tables d'ingestion ») ouvrait une chaîne fantôme
   dans `_split_sql_statements` : tous les `;` suivants avalés, la migration fusionnée
   en un seul statement → asyncpg « cannot insert multiple commands » → jamais marquée
-  appliquée, re-jouée à chaque boot. Cas réels : exports 003/006, HUB 003/006 (23/21
+  appliquée, re-jouée à chaque boot. Cas réels : exemple-app 003/006, HUB 003/006 (23/21
   statements désormais correctement séparés). +4 tests (rouge prouvé avant fix).
 - **Fix shutdown** — `hub_client.close()` : `httpx.AsyncClient` n'expose que `aclose()`
   (httpx ≥ 0.28) → `AttributeError` au shutdown (« Application shutdown failed »).
@@ -684,7 +684,7 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
   jamais de données réelles (prod, exports clients) en dev/test. Voie A :
   données synthétiques (appels CRUD ≤ ~50 items, script one-shot seedé
   au-delà, domaines `@example.*`). Voie B (réalisme dérivé du réel) :
-  anonymisation exemple-app obligatoire AVANT tout usage — upload
+  anonymisation par l'outil du parc obligatoire AVANT tout usage — upload
   (CSV/XLSX/ODS) → MaskConfig fake/stat → job `anonymize` seedé
   (`effective_seed`) → `GET /api/jobs/{id}/download` → `validate`
   (`global_score`) → destruction de l'export source.
@@ -705,7 +705,7 @@ Chaque app créée depuis ce template naît synchronisée au socle (pin
 ### ⚡ sync_hub_host : fallback IP LAN si annonce injoignable et HUB_HOST vide/mort
 
 - Complément du garde dfc672d (conservé tel quel, cas « HUB_HOST courant joignable ») : quand le courant est **vide ou mort**, l'annonce du Hub était adoptée **sans validation** — une IP injoignable (config Hub obsolète après changement d'IP de la machine, IP de conteneur annoncée par auto-détection inter-bridges) finissait dans le `.env` et l'app perdait le Hub au prochain build
-- Incident réel 01/10/2026 (app instanciée) : `HUB_HOST=10.50.150.133` propagé par le sync → `hub_connected` perdu à la recréation des conteneurs
+- Incident réel 01/10/2026 (app instanciée) : `HUB_HOST=192.0.2.10` propagé par le sync → `hub_connected` perdu à la recréation des conteneurs
 - Désormais, si l'annonce ne répond pas depuis l'hôte : adoption de l'IP LAN (`get_local_ip`, port du Hub publié sur 0.0.0.0) si le Hub y répond ; sinon **aucune écriture** + avertissement
 - Tests : 4 cas unitaires (`test_sync_hub_host.py` — courant joignable conservé, fallback LAN, adoption normale inchangée, tout-mort sans écriture)
 
@@ -980,7 +980,7 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
   l'instance **détectée** (Hub contacté), et documente la procédure de bascule
   volontaire : corriger `HUB_HOST`, supprimer la ligne `HUB_INSTANCE_ID` du
   `.env`, relancer `make sync-env` (nouvelle instance mémorisée).
-  Contexte : retour d'expérience exemple-app — un opérateur restait bloqué sans
+  Contexte : retour d'expérience d'une app du parc — un opérateur restait bloqué sans
   piste lors d'un changement de Hub légitime (fresh install distante).
 - **Comportement inchangé** : exit 1, aucune écriture, même déclencheur.
 - Tests : garde-fou 30/30 (assertions renforcées sur le message).
@@ -1038,7 +1038,7 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
   taille des données, dans un conteneur limité à 512M → **OOM kernel dès
   ~150 Mo de données** (uvicorn tué, hub : « Server disconnected without
   sending a response », backup failed, rien à télécharger). Reproduit et
-  confirmé le 19/09 sur le banc exemple-app exemple-lab (kernel : « Memory cgroup
+  confirmé le 19/09 sur un banc-lab (kernel : « Memory cgroup
   out of memory: Killed process (uvicorn) anon-rss:521016kB »).
 - **Corrigé** : `create_backup` écrit le ZIP directement sur disque
   (`zipfile.ZipFile(path)` + `zf.write()` streaming, exécuté hors boucle via
@@ -1123,14 +1123,14 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
   calculés de sentinelles à deux viewports (375px / 1280px). C'est la preuve
   runtime que ni un reset hors-layer, ni une classe morte, ni un mapping de
   token n'a cassé le rendu — la classe de bugs invisible à la relecture de
-  code (cas exports v0.1.2).
+  code (cas exemple-app v0.1.2).
 - Config par app : `scripts/verify-ui.config.json` (sentinelles déclaratives :
   sélecteur + propriété + attendu). Usage : `make verify-ui APP=../MON_APP/frontend`.
 - Dépendance : `playwright` (devDependency du template) + `npx playwright
   install chromium`. Exit 1 sur échec, 2 sur setup invalide.
 - Déployé en réel sur exemple-app (8 sentinelles : sentinelle anti-reset
   `hub-table`, portage thème via `var(--bg-primary)`, `alert-error`,
-  `help-text`, utilitaires, `divide-y`, `stat-card`) et exemple-app (6
+  `help-text`, utilitaires, `divide-y`, `stat-card`) et mon-app (6
   sentinelles : anti-reset, `prose`/`prose-sm` du plugin typography,
   Tailwind propre `.p-4`, PrimeIcons bundlé) — **vert mobile + desktop**.
 
@@ -1144,7 +1144,7 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
 - Utilitaire nu `transition` ajouté ; préfixe `drop-shadow-` ajouté
   (Tailwind v4 propre des apps).
 - Campagne réelle : exemple-app (46 classes `pi*`, `prose-*` allowlisté —
-  @tailwindcss/typography non installé) et exemple-app (46 `pi*`, 17 hooks
+  @tailwindcss/typography non installé) et mon-app (46 `pi*`, 17 hooks
   allowlistés, shell `.app` défini) — **0 classe fantôme**.
 
 ---
@@ -1157,8 +1157,8 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
   de formulaire Tailwind).
 - Utilitaires nus ajoutés : `group`, `peer`, `transform`, `box-border`,
   `box-content`.
-- Faux positifs éliminés en réel sur exemple-app (`.group`), exemple-app
-  (6 classes) et exemple-app (`file:*`) — apps avec Tailwind propre.
+- Faux positifs éliminés en réel sur trois apps du parc (`.group`,
+  6 classes, `file:*`) — apps avec Tailwind propre.
 
 ---
 
@@ -1169,14 +1169,13 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
 - **Comparaisons dans `className={…}`** : les chaînes utilisées dans
   `===` / `!==` / comparaisons ne sont plus extraites comme classes
   (ex. `feedback.type === "success"` → `.success` fantôme imaginaire,
-  constaté sur exemple-app).
+  constaté sur une app du parc).
 - **Heuristique TW étendue** : utilitaires négatifs (`-mb-px`,
   `-translate-x-full`…), préfixes `table-` / `translate-` — comptés « non
   vérifiables » pour les apps avec Tailwind propre (faux positifs constatés
-  sur exemple-app).
+  sur une app du parc).
 - **Fichiers de sauvegarde** (`*.bak`, `*.orig`, `*.rej`) exclus du scan.
-- Campagne « vague 1 » du parc : exemple-app, exemple-app,
-  exemple-app_v3, exemple-app — **0 classe fantôme** après traitement.
+- Campagne « vague 1 » du parc : 4 applications — **0 classe fantôme** après traitement.
 
 ---
 
@@ -1191,10 +1190,8 @@ scripts, outillage embarqué). +36 tests (200 → 236), tous les fixes en TDD
 - Script durci pour le traitement en masse du parc : idempotent (reprise
   après interruption), tolère exit 1 du lint (recensement), parsing
   d'expressions `className={…}` à accolades équilibrées.
-- Campagne réelle : 12 apps sur branches de travail corrigées (retrait reset
-  `*` + lint embarqué) — exemple-app, exemple-app, exemple-V2, exemple-app,
-  exemple-app, exemple-app, exemple-app, exemple-app, exemple-app, exemple-app,
-  exemple-app, exemple-app.
+- Campagne réelle : 12 applications du parc sur branches de travail
+  corrigées (retrait reset `*` + lint embarqué).
 
 ---
 
@@ -1220,7 +1217,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   seed/app.css ne sont plus des erreurs — elles sont comptées comme « non
   vérifiables statiquement » (ℹ️), car compilées par le Tailwind de l'app.
 - Validé : faux positif exemple-app disparu, détections réelles inchangées
-  (exports 867b5bb : `mb-2`/`mb-3` toujours attrapées ; exemple-app :
+  (mon-app 867b5bb : `mb-2`/`mb-3` toujours attrapées ; une troisième app :
   9 classes template manquantes confirmées).
 
 ---
@@ -1231,7 +1228,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 Nouveau garde-fou statique qui détecte, **avant le runtime**, les classes
 utilisées dans le JSX/HTML mais absentes du build — le mode de défaillance qui
-a cassé l'UI de l'app exports (utilitaires Tailwind utilisés après retrait de
+a cassé l'UI de l'app exemple-app (utilitaires Tailwind utilisés après retrait de
 Tailwind du build : `mb-2`, `mb-3`… jamais détectés ni par Vite ni par pytest).
 
 - **`frontend/scripts/lint-classes.mjs`** (zéro dépendance, Node seul) :
@@ -1251,7 +1248,7 @@ Tailwind du build : `mb-2`, `mb-3`… jamais détectés ni par Vite ni par pytes
 - **Fix détecté par le lint lui-même** : la classe shell `.app` (wrapper de
   `RootLayout`) était utilisée sans définition CSS — règle ajoutée dans
   `app.css` (`min-height: 100vh` + colonne flex, recette `hub-shell`).
-- Validé sur : le template (✅ 0 fantôme), l'app exports avant/après fixes
+- Validé sur : le template (✅ 0 fantôme), l'app exemple-app avant/après fixes
   (l'ancien commit 867b5bb échoue avec `mb-2`/`mb-3` + warning reset — le
   drame Tailwind aurait été attrapé immédiatement), et un cas synthétique
   (allowlist, HTML, dynamique).
@@ -1268,7 +1265,7 @@ règle non-layered bat toujours une règle déclarée dans un `@layer`, quelle q
 soit sa spécificité : ce reset écrasait donc silencieusement les paddings et
 margins de **tous** les composants HUBCSS (`hub-table`, `hub-button`,
 `hub-badge`, `hub-stat-card`, `hub-alert`…) définis dans `@layer components`
-du `global.css`. Symptômes en production (cas réel : app exports v0.1.2) :
+du `global.css`. Symptômes en production (cas réel : app exemple-app v0.1.2) :
 tableaux écrasés sans padding de cellule, boutons et badges déformés, cartes
 stat collées — invisibles à la relecture de code, visibles uniquement dans les
 computed styles.
@@ -1280,7 +1277,7 @@ computed styles.
   interdit des resets universels, liste exacte des utilitaires du build,
   patterns sûrs d'extension des `hub-*`).
 - Les apps existantes créées depuis ce template portent leur propre copie de
-  `app.css` : appliquer le même retrait à la demande (impayé, exports déjà
+  `app.css` : appliquer le même retrait à la demande (deux apps du parc déjà
   corrigées ou immunisées).
 
 ---
@@ -1346,7 +1343,7 @@ les mêmes garanties que le socle 2.23.2.
 - **Contexte** : depuis T2a (2.20.x), `_recover_credentials` ne passait plus
   que par le ré-enregistrement trusted (`POST /api/apps/register`), qui ne
   retourne un `client_secret` que sur les Hubs avec rotation M2M au register
-  (≥ ~v3.12). Sur un **Hub legacy** (ex. déploiement exemple, pré-H9), le register
+  (≥ ~v3.12). Sur un **Hub legacy** (ex. déploiement hub-legacy, pré-H9), le register
   répond 200 avec `is_new=false` et des credentials **sans secret** → échec
   systématique de la recovery, log « Hub sans correctif T1 ? », app déconnectée
   du Hub après toute perte de credentials (recréation conteneur : `/app/storage`
@@ -1656,7 +1653,7 @@ les mêmes garanties que le socle 2.23.2.
 
 - **Ajouté** : variable `APP_SUBNET` dans `.env.example` — sous-réseau Docker de l'app (CIDR, ex: `10.50.0.0/24`). Laissée vide, elle est allouée automatiquement par le Hub à la première exécution de `make up`/`make build` (pool `APP_SUBNET_POOL`, défaut `10.50.0.0/16` — voir HUB_base v3.32.0).
 - **Ajouté** : `ACTIONS/PYTHON/allocate_ports.py` récupère le champ `subnet` de `POST /api/apps/allocate-ports` et l'écrit dans `.env` ; le shortcut « déjà défini » exige désormais ports **et** sous-réseau (remplissage paresseux pour les apps antérieures à la feature).
-- **Ajouté** : `docker-compose.yml` — le réseau `app-network` épingle son sous-réseau via IPAM (`${APP_SUBNET:?…}` avec message d'erreur explicite). L'épinglage est obligatoire : le pool Docker par défaut (`172.16/12`) est saturé sur l'hôte et retombe sur `192.168.16.0/20`, en conflit avec le VPN WireGuard du routeur (`192.168.27.0/24`).
+- **Ajouté** : `docker-compose.yml` — le réseau `app-network` épingle son sous-réseau via IPAM (`${APP_SUBNET:?…}` avec message d'erreur explicite). L'épinglage est obligatoire : le pool Docker par défaut (`172.16/12`) est saturé sur l'hôte et retombe sur `192.168.16.0/20`, en conflit avec le VPN WireGuard du routeur (votre /24 VPN).
 - **⚠ Migration** (apps existantes syncées sur ce template) : `APP_SUBNET` manquant fait échouer `docker compose up` avec l'erreur explicite — relancer `make sync-env` (l'allocation est automatique et idempotente par app).
 
 ---
