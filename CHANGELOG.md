@@ -1,3 +1,41 @@
+## [2.40.1] - 25 novembre 2026
+
+### ⚡ Makefile : compose relit `.env` à chaud — fin du build de l'API sur la version de socle précédente
+
+- **Symptôme** : à chaque montée de socle, `make build` construisait l'API sur
+  `poulidor/socle-api:<version précédente>` alors que `sync-env` venait d'aligner
+  `APP_SOCLE_VERSION` dans le `.env` — il fallait lancer le build deux fois.
+- **Cause racine** : `include .env` + `export` (en-tête du Makefile) figent les
+  valeurs AU PARSING de make. `sync-env` (prérequis de `build`, `up`, `dev`,
+  `up-dev`, appelé par `ensure-api-fresh`) réécrit le `.env` pendant la même
+  invocation, mais l'environnement exporté par make porte encore les valeurs
+  d'avant — et l'environnement du shell prime sur le `.env` pour l'interpolation
+  compose. Même classe que le contournement hubctl 0.25.1 (`_write_app_env`
+  écrivait `FRONTEND_HTTPS_PORT` avant tout make pour éviter ce « timing »).
+- **Deuxième régime, même cause** : sur un `.env` déjà existant dont les clés
+  d'allocation sont VIDES (`API_PORT=`, `APP_SUBNET=`, comme `.env.example`),
+  ces valeurs vides parvenaient à compose : `${API_PORT:-9045}` retombait sur
+  9045 et `${APP_SUBNET:?}` faisait échouer le build (« APP_SUBNET manquant »).
+- **Correctif** (`Makefile`) : `COMPOSE` / `COMPOSE_DEV` retirent de
+  l'environnement de compose les clés du `.env` (lignes canoniques `CLE=…` —
+  seul format écrit par `sync-env`, et seul format présent dans les 76
+  `.env`/`.env.example` du parc) : compose relit alors le fichier, à chaud.
+  Portée : toute cible passant par `$(COMPOSE…)`, y compris les cibles propres
+  à une app. Inchangé : surcharge explicite `make build CLE=valeur` (origine
+  « command line », non retirée) ; configuration du CLI et de compose
+  (`COMPOSE_*`, `DOCKER_*`, proxys, `BUILDKIT`) que `sync-env` ne réécrit pas
+  (des `.env` du parc en portent : `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`,
+  `DOCKER_HOST`…) ; le reste des recettes conserve l'export.
+- **Tests** : `backend/tests/test_makefile_compose_env.py` (11 tests) exécute le
+  VRAI Makefile dans un bac à sable — `sync-env` simulé, `docker` remplacé par un
+  stub en échec fermé n'enregistrant que les clés étudiées. Rouge sur 2.40.0
+  (10 échecs), vert ici. Bout en bout avec le vrai `docker compose config` :
+  `SOCLE_VERSION` et l'allocation résolus depuis le `.env` réécrit. Ignorés dans
+  l'image api (ni `make` ni Makefile).
+- **Apps existantes** : le correctif n'atteint une app qu'à sa prochaine
+  migration template (`migrate-app-template`, B.2 : le Makefile se compare et se
+  fusionne, il n'est pas en remplacement automatique).
+
 ## [2.40.0] - 23 novembre 2026
 
 ### ⚡ Règle « petit nombre d'abord » dans le skill data-generate (seeds gros volume)
