@@ -76,16 +76,16 @@ def test_update_hub_app_manifest_substitutes_identity(tmp_path):
     assert hasattr(mod, "update_hub_app_manifest")
     shutil.copy(TEMPLATE_MANIFEST, tmp_path / "hub-app.yaml")
     config = {
-        "APP_NAME": "exemple-app",
+        "APP_NAME": "Application exemple",
         "APP_SLUG": "exemple-app",
-        "APP_DESCRIPTION": "Gestion de l'inventaire matériel",
+        "APP_DESCRIPTION": "Description de l'application d'exemple",
         "APP_KIND": mod.APP_KIND_CLIENT,
     }
     assert mod.update_hub_app_manifest(tmp_path, config) is True
     data = _manifest_dict((tmp_path / "hub-app.yaml").read_text(encoding="utf-8"))
-    assert data["metadata"]["name"] == "exemple-app"
+    assert data["metadata"]["name"] == "Application exemple"
     assert data["metadata"]["slug"] == "exemple-app"
-    assert data["metadata"]["description"] == "Gestion de l'inventaire matériel"
+    assert data["metadata"]["description"] == "Description de l'application d'exemple"
     assert data["spec"]["type"] == "business"  # client → business (défaut conservé)
     _assert_contract(data)
 
