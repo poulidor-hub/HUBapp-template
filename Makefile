@@ -14,10 +14,19 @@
 #   make logs          Voir les logs
 # ============================================================
 
-# Charger les variables .env si le fichier existe
+# Charger les variables .env si le fichier existe.
+# NB : les valeurs sont figées AU PARSING de make. sync-env (prérequis de build,
+# up, dev) réécrit .env pendant la même invocation (APP_SOCLE_VERSION, APP_VERSION,
+# ports…) : passé sync-env, l'environnement exporté est PÉRIMÉ. Les appels compose
+# en sont protégés (cf. COMPOSE) ; une recette qui a besoin d'une valeur de .env
+# après sync-env doit relire le fichier, pas l'environnement.
 ifneq (,$(wildcard ./.env))
 	include .env
 	export
+	# Clés du .env au format canonique `CLE=…` (le seul que sync-env écrit), hors
+	# configuration du CLI et de compose (COMPOSE_*, DOCKER_*, proxys, BUILDKIT) :
+	# sync-env ne les réécrit pas, on n'y touche pas — comportement inchangé.
+	ENV_FILE_KEYS := $(filter-out COMPOSE_% DOCKER_% HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy BUILDKIT,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env))
 endif
 
 .PHONY: pull help sync-env sync-hub-host ssl dev up-dev build up down down-dev \
@@ -27,8 +36,16 @@ endif
         db-shell clean clean-all init ai-index bump-patch bump-minor bump-major \
         update-ds sync-hub-tooling sync-hub-tooling-check
 
-COMPOSE      = docker compose -f docker-compose.yml
-COMPOSE_DEV  = docker compose -f docker-compose.yml -f docker-compose.dev.yml
+# docker compose lit .env lui-même, À CHAUD — mais l'environnement du shell prime
+# sur .env pour son interpolation. Les clés du .env exportées par make (figées au
+# parsing) écrasaient donc le .env fraîchement aligné par sync-env : à chaque
+# montée, l'API était construite sur la version de socle précédente (il fallait
+# lancer le build deux fois). → on retire ces clés de l'environnement de compose,
+# qui relit le fichier. Sauf surcharge explicite `make build CLE=valeur`, qui reste
+# prioritaire (origine « command line » : non retirée).
+COMPOSE_ENV  = env $(foreach k,$(ENV_FILE_KEYS),$(if $(filter command line,$(origin $(k))),,-u $(k)))
+COMPOSE      = $(COMPOSE_ENV) docker compose -f docker-compose.yml
+COMPOSE_DEV  = $(COMPOSE_ENV) docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 # Stamp du dernier rebuild api assuré (consommé par check_image_freshness.py)
 STAMP_FILE   = .api-image.stamp
