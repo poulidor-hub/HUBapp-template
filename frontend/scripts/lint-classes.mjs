@@ -11,7 +11,7 @@
  *      — ex. `mb-2`/`mb-3` après le retrait de Tailwind du build ;
  *   2. (avertissement) les resets universels `* { … }` hors `@layer` dans le
  *      CSS applicatif — ils écrasent les paddings/margins des composants
- *      `hub-*` (voir HUBCSS/docs/CASCADE.md, cas exports v0.1.2).
+ *      `hub-*` (voir HUBCSS/docs/CASCADE.md, étude de cas v0.1.2).
  *
  * Usage :
  *   npm run lint:classes            # racine = frontend/ (défaut)

@@ -19,7 +19,7 @@
 #
 # Format :
 # depends_on:
-#   - slug: exemple-apps        # slug exact partagé par l'app cible
+#   - slug: mon-app               # slug exact partagé par l'app cible
 #     note: "Ce que l'app en fait (endpoint(s) appelé(s), usage)"
 #
 # Cette app démo n'appelle aucun autre service :

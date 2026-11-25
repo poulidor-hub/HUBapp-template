@@ -41,7 +41,7 @@ def _export_template(tmp: Path) -> None:
 
 def _scaffold(tmp: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "INITIALISE.py", "exemple-app", "--yes", *extra],
+        [sys.executable, "INITIALISE.py", "Exemple App", "--yes", *extra],
         cwd=tmp,
         capture_output=True,
         text=True,
@@ -64,7 +64,7 @@ def test_scaffold_auto_clean_exit0(tmp_path):
     # Certificat substitué + identité mode auto (kind=tool)
     data = yaml.safe_load((tmp / "hub-app.yaml").read_text(encoding="utf-8"))
     assert data["metadata"]["slug"] == "exemple-app"
-    assert data["metadata"]["name"] == "exemple-app"
+    assert data["metadata"]["name"] == "Exemple App"
     assert data["spec"]["type"] == "tool"
     # Identité backend tests substituée (conftest APP_SLUG)
     conftest = (tmp / "backend" / "tests" / "conftest.py").read_text(encoding="utf-8")

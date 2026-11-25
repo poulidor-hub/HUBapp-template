@@ -19,8 +19,8 @@
    @layer components (hub-table, hub-button, hub-badge, hub-stat-card…).
    Une règle hors-layer bat toujours une règle dans un @layer, quelle que soit
    sa spécificité. Le @layer base de global.css fait déjà ce reset, et la doc
-   HUBCSS/docs/CASCADE.md décrit le contrat complet (voir aussi l'app exports,
-   cas réel v0.1.2). */
+   HUBCSS/docs/CASCADE.md décrit le contrat complet (voir aussi son étude
+   de cas réelle, v0.1.2). */
 
 /* Shell applicatif (wrapper de RootLayout) — recette hub-shell :
    colonne flex pleine hauteur, header + main s'empilent sans surprise */
