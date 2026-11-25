@@ -14,7 +14,6 @@ applyTo:
   - "hub/app/schemas.py"
   - "INTEGRATION.md"
   - "how2endpoint.md"
-  - "exemple-app.md"
   - "vaultRestorHUB.md"
 ---
 

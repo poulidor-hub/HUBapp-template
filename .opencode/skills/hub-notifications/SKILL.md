@@ -8,7 +8,7 @@ argument-hint: 'What notification operation is needed (send a message to users, 
 
 Système de notifications app→utilisateur via le Hub. Une app envoie des messages via son Service Account, le Hub les stocke et les pousse en temps réel (SSE) vers les utilisateurs connectés. Le frontend React affiche les notifications via `MessageBanner` et `MessageArchive`.
 
-Documentation complète : `docs/HUB_MESSAGES.md`, `../../HUB_base/exemple-app.md`.
+Documentation complète : `docs/HUB_MESSAGES.md`.
 
 ## Checklist
 
@@ -225,7 +225,6 @@ Après la requête, faire `make logs-api` pour vérifier l'absence d'erreurs dan
 | Réf | Chemin |
 |-----|--------|
 | Doc messages app | `docs/HUB_MESSAGES.md` |
-| Spec exemple-app | `../../HUB_base/exemple-app.md` |
 | Route M2M send Hub | `../../HUB_base/hub/app/routes/messages.py` |
 | SSE Hub | `../../HUB_base/hub/app/routes/events.py` |
 | MessageBanner | `frontend/src/components/MessageBanner.jsx` |
