@@ -1286,7 +1286,7 @@ computed styles.
 
 ### ✨ hub_transfert opt-in + M2M binaire
 
-- **Module `hub_transfert` (opt-in)** : client du service partagé `exemple-app` —
+- **Module `hub_transfert` (opt-in)** : client du service partagé de transfert de fichiers —
   `upload_file` (push flux + upload chunké au-dessus de 50 Mo), `download_file`
   (streaming), `list_flux`, `transfer_status`, `wait_transfer`. Désactivé par
   défaut (`HUB_TRANSFERT_ENABLED=false`), erreurs `HubTransfertError`/`HubTransfertDisabledError`.
@@ -1384,7 +1384,7 @@ les mêmes garanties que le socle 2.23.2.
 
 ### 🛠️ Restore : resync séquences robuste (pré-check colonne + savepoint)
 
-- **Correctif du correctif** (validé en conditions réelles sur exemple-app) :
+- **Correctif du correctif** (validé en conditions réelles sur l'application métier de test) :
   la resync des séquences appelait `MAX(id)` sur des tables sans colonne
   `id` (ex. `schema_migrations`) → erreur → transaction abortée → le
   `COMMIT` final validait une transaction abortée = **rollback général des
@@ -1423,7 +1423,7 @@ les mêmes garanties que le socle 2.23.2.
 
 - **Tri topologique** des tables selon les dépendances FK réelles
   (`information_schema` sur PostgreSQL, `PRAGMA foreign_key_list` sur SQLite)
-  avant import — corrige l'échec en cascade constaté sur exemple-app
+  avant import — corrige l'échec en cascade constaté sur l'application métier de test
   (`groupements` référençait `groupement_voicemails`, importée en dernier
   dans l'ordre alphabétique → ForeignKeyViolationError → « 12 tables,
   0 importés » renvoyé en 200).
