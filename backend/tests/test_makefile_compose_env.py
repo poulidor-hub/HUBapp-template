@@ -48,6 +48,14 @@ services:
       args:
         - APP_VERSION=${APP_VERSION:-0.0.0}
         - SOCLE_VERSION=${APP_SOCLE_VERSION:?APP_SOCLE_VERSION manquant}
+    ports:
+      - "${API_PORT:-9045}:8000"
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${APP_SUBNET:?APP_SUBNET manquant}
 """
 
 _ENV = """\
@@ -58,14 +66,32 @@ APP_VERSION=1.0.0
 APP_SOCLE_VERSION=1.0.0
 
 API_PORT=9045
+APP_SUBNET=10.50.0.0/24
+"""
+
+# .env d'une app dont l'allocation n'a pas encore eu lieu : clés VIDES, comme dans
+# .env.example (ou ajoutées vides par `make update-env`). sync-env les remplit.
+_ENV_PORTS_VIDES = """\
+APP_SLUG=mon-app
+APP_VERSION=1.0.0
+APP_SOCLE_VERSION=1.0.0
+
+API_PORT=
+APP_SUBNET=
 """
 
 # sync-env simulé : même effet d'écriture que sync_socle_version.py + le sed APP_VERSION
 # du Makefile (1.0.0 → 2.0.0), sans Hub ni image socle.
 _OVERRIDE = """\
 sync-env:
-\t@test -f .env || printf 'APP_VERSION=1.0.0\\nAPP_SOCLE_VERSION=1.0.0\\n' > .env; \\
+\t@test -f .env || printf 'APP_VERSION=1.0.0\\nAPP_SOCLE_VERSION=1.0.0\\nAPI_PORT=9045\\nAPP_SUBNET=10.50.0.0/24\\n' > .env; \\
 \tsed -i 's/^APP_SOCLE_VERSION=.*/APP_SOCLE_VERSION=2.0.0/; s/^APP_VERSION=.*/APP_VERSION=2.0.0/' .env
+"""
+
+# sync-env simulé (variante) : allocation du port et du sous-réseau par allocate_ports.py.
+_OVERRIDE_PORTS = """\
+sync-env:
+\t@sed -i 's/^API_PORT=.*/API_PORT=46904/; s|^APP_SUBNET=.*|APP_SUBNET=10.50.7.0/24|' .env
 """
 
 _STUB_DOCKER = '''#!/usr/bin/env python3
@@ -143,7 +169,9 @@ with open(dest, "w", encoding="utf-8") as fh:
 
 # Variables de l'hôte qui pourraient fausser le test : options de make héritées et
 # clés manipulées ici.
-_SCRUB = _STALE_KEYS + ("APP_SLUG", "APP_NAME", "API_PORT", "COMPOSE_PROJECT_NAME", "DOCKER_HOST")
+_SCRUB = _STALE_KEYS + (
+    "APP_SLUG", "APP_NAME", "API_PORT", "APP_SUBNET", "COMPOSE_PROJECT_NAME", "DOCKER_HOST",
+)
 
 
 def _write(path: Path, content: str) -> None:
@@ -152,7 +180,10 @@ def _write(path: Path, content: str) -> None:
 
 
 def _sandbox(
-    tmp_path: Path, env_text: str | None = _ENV, files: dict[str, str] | None = None,
+    tmp_path: Path,
+    env_text: str | None = _ENV,
+    files: dict[str, str] | None = None,
+    override: str = _OVERRIDE,
 ) -> Path:
     """Bac à sable : .env + compose minimes, `sync-env` simulé, `docker` stubbé."""
     box = tmp_path / "app"
@@ -160,7 +191,7 @@ def _sandbox(
         _write(box / ".env", env_text)
     _write(box / "docker-compose.yml", _COMPOSE)
     _write(box / "Dockerfile", "FROM busybox\n")
-    _write(box / "override.mk", _OVERRIDE)
+    _write(box / "override.mk", override)
     # Le Makefile du bac à sable inclut le vrai + la surcharge : les sous-makes
     # (ensure-api-fresh → `$(MAKE) sync-env`) le trouvent ainsi sans option -f.
     _write(box / "Makefile", f"include {MAKEFILE}\ninclude override.mk\n")
@@ -187,8 +218,11 @@ def _run_make(box: Path, *goals: str, mode: str = "record") -> tuple[subprocess.
         cwd=box, env=env, capture_output=True, text=True, timeout=180,
     )
     out = box / "stub-out"
+    # En mode config, un compose en échec laisse un fichier vide : le code retour de
+    # make (assertion du test) porte alors le diagnostic, pas une JSONDecodeError.
     records = (
-        [json.loads(p.read_text(encoding="utf-8")) for p in sorted(out.glob("*.json"), key=lambda p: int(p.stem))]
+        [json.loads(text) for p in sorted(out.glob("*.json"), key=lambda p: int(p.stem))
+         if (text := p.read_text(encoding="utf-8")).strip()]
         if out.is_dir() else []
     )
     return proc, records
@@ -269,6 +303,18 @@ def test_config_du_cli_compose_reste_transmise(tmp_path):
     assert "APP_SOCLE_VERSION" not in calls[0]["env"]
 
 
+def test_cles_vides_remplies_par_sync_env_ne_sont_pas_transmises_vides(tmp_path):
+    """Clés d'allocation VIDES au parsing (API_PORT=, APP_SUBNET=), remplies par
+    sync-env : compose ne doit pas les recevoir vides. Une valeur vide dans
+    l'environnement compte comme « définie » pour l'interpolation compose."""
+    box = _sandbox(tmp_path, env_text=_ENV_PORTS_VIDES, override=_OVERRIDE_PORTS)
+    proc, calls = _run_make(box, "build")
+    assert proc.returncode == 0, proc.stderr
+    assert len(calls) == 1
+    assert "API_PORT" not in calls[0]["env"]
+    assert "APP_SUBNET" not in calls[0]["env"]
+
+
 def _docker_compose_available() -> bool:
     try:
         return subprocess.run(["docker", "compose", "version"], capture_output=True, timeout=30).returncode == 0
@@ -287,3 +333,19 @@ def test_compose_construit_sur_la_version_a_jour_du_env(tmp_path):
     assert models[0]["services"]["api"]["build"]["args"] == {
         "APP_VERSION": "2.0.0", "SOCLE_VERSION": "2.0.0",
     }
+
+
+@pytest.mark.skipif(not _docker_compose_available(), reason="docker compose indisponible sur cet hôte")
+def test_compose_resout_l_allocation_faite_pendant_l_invocation(tmp_path):
+    """Bout en bout (vrai `docker compose config`) : les port et sous-réseau alloués
+    par sync-env pendant l'invocation sont résolus. Avant correctif, compose recevait
+    API_PORT= et APP_SUBNET= vides depuis l'environnement de make : `${API_PORT:-9045}`
+    retombait sur 9045 et `${APP_SUBNET:?}` faisait échouer le build (« APP_SUBNET
+    manquant ») — même classe que le contournement hubctl 0.25.1 sur
+    FRONTEND_HTTPS_PORT (clés écrites avant tout make)."""
+    box = _sandbox(tmp_path, env_text=_ENV_PORTS_VIDES, override=_OVERRIDE_PORTS)
+    proc, models = _run_make(box, "build", mode="config")
+    assert proc.returncode == 0, proc.stderr
+    assert len(models) == 1
+    assert models[0]["services"]["api"]["ports"][0]["published"] == "46904"
+    assert models[0]["networks"]["default"]["ipam"]["config"][0]["subnet"] == "10.50.7.0/24"
