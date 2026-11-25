@@ -49,7 +49,7 @@ ALLOC = {
     "frontend_port": 4212,
     "frontend_https_port": 4213,
     "subnet": "10.50.7.0/24",
-    "host": "10.50.150.167",
+    "host": "192.0.2.10",
     "reused": True,
 }
 
@@ -62,7 +62,7 @@ def _write_env(tmp_path, content: str):
 
 def test_403_via_hub_host_falls_back_to_localhost(tmp_path, monkeypatch, capsys):
     """CAS 1 : HUB_HOST (LAN) → 403, puis localhost → succès, valeurs écrites."""
-    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=10.50.150.167\nHUB_API_PORT=8000\nAPP_HOST=\n")
+    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=192.0.2.10\nHUB_API_PORT=8000\nAPP_HOST=\n")
     monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
     localhost_url = "http://localhost:8000/api/apps/allocate-ports"
     with patch.object(allocate_ports.urllib.request, "urlopen",
@@ -80,9 +80,9 @@ def test_403_via_hub_host_falls_back_to_localhost(tmp_path, monkeypatch, capsys)
 
 def test_hub_host_ok_no_extra_call(tmp_path, monkeypatch):
     """HUB_HOST répond → un seul appel, pas de fallback."""
-    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=10.50.150.167\nHUB_API_PORT=8000\nAPP_HOST=\n")
+    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=192.0.2.10\nHUB_API_PORT=8000\nAPP_HOST=\n")
     monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
-    lan_url = "http://10.50.150.167:8000/api/apps/allocate-ports"
+    lan_url = "http://192.0.2.10:8000/api/apps/allocate-ports"
     with patch.object(allocate_ports.urllib.request, "urlopen",
                       side_effect=_urlopen_side_effect({lan_url}, ALLOC)), \
          patch.object(allocate_ports, "allocate_subnet_locally", return_value=False):
@@ -107,7 +107,7 @@ def test_remote_host_no_localhost_fallback(tmp_path, monkeypatch):
 
 def test_skip_when_already_allocated(tmp_path, monkeypatch, capsys):
     """Ports + subnet déjà remplis → pas d'appel HTTP du tout."""
-    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=10.50.150.167\n"
+    env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=192.0.2.10\n"
                                 "API_PORT=9006\nFRONTEND_PORT=4212\nAPP_SUBNET=10.50.7.0/24\n")
     monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
     with patch.object(allocate_ports.urllib.request, "urlopen") as mock_open:
