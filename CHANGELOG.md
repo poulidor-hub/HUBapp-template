@@ -1,3 +1,10 @@
+## [2.40.2] - 25 novembre 2026
+### ⚡ Neutralisation open source : valeurs d'exemple dans le code, les tests et la documentation
+- Valeurs réelles (adresses IP, noms d'hôtes, identifiants de clients, slugs d'applications
+  privées) remplacées par des valeurs d'exemple (16 fichiers), dont la fixture
+  `ACTIONS/PYTHON/test_allocate_ports.py`. Aucune valeur du parc ne subsiste dans les
+  fichiers suivis (garde `oss-guard` du méta-repo).
+- Aucune modification fonctionnelle du gabarit ; tests : 46 passed + 11 cas `update_env`.
 ## [2.40.1] - 25 novembre 2026
 
 ### ⚡ Makefile : compose relit `.env` à chaud — fin du build de l'API sur la version de socle précédente
