@@ -1,3 +1,22 @@
+## [2.40.4] - 26 novembre 2026
+### ⚡ sync-env : réconciliation Hub du pré-vol allocate-ports (fin de la plage legacy en fallback seul)
+- `allocate_ports.py` consulte désormais le Hub DÈS QUE `APP_SLUG`/`HUB_HOST` sont présents,
+  **même quand les ports sont figés** dans le `.env` (cas général après `INITIALISE.py
+  --profile`) : le body inclut `api_port`/`frontend_port` (ports souhaités) pour enregistrer
+  l'allocation côté Hub (table `port_allocations`, jusque-là jamais remplie par ce chemin)
+  et récupérer un subnet du pool Hub `APP_SUBNET_POOL` (10.50.0.0/16) au lieu de la plage
+  legacy locale 10.220.0.0/16.
+- Contractuel : 409 (divergence/conflit signalé par le Hub) → erreur bloquante, `.env`
+  strictement intact ; `reused=true` avec ports alignés → no-op strict (subnet du pool
+  adopté seulement s'il manque) ; allocation fraîche sur les ports souhaités → adoption
+  complète ; **Hub ancien sans support des ports souhaités** → ports locaux JAMAIS écrasés,
+  subnet adopté si absent, avertissement de mise à jour du Hub.
+- Hub injoignable/refusé : message corrigé (cause explicite, fini le trompeur « Hub sans
+  allocate-ports (legacy ?) ») ; la plage 10.220.0.0/16 devient un DERNIER recours
+  (ports figés : subnet local seul, succès ; ports absents : échec bloquant, inchangé).
+- Nécessite un Hub ≥ 3.107.0 pour l'enregistrement exact des ports souhaités
+  (fonctionne dégradé sur les Hubs antérieurs). Tests : 45 verts (dont 5 nouveaux cas de
+  réconciliation, test « skip » historique retourné en « aligné sans réécriture »).
 ## [2.40.3] - 26 novembre 2026
 ### 📝 README public mis à jour : titre HUBapp-template, URLs voisines vers poulidor-hub, section Mise à jour d'un déploiement
 - Documentation seule : titre `# HUBapp-template`, badge de version resynchronisé
