@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 POULIDOR Audit & Développement (Valérian Poulidor)
 
-"""Tests unitaires de allocate_ports.py — fallback localhost (CAS 1).
+"""Tests unitaires de allocate_ports.py — fallback localhost (CAS 1) et
+réconciliation alignée (ports souhaités).
 
 L'endpoint Hub /api/apps/allocate-ports n'accepte que des IP réseaux Docker
 (whitelist anti-abus). Depuis l'hôte via HUB_HOST=<IP LAN>, la source vue par
@@ -105,13 +106,23 @@ def test_remote_host_no_localhost_fallback(tmp_path, monkeypatch):
     assert "API_PORT=9006" not in env.read_text()
 
 
-def test_skip_when_already_allocated(tmp_path, monkeypatch, capsys):
-    """Ports + subnet déjà remplis → pas d'appel HTTP du tout."""
+def test_reconcile_aligned_with_hub_no_rewrite(tmp_path, monkeypatch, capsys):
+    """Ports + subnet déjà alignés avec le Hub : réconciliation (ports
+    souhaités transmis), reused → aucune réécriture du .env."""
     env = _write_env(tmp_path, "APP_SLUG=exemple-app\nHUB_HOST=192.0.2.10\n"
                                 "API_PORT=9006\nFRONTEND_PORT=4212\nAPP_SUBNET=10.50.7.0/24\n")
     monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
-    with patch.object(allocate_ports.urllib.request, "urlopen") as mock_open:
+    lan_url = "http://192.0.2.10:8000/api/apps/allocate-ports"
+    with patch.object(allocate_ports.urllib.request, "urlopen",
+                      side_effect=_urlopen_side_effect({lan_url}, ALLOC)) as mock_open, \
+         patch.object(allocate_ports, "allocate_subnet_locally", return_value=False) as mock_local:
         rc = allocate_ports.main()
     assert rc == 0
-    assert mock_open.call_count == 0
-    assert "pas d'allocation" in capsys.readouterr().out
+    assert mock_open.call_count == 1  # le Hub est désormais consulté (réconciliation)
+    mock_local.assert_not_called()  # aligné : pas de fallback legacy
+    body = json.loads(mock_open.call_args[0][0].data.decode())
+    assert body["api_port"] == 9006  # ports souhaités transmis au Hub
+    assert body["frontend_port"] == 4212
+    assert env.read_text() == ("APP_SLUG=exemple-app\nHUB_HOST=192.0.2.10\n"
+                               "API_PORT=9006\nFRONTEND_PORT=4212\nAPP_SUBNET=10.50.7.0/24\n")
+    assert "aligné" in capsys.readouterr().out
