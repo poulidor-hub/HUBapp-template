@@ -1,6 +1,6 @@
-# HUBapp_TEMPLATE
+# HUBapp-template
 
-![version](https://img.shields.io/badge/version-2.40.1-blue)
+![version](https://img.shields.io/badge/version-2.40.3-blue)
 
 Template d'application avec authentification Hub pour le développement rapide d'applications connectées.
 
@@ -21,10 +21,17 @@ flowchart LR
 ```
 
 Chaque application du parc naît de ce template (fork via `INITIALISE.*`), s'enregistre
-auprès du [Hub](https://github.com/POULIDOR-Audit-Developpement/HUB_base) et consomme le
-design system [HUBCSS](https://github.com/POULIDOR-Audit-Developpement/HUBCSS) servi par
+auprès du [Hub](https://github.com/poulidor-hub/HUB) et consomme le
+design system [HUBCSS](https://github.com/poulidor-hub/HUBCSS) servi par
 le Hub. Les nouvelles apps naissent « fines » sur le socle versionné
-[HUBsocle](https://github.com/POULIDOR-Audit-Developpement/HUBsocle) (INITIALISE v2).
+[HUBsocle](https://github.com/poulidor-hub/HUBsocle) (INITIALISE v2).
+
+### Mise à jour d'un déploiement
+
+Le gabarit est consommé par les déploiements via le méta-repo
+[POULIDOR](https://github.com/poulidor-hub/POULIDOR) (sous-module) : la mise à jour
+passe par sa racine — `git fetch upstream && git merge --ff-only upstream/main && git submodule update --init --recursive` —
+ce dépôt public étant en lecture seule pour les clients.
 
 ## 📋 Canevas de cahier des charges
 
