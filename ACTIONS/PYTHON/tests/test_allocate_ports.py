@@ -12,6 +12,7 @@ l'erreur bloquante sur les ports manquants.
 import json
 import sys
 import types
+import urllib.error
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -166,6 +167,127 @@ class TestHubLegacy:
         monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
         monkeypatch.setattr("urllib.request.urlopen", fail_if_called)
         assert allocate_ports.main() == 1
+
+
+class TestReconcile:
+    """Mode reconcile : ports figés localement → le Hub est consulté avec les
+    ports souhaités (api_port/frontend_port, contrat HUB_base
+    feat/allocate-ports-desired).
+
+    Hub nouveau : réponse == souhaité (allocation créée ou reused) → .env
+    aligné, subnet du pool Hub (10.50/16) adopté si vide. Hub ancien : il
+    répond 200 avec SES ports (desired ignorés) → ports locaux intacts,
+    subnet adopté si vide, avertissement. Divergence : HTTP 409 bloquant.
+    """
+
+    ENV = ("APP_SLUG=demo\nHUB_HOST=10.0.0.9\n"
+           "API_PORT=9007\nFRONTEND_PORT=4255\nAPP_SUBNET=\n")
+
+    @staticmethod
+    def _capture_urlopen(payload):
+        """FakeResp avec capture du body JSON de la requête."""
+        calls = []
+
+        def urlopen(req, timeout=10):
+            calls.append(json.loads(req.data.decode()))
+            return FakeResp(payload)
+
+        return urlopen, calls
+
+    def test_desired_honores_adoption_complete_subnet_pool(self, tmp_path, monkeypatch, capsys):
+        """Hub nouveau : allocation fraîche créée sur les ports souhaités."""
+        env = write_env(tmp_path, self.ENV)
+        monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
+        urlopen, calls = self._capture_urlopen(
+            {"api_port": 9007, "frontend_port": 4255, "frontend_https_port": 4256,
+             "subnet": "10.50.9.0/24", "host": "10.0.0.9", "reused": False})
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
+        monkeypatch.setattr(allocate_ports, "allocate_subnet_locally",
+                            lambda p, **kw: (_ for _ in ()).throw(
+                                AssertionError("fallback local malgré subnet Hub")))
+        assert allocate_ports.main() == 0
+        assert calls == [{"slug": "demo", "api_port": 9007, "frontend_port": 4255}]
+        content = env.read_text()
+        assert "API_PORT=9007" in content
+        assert "FRONTEND_PORT=4255" in content
+        assert "FRONTEND_HTTPS_PORT=4256" in content
+        assert "APP_SUBNET=10.50.9.0/24" in content, "subnet du pool Hub non écrit"
+
+    def test_reused_aligne_subnet_pool_adote_sans_reecriture(self, tmp_path, monkeypatch, capsys):
+        """Allocation Hub identique (reused) : no-op, APP_SUBNET adopté si vide."""
+        env = write_env(tmp_path, self.ENV)
+        monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
+        urlopen, calls = self._capture_urlopen(
+            {"api_port": 9007, "frontend_port": 4255, "frontend_https_port": 4256,
+             "subnet": "10.50.9.0/24", "host": "10.0.0.9", "reused": True})
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
+        monkeypatch.setattr(allocate_ports, "allocate_subnet_locally",
+                            lambda p, **kw: (_ for _ in ()).throw(
+                                AssertionError("fallback local appelé malgré l'alignement")))
+        assert allocate_ports.main() == 0
+        assert calls[0]["api_port"] == 9007 and calls[0]["frontend_port"] == 4255
+        content = env.read_text()
+        assert "API_PORT=9007" in content and "FRONTEND_PORT=4255" in content
+        assert "APP_SUBNET=10.50.9.0/24" in content
+        assert "FRONTEND_HTTPS_PORT" not in content, "aligné : no-op hors subnet"
+        assert "aligné" in capsys.readouterr().out
+
+    def test_hub_ancien_ignore_desired_ports_locaux_intacts(self, tmp_path, monkeypatch, capsys):
+        """Hub ancien : 200 avec SES ports → locaux intacts, subnet adopté, avertissement."""
+        env = write_env(tmp_path, self.ENV)
+        monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
+        urlopen, calls = self._capture_urlopen(
+            {"api_port": 9100, "frontend_port": 4260, "frontend_https_port": 4261,
+             "subnet": "10.50.11.0/24", "host": "10.0.0.9", "reused": True})
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
+        monkeypatch.setattr(allocate_ports, "allocate_subnet_locally",
+                            lambda p, **kw: (_ for _ in ()).throw(
+                                AssertionError("fallback local sur Hub répondant")))
+        assert allocate_ports.main() == 0
+        assert calls[0]["api_port"] == 9007, "ports souhaités non envoyés"
+        content = env.read_text()
+        assert "API_PORT=9007" in content, "ports locaux écrasés par le Hub ancien"
+        assert "FRONTEND_PORT=4255" in content
+        assert "9100" not in content and "4260" not in content
+        assert "APP_SUBNET=10.50.11.0/24" in content, "subnet Hub non adopté (local vide)"
+        out = capsys.readouterr().out
+        assert "CONSERVÉS" in out
+        assert "mettez le hub à jour" in out.lower()
+
+    def test_conflit_409_rc1_env_intact(self, tmp_path, monkeypatch, capsys):
+        """HTTP 409 (divergence) : sortie 1, aucune écriture du .env."""
+        env = write_env(tmp_path, self.ENV)
+        monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
+        fake, _ = make_fake_mod()
+        monkeypatch.setattr(allocate_ports, "_load_subnet_module", lambda: fake)
+
+        def conflict(req, timeout=10):
+            raise urllib.error.HTTPError(req.full_url, 409, "Conflict", None, None)
+
+        monkeypatch.setattr("urllib.request.urlopen", conflict)
+        assert allocate_ports.main() == 1
+        assert env.read_text() == self.ENV, ".env modifié malgré le 409"
+        assert "409" in capsys.readouterr().out
+
+    def test_hub_injoignable_ports_figes_subnet_local_rc0(self, tmp_path, monkeypatch, capsys):
+        """Tous candidats injoignables, ports figés : subnet local 10.220,
+        succès, message corrigé (« Hub sans allocate-ports (legacy ?) » banni)."""
+        env = write_env(tmp_path, self.ENV)
+        monkeypatch.setattr(allocate_ports, "ENV_PATH", env)
+
+        def refused(req, timeout=10):
+            raise ConnectionError("Connection refused")
+
+        monkeypatch.setattr("urllib.request.urlopen", refused)
+        fake, calls = make_fake_mod(free="10.220.2.0/24")
+        monkeypatch.setattr(allocate_ports, "_load_subnet_module", lambda: fake)
+        assert allocate_ports.main() == 0
+        assert calls["written"] == "10.220.2.0/24", "plage de dernier recours attendue"
+        assert "APP_SUBNET=10.220.2.0/24" in env.read_text()
+        out = capsys.readouterr().out
+        assert "injoignable" in out
+        assert "legacy ?" not in out, "message trompeur supprimé"
+        assert "10.220" in out
 
 
 class TestAllocateSubnetLocally:
