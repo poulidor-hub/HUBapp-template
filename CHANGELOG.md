@@ -1,3 +1,12 @@
+## [2.40.3] - 26 novembre 2026
+### 📝 README public mis à jour : titre HUBapp-template, URLs voisines vers poulidor-hub, section Mise à jour d'un déploiement
+- Documentation seule : titre `# HUBapp-template`, badge de version resynchronisé
+  (2.40.1 → version courante), liens des dépôts voisins déplacés vers
+  l'organisation publique `poulidor-hub` (HUB, HUBCSS, HUBsocle) et nouvelle
+  section « Mise à jour d'un déploiement » (mise à jour via le méta-repo
+  POULIDOR en sous-module, dépôt public en lecture seule pour les clients).
+  Aucune modification fonctionnelle du gabarit.
+
 ## [2.40.2] - 25 novembre 2026
 ### ⚡ Neutralisation open source : valeurs d'exemple dans le code, les tests et la documentation
 - Valeurs réelles (adresses IP, noms d'hôtes, identifiants de clients, slugs d'applications

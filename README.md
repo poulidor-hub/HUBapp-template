@@ -1,6 +1,6 @@
 # HUBapp-template
 
-![version](https://img.shields.io/badge/version-2.40.2-blue)
+![version](https://img.shields.io/badge/version-2.40.3-blue)
 
 Template d'application avec authentification Hub pour le développement rapide d'applications connectées.
 
